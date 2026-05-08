@@ -610,35 +610,19 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 
 ;;;; winner-mode & tab-bar-history-mode
 
-(with-eval-after-load 'winner
-  (hel-keymap-set winner-mode-map :state '(normal motion)
-    "C-w u" 'winner-undo
-    "C-w U" 'winner-redo))
+(add-hook 'winner-mode-hook
+          (defun hel-setup-winner-mode-keys ()
+            (when winner-mode
+              (hel-keymap-set hel-window-map
+                "u" #'winner-undo
+                "U" #'winner-redo))))
 
-(with-eval-after-load 'tab-bar
-  (hel-keymap-set tab-bar-history-mode-map :state '(normal motion)
-    "C-w u" 'tab-bar-history-back
-    "C-w U" 'tab-bar-history-forward))
-
-;; (add-hook 'winner-mode-hook
-;;           (defun hel-setup-winner-mode-keys ()
-;;             (if winner-mode
-;;                 (hel-keymap-set hel-window-map
-;;                   "u" #'winner-undo
-;;                   "U" #'winner-redo)
-;;               (hel-keymap-set hel-window-map
-;;                 "u" nil
-;;                 "U" nil))))
-;;
-;; (add-hook 'tab-bar-history-mode-hook
-;;           (defun hel-setup-tab-bar-history-mode-keys ()
-;;             (if tab-bar-history-mode
-;;                 (hel-keymap-set hel-window-map
-;;                   "u"   #'tab-bar-history-back
-;;                   "U"   #'tab-bar-history-forward)
-;;               (hel-keymap-set hel-window-map
-;;                 "u" nil
-;;                 "U" nil))))
+(add-hook 'tab-bar-history-mode-hook
+          (defun hel-setup-tab-bar-history-mode-keys ()
+            (when tab-bar-history-mode
+              (hel-keymap-set hel-window-map
+                "u" #'tab-bar-history-back
+                "U" #'tab-bar-history-forward))))
 
 ;;;; VC
 
