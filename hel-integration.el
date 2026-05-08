@@ -296,7 +296,7 @@ in the command loop, and the fake cursors can pick up on those instead."
 ;;;; Calendar
 
 (with-eval-after-load 'calendar
-  (hel-keymap-set calendar-mode-map
+  (hel-keymap-set calendar-mode-map :state 'motion
     ;; motions
     "h"   'calendar-backward-day
     "j"   'calendar-forward-week
@@ -311,8 +311,7 @@ in the command loop, and the fake cursors can pick up on those instead."
     "g g" 'calendar-beginning-of-year
     "G"   'calendar-end-of-year
     "[ [" 'calendar-backward-year
-    "] ]" 'calendar-forward-year)
-  (hel-keymap-set calendar-mode-map :state 'motion
+    "] ]" 'calendar-forward-year
     ;; scrolling
     "C-d" 'calendar-scroll-left
     "C-u" 'calendar-scroll-right
