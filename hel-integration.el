@@ -293,6 +293,39 @@ in the command loop, and the fake cursors can pick up on those instead."
   (hel-set-initial-state 'helpful-mode 'normal)
   (put 'helpful-at-point 'multiple-cursors nil))
 
+;;;; Calendar
+
+(with-eval-after-load 'calendar
+  (hel-keymap-set calendar-mode-map
+    ;; motions
+    "h"   'calendar-backward-day
+    "j"   'calendar-forward-week
+    "k"   'calendar-backward-week
+    "l"   'calendar-forward-day
+    "g h" 'calendar-beginning-of-week
+    "g l" 'calendar-end-of-week
+    "("   'calendar-beginning-of-month
+    ")"   'calendar-end-of-month
+    "{"   'calendar-backward-month
+    "}"   'calendar-forward-month
+    "g g" 'calendar-beginning-of-year
+    "G"   'calendar-end-of-year
+    "[ [" 'calendar-backward-year
+    "] ]" 'calendar-forward-year)
+  (hel-keymap-set calendar-mode-map :state 'motion
+    ;; scrolling
+    "C-d" 'calendar-scroll-left
+    "C-u" 'calendar-scroll-right
+    "C-f" 'calendar-scroll-left-three-months
+    "C-b" 'calendar-scroll-right-three-months)
+  (hel-keymap-set calendar-mode-map
+    ;; holidays
+    "v"   'calendar-set-mark
+    "u"   'calendar-unmark
+    "="   'calendar-count-days-region
+    "g H" 'calendar-hebrew-goto-date  ; "gh"
+    "r"   'calendar-cursor-holidays)) ; "h"
+
 ;;;; Comint
 
 (with-eval-after-load 'comint
