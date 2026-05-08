@@ -1,8 +1,6 @@
 * [Unreleased]
 ** Added
 
-- =hel-agent-shell= extension.
-
 - Keys for built-in =debugger= package.
 
 - Keys for =comint-mode=.
@@ -10,6 +8,9 @@
 - Keys for =image-mode=.
 
 ** Changed
+
+- *[BREAKING]*
+  All extensions are moved to their own repositories.
 
 - *[BREAKING]*
   =hel-leader= extension is fully rewritten: the [[https://github.com/emacsorphanage/god-mode][God-Mode]] logic is replaced
