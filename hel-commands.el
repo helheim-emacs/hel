@@ -1891,9 +1891,12 @@ All children of the parent of the splitted window will be rebalanced."
   (interactive)
   (hel-move-window 'down))
 
+;; C-w c
 (hel-define-command hel-window-delete ()
   "Delete the current window or tab.
-Rebalance all children of the deleted window's parent window."
+Rebalance all children of the deleted window's parent window.
+If `tab-bar-mode' is enabled and the window is the only window on the tab —
+close the tab."
   :multiple-cursors nil
   (interactive)
   (let ((parent (window-parent)))
@@ -1916,8 +1919,11 @@ and opens a new window."
   (-doto (clone-indirect-buffer nil nil)
     (switch-to-buffer)))
 
+;; C-w q
 (hel-define-command hel-kill-current-buffer-and-window ()
-  "Kill the current buffer and delete the current window or tab."
+  "Kill current buffer and close the window.
+If `tab-bar-mode' is enabled and the window is the only window on the tab —
+close the tab."
   :multiple-cursors nil
   (interactive)
   (let ((parent-win (window-parent)))

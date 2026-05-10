@@ -37,7 +37,7 @@ In Motion state Hel provide service keys to control Emacs itself.
   and =M-u= by default is bound to ~upcase-word~, for which Hel has itself version
   on =M-`= or =gU=.
 
-- =SPC= :: Leader key (if ~hel-leader~ extension is loaded)
+- =SPC= :: Leader key (if ~hel-leader~ extension is installed)
 
 - =i= ::
   Switch to Normal state. This allows you to select and copy arbitrary text in
@@ -45,16 +45,28 @@ In Motion state Hel provide service keys to control Emacs itself.
 
 ** Windows
 
-- =C-w s=, =C-w v= :: Split window horizontally/vertically.
+- =C-w s= / =C-w v= :: Split window *horizontally* / *vertically*.
 
-- =C-w d=, =C-w c= :: Delete current window or tab.
+- =C-w c= :: Close current window, if it was the last window on the tab —
+  close the tab.
 
-- =C-w w= :: Cycle to next window
+- =C-w d= :: Kill current buffer.
 
-- =C-w h=, =C-w j=, =C-w k=, =C-w l= ::
-  Go to the window toward the direction.
+- =C-w q= :: =C-w d= + =C-w c=
 
-- =C-w H=, =C-w J=, =C-w K=, =C-w L= :: Move window in direction.
+- =C-w o= :: Close all other windows.
+
+- =C-w w= :: Cycle to the next window.
+
+- =C-w= + =h=, =j=, =k=, =l= :: Go to the window toward the direction.
+
+- =C-w= + =H=, =J=, =K=, =L= :: Move window in direction.
+
+- =C-w RET= :: Display the buffer of the next command in the same window.
+
+- =C-w n= :: Display the buffer of the next command in a new window.
+
+- =C-w r= :: Revert buffer.
 
 All window commands also duplicated with =C-= prefix for convenience: =C-w C-s=,
 =C-w C-v=, etc.

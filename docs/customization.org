@@ -2,7 +2,8 @@
 ** Setup Keybindings
 
 #+begin_quote
-*Note:* In all following functions
+[!NOTE]
+In all following functions
   - ~:state~ is an optional argument — you may not pass it.
   - To remove keybinding — pass ~nil~ as DEFINITION.
 #+end_quote
@@ -109,12 +110,18 @@ structure and examples.
   If non-nil, bind =C-h=, =C-j=, =C-k=, =C-l= for AST navigation. Use =F1= instead of =C-h=
   for help.
 
-  *Note:* Must be set before Hel is loaded!
+  #+begin_quote
+  [!WARNING]
+  Must be set before Hel is loaded!
+  #+end_quote
 
 - ~hel-want-zz-scroll-to-center~ ::
   If you want to return the Vim default =zz= behavior — scrolls to window center.
 
-  *Note:* Must be set before Hel is loaded!
+  #+begin_quote
+  [!WARNING]
+  Must be set before Hel is loaded!
+  #+end_quote
 
 - ~hel-reactivate-selection-after-insert-state~ ::
   When non-nil, selection is reactivated on exiting Insert state if it was
