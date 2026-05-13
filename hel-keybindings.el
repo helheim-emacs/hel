@@ -436,8 +436,7 @@ use it."
 ;;; Insert state
 
 (hel-keymap-global-set :state 'insert
-  "<escape>" #'hel-normal-state
-  "C-w" #'hel-delete-backward-word)
+  "<escape>" #'hel-normal-state)
 
 ;;; Conditional keybindings
 

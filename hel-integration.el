@@ -634,11 +634,23 @@ If cursor is in read-only area, jump to prompt instead of deleting."
   ")"   #'hel-mark-function-forward
   "("   #'hel-mark-function-backward)
 
+(hel-keymap-set prog-mode-map :state 'insert
+  "C-w" #'hel-delete-backward-word)
+
 ;;;; text-mode
 
 (hel-keymap-set text-mode-map :state 'normal
-  ")" #'hel-mark-sentence-forward
-  "(" #'hel-mark-sentence-backward)
+  ")"   #'hel-mark-sentence-forward
+  "("   #'hel-mark-sentence-backward)
+
+(hel-keymap-set text-mode-map :state 'insert
+  "C-w" #'hel-delete-backward-word)
+
+;;;; conf-mode
+
+(with-eval-after-load 'conf-mode
+  (hel-keymap-set conf-mode-map :state 'insert
+    "C-w" #'hel-delete-backward-word))
 
 ;;;; winner-mode & tab-bar-history-mode
 
