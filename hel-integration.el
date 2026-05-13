@@ -328,12 +328,12 @@ in the command loop, and the fake cursors can pick up on those instead."
 ;;;; Comint
 
 (with-eval-after-load 'comint
-  (hel-keymap-set comint-mode-map :state 'normal
-    "i" 'hel-comint-insert
-    "a" 'hel-comint-append
-    "I" 'hel-comint-insert-line
-    "A" 'hel-comint-append-line
-    "c" 'hel-comint-change))
+  (hel-keymap-set comint-mode-map
+    "<remap> <hel-insert>"      'hel-comint-insert      ; "i"
+    "<remap> <hel-append>"      'hel-comint-append      ; "a"
+    "<remap> <hel-insert-line>" 'hel-comint-insert-line ; "I"
+    "<remap> <hel-append-line>" 'hel-comint-append-line ; "A"
+    "<remap> <hel-change>"      'hel-comint-change))    ; "c"
 
 (defun hel-comint--goto-process-mark ()
   "Move point to the beginning of writable input start."
