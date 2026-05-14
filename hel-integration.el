@@ -432,6 +432,24 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 
   (hel-advice-add 'compile-goto-error :around #'hel-jump-command-a))
 
+;;;; diff-mode
+
+(with-eval-after-load 'diff-mode
+  (hel-keymap-set diff-mode-shared-map
+    "k"    nil ; unbind `diff-hunk-kill'
+    "K"    nil ; unbind `diff-file-kill'
+    "d"   'diff-hunk-kill
+    "D"   'diff-file-kill
+    "u"   'diff-undo)
+  ;;
+  (hel-keymap-set diff-mode-map
+    "C-j" 'diff-hunk-next
+    "C-k" 'diff-hunk-prev
+    "g j" 'diff-hunk-next
+    "g k" 'diff-hunk-prev
+    "[ [" 'diff-file-prev
+    "] ]" 'diff-file-next))
+
 ;;;; grep-mode
 
 (with-eval-after-load 'grep
