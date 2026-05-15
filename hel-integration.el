@@ -573,6 +573,9 @@ If cursor is in read-only area, jump to prompt instead of deleting."
   "j"        #'next-line-or-history-element
   "k"        #'previous-line-or-history-element)
 
+(hel-keymap-set minibuffer-mode-map :state 'insert
+  "C-w" #'hel-delete-backward-word)
+
 (hel-keymap-set minibuffer-mode-map
   "C-j" #'next-history-element
   "C-k" #'previous-history-element
