@@ -364,9 +364,8 @@ If SORT is non-nil sort cursors in order they are located in buffer."
     (-filter #'hel-fake-cursor-p)
     (--find (= position (overlay-get it 'point)))))
 
-(defun hel-next-fake-cursor (&optional position)
+(defun hel-next-fake-cursor (position)
   "Return the next fake cursor after the POSITION."
-  ;; (unless position (setq position (point)))
   (cl-loop for pos = (next-overlay-change position)
            then (next-overlay-change pos)
            until (= pos (point-max))
