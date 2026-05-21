@@ -1,13 +1,15 @@
 * [Unreleased]
 ** Added
 
-- Keys for built-in =debugger= package.
+- =C-:= — a command palette with only commands relevant to the current buffer.
 
-- Keys for =comint-mode=.
+- Keys for Emacs built-in modes:
+  - =comint-mode=
+  - =image-mode=
+  - =calendar-mode=
+  - =diff-mode=
 
-- Keys for =image-mode=.
-
-- Keys for =calendar-mode=.
+- Keys for Emacs debugger.
 
 ** Changed
 
@@ -18,7 +20,7 @@
   =hel-leader= extension is fully rewritten: the [[https://github.com/emacsorphanage/god-mode][God-Mode]] logic is replaced
   with an original one.
 
-- In =special-mode= in Normal state =<Esc>= now switches to Motion state.
+- In =special-mode= in Normal state =Esc= now switches to Motion state.
 
 * [0.10.0]
 ** Added
