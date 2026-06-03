@@ -250,8 +250,8 @@ When ARG is non-positive integer and Hel is in %s — disable it.\n\n%s"
            (hel-disable-current-state)
            (setq hel-state ',state
                  ,variable t)
-           (let (input-method-activate-hook
-                 input-method-deactivate-hook)
+           (let ((input-method-activate-hook nil)
+                 (input-method-deactivate-hook nil))
              ,(if input-method
                   '(activate-input-method hel-input-method)
                 '(deactivate-input-method)))
