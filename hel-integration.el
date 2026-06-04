@@ -78,14 +78,14 @@ in the command loop, and the fake cursors can pick up on those instead."
 
 ;;; Commands that don't work with multiple-cursors
 
-(hel-unsupported-command isearch-forward)
-(hel-unsupported-command isearch-backward)
+(hel-set-unsupported-command 'isearch-forward)
+(hel-set-unsupported-command 'isearch-backward)
 
 ;; Between invocations, `cycle-spacing' stores internal data in the
 ;; `cycle-spacing--context' variable. The original position is stored
 ;; as a number rather than a marker, and invalidates when other cursors
 ;; modify the buffer content.
-(hel-unsupported-command cycle-spacing)
+(hel-set-unsupported-command 'cycle-spacing)
 
 ;; Replace it with `just-one-space' while multiple-cursors are active.
 (hel-keymap-set hel-multiple-cursors-mode-map

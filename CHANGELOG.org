@@ -19,6 +19,10 @@
 - In =special-mode= in Normal state =Esc= now switches to Motion state.
 
 - *[BREAKING]*
+  ~hel-unsupported-command~ macro is converted to ~hel-set-unsupported-command~
+  function.
+
+- *[BREAKING]*
   All extensions are moved to their own repositories.
 
 - *[BREAKING]*

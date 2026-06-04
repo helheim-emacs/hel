@@ -766,17 +766,16 @@ command. Calls with equal PROMPT or without it would be indistinguishable."
        ;; else
        (apply orig-fun args))))
 
-(defmacro hel-unsupported-command (command)
-  "Adds command to list of unsupported commands and prevents it
-from being executed when `hel-multiple-cursors-mode' is active."
-  `(progn
-     (put ',command 'hel-unsupported t)
-     (hel-define-advice ,command (:around (orig-fun &rest args)
-                                          hel-unsupported)
-       "Don't execute an unsupported command while multiple cursors are active."
-       (unless (and hel-multiple-cursors-mode
-                    (called-interactively-p 'any))
-         (apply orig-fun args)))))
+(defun hel-set-unsupported-command (symbol)
+  "Prevent command from being executed while there are multiple cursors."
+  (hel-advice-add symbol :around #'hel--unsupported-a)
+  (put symbol 'hel-unsupported t))
+
+(defun hel--unsupported-a (orig-fun &rest args)
+  "Prevent command from being executed while there are multiple cursors."
+  (unless (and hel-multiple-cursors-mode
+               (called-interactively-p 'any))
+    (apply orig-fun args)))
 
 (defun hel-set-multiple-cursors-command (symbol)
   "Mark command to be executed for all cursors."
