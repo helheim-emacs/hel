@@ -112,15 +112,6 @@ in the command loop, and the fake cursors can pick up on those instead."
 
 (add-hook 'hel-mode-hook #'hel--handle-theme-change-h)
 
-;;; Advices for built-in commands
-
-(dolist (cmd '(fill-region    ; gq
-               indent-region  ; =
-               comment-dwim)) ; gc
-  (hel-advice-add cmd :around #'hel-keep-selection-a))
-
-(hel-advice-add 'clone-indirect-buffer :before #'hel-deactivate-mark-a)
-
 ;;; Distinguish `TAB' from `C-i' and `RET' from `C-m'
 
 (defun hel-make-C-i-and-C-m-available ()
@@ -141,72 +132,14 @@ in the command loop, and the fake cursors can pick up on those instead."
 ;; (key-valid-p "<C-i>")
 ;; (key-valid-p "C-<i>")
 
-;;; emacs-lisp-mode (elisp)
+;;; Advices for general commands not related to particular packages
 
-;; Fontification for Hel macros.
-(font-lock-add-keywords
- 'emacs-lisp-mode (eval-when-compile
-                    `((,(concat "^\\s-*("
-                                (regexp-opt '("hel-define-command") t)
-                                "\\s-+\\(" (rx lisp-mode-symbol) "\\)")
-                       (1 'font-lock-keyword-face)
-                       (2 'font-lock-function-name-face nil t))
-                      (,(concat "^\\s-*("
-                                (regexp-opt '("hel-defvar-local") t)
-                                "\\s-+\\(" (rx lisp-mode-symbol) "\\)")
-                       (1 'font-lock-keyword-face)
-                       (2 'font-lock-variable-name-face nil t)))))
+(dolist (cmd '(fill-region    ; gq
+               indent-region  ; =
+               comment-dwim)) ; gc
+  (hel-advice-add cmd :around #'hel-keep-selection-a))
 
-;; `emacs-lisp-mode' is inherited from `lisp-data-mode'.
-(add-hook 'lisp-data-mode-hook 'hel--emacs-lisp-mode-h)
-
-(defun hel--emacs-lisp-mode-h ()
-  ;; Add legacy quotes marks to Hel surround functionality.
-  (let ((spec '(:insert ("`" . "'") :remove ("`" . "'"))))
-    (setf (alist-get ?` hel-surround-alist) spec)
-    (setf (alist-get ?' hel-surround-alist) spec))
-  ;;
-  ;; Teach `imenu' about Hel macros.
-  (dolist (i (eval-when-compile
-               `(("Variables"
-                  ,(concat "^\\s-*("
-                           (regexp-opt '("hel-defvar-local") t)
-                           "\\s-+\\(" (rx lisp-mode-symbol) "\\)")
-                  2)
-                 (nil ;; top level
-                  ,(concat "^\\s-*("
-                           (regexp-opt '("hel-define-command") t)
-                           "\\s-+'?\\(" (rx lisp-mode-symbol) "\\)")
-                  2))))
-    (cl-pushnew i imenu-generic-expression :test #'equal)))
-
-(dolist (keymap (list emacs-lisp-mode-map
-                      lisp-data-mode-map))
-  (hel-keymap-set keymap :state 'normal
-    "m `"   #'hel-mark-inner-legacy-quoted
-    "m '"   #'hel-mark-inner-legacy-quoted
-    "m i `" #'hel-mark-inner-legacy-quoted
-    "m i '" #'hel-mark-inner-legacy-quoted
-    "m a `" #'hel-mark-a-legacy-quoted
-    "m a '" #'hel-mark-a-legacy-quoted))
-
-(hel-keymap-set emacs-lisp-compilation-mode-map
-  "g"   nil
-  ", r" #'emacs-lisp-compilation-recompile)
-
-(hel-define-command hel-mark-inner-legacy-quoted ()
-  :multiple-cursors t
-  :merge-selections t
-  (interactive)
-  (-when-let ((_ beg end _) (hel-surround-4-bounds-at-point "`" "'"))
-    (hel-set-region beg end)))
-
-(hel-define-command hel-mark-a-legacy-quoted ()
-  :multiple-cursors t
-  :merge-selections t
-  (interactive)
-  (-when-let ((beg _ _ end) (hel-surround-4-bounds-at-point "`" "'"))
-    (hel-set-region beg end)))
+(hel-advice-add 'clone-indirect-buffer :before #'hel-deactivate-mark-a)
 
 ;;; Built-in packages
 ;;;; Button
@@ -283,6 +216,73 @@ in the command loop, and the fake cursors can pick up on those instead."
                      'hel-find-char-backward   ; F
                      'hel-till-char-forward    ; t
                      'hel-till-char-backward)) ; T
+
+;;;; Elisp (emacs-lisp-mode)
+
+;; Fontification for Hel macros.
+(font-lock-add-keywords
+ 'emacs-lisp-mode (eval-when-compile
+                    `((,(concat "^\\s-*("
+                                (regexp-opt '("hel-define-command") t)
+                                "\\s-+\\(" (rx lisp-mode-symbol) "\\)")
+                       (1 'font-lock-keyword-face)
+                       (2 'font-lock-function-name-face nil t))
+                      (,(concat "^\\s-*("
+                                (regexp-opt '("hel-defvar-local") t)
+                                "\\s-+\\(" (rx lisp-mode-symbol) "\\)")
+                       (1 'font-lock-keyword-face)
+                       (2 'font-lock-variable-name-face nil t)))))
+
+;; `emacs-lisp-mode' is inherited from `lisp-data-mode'.
+(add-hook 'lisp-data-mode-hook 'hel--emacs-lisp-mode-h)
+
+(defun hel--emacs-lisp-mode-h ()
+  ;; Add legacy quotes marks to Hel surround functionality.
+  (let ((spec '(:insert ("`" . "'") :remove ("`" . "'"))))
+    (setf (alist-get ?` hel-surround-alist) spec)
+    (setf (alist-get ?' hel-surround-alist) spec))
+  ;;
+  ;; Teach `imenu' about Hel macros.
+  (dolist (i (eval-when-compile
+               `(("Variables"
+                  ,(concat "^\\s-*("
+                           (regexp-opt '("hel-defvar-local") t)
+                           "\\s-+\\(" (rx lisp-mode-symbol) "\\)")
+                  2)
+                 (nil ;; top level
+                  ,(concat "^\\s-*("
+                           (regexp-opt '("hel-define-command") t)
+                           "\\s-+'?\\(" (rx lisp-mode-symbol) "\\)")
+                  2))))
+    (cl-pushnew i imenu-generic-expression :test #'equal)))
+
+(dolist (keymap (list emacs-lisp-mode-map
+                      lisp-data-mode-map))
+  (hel-keymap-set keymap :state 'normal
+    "m `"   #'hel-mark-inner-legacy-quoted
+    "m '"   #'hel-mark-inner-legacy-quoted
+    "m i `" #'hel-mark-inner-legacy-quoted
+    "m i '" #'hel-mark-inner-legacy-quoted
+    "m a `" #'hel-mark-a-legacy-quoted
+    "m a '" #'hel-mark-a-legacy-quoted))
+
+(hel-keymap-set emacs-lisp-compilation-mode-map
+  "g"   nil
+  ", r" #'emacs-lisp-compilation-recompile)
+
+(hel-define-command hel-mark-inner-legacy-quoted ()
+  :multiple-cursors t
+  :merge-selections t
+  (interactive)
+  (-when-let ((_ beg end _) (hel-surround-4-bounds-at-point "`" "'"))
+    (hel-set-region beg end)))
+
+(hel-define-command hel-mark-a-legacy-quoted ()
+  :multiple-cursors t
+  :merge-selections t
+  (interactive)
+  (-when-let ((beg _ _ end) (hel-surround-4-bounds-at-point "`" "'"))
+    (hel-set-region beg end)))
 
 ;;;; Help
 
