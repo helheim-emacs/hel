@@ -1308,17 +1308,15 @@ FUN on each invocation should move point."
 
 (defun hel-letters-are-self-insert-p ()
   "Return t if any of the a-z keys are bound to self-insert command."
-  ;; This is just a fancy way to produce following list in compile time:
-  ;;   '("a" "b" "c" "d" "e" "f" "g" "h" "i" "j" "k" "l" "m"
-  ;;     "n" "o" "p" "q" "r" "s" "t" "u" "v" "w" "x" "y" "z")
-  ;; I just couldn't help myself :)
-  (cl-dolist (key (eval-when-compile
-                    (mapcar #'char-to-string (number-sequence ?a ?z))))
-    (if-let* ((cmd (key-binding key))
-              ((symbolp cmd))
-              ((string-match-p "\\`.*self-insert.*\\'"
-                               (symbol-name cmd))))
-        (cl-return t))))
+  (-any (lambda (key)
+          (and-let* ((cmd (key-binding key))
+                     ((symbolp cmd))
+                     ((string-match-p "\\`.*self-insert.*\\'"
+                                      (symbol-name cmd))))))
+        ;; This is just a fancy way to produce ("a"..."z") list in compile time.
+        ;; I just couldn't help myself :)
+        (eval-when-compile
+          (-map #'char-to-string (number-sequence ?a ?z)))))
 
 (defun hel-comment-at-pos-p (pos)
   "Return non-nil if position POS is inside a comment, or comment starts
