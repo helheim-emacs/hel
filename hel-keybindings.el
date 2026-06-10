@@ -182,7 +182,7 @@ use it."
   "g o"   #'imenu
   "g f"   #'find-file-at-point
   "g x"   #'browse-url-at-point
-  "g q"   #'fill-region
+  "g q"   #'fill-paragraph
   "g Q"   #'fill-region-as-paragraph
   "] b"   #'next-buffer
   "[ b"   #'previous-buffer
