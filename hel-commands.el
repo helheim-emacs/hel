@@ -1184,6 +1184,26 @@ You may restore them with %s (`hel-restore-cursors')."
       (hel-disable-multiple-cursors-mode)
       (hel-set-region beg end))))
 
+;; gg
+(hel-define-command hel-first-selection ()
+  "Make the first selection the main selection."
+  :multiple-cursors nil
+  (interactive)
+  (when hel-multiple-cursors-mode
+    (hel-recenter-point-on-jump
+      (hel-create-fake-cursor-from-point)
+      (hel-restore-point-from-fake-cursor (hel-first-fake-cursor)))))
+
+;; G
+(hel-define-command hel-last-selection ()
+  "Make the last selection the main selection."
+  :multiple-cursors nil
+  (interactive)
+  (when hel-multiple-cursors-mode
+    (hel-recenter-point-on-jump
+      (hel-create-fake-cursor-from-point)
+      (hel-restore-point-from-fake-cursor (hel-last-fake-cursor)))))
+
 ;; )
 (hel-define-command hel-rotate-selections-forward (count)
   "Rotate main selection forward COUNT times."

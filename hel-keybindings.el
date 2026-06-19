@@ -209,6 +209,9 @@ use it."
   "M-K" #'hel-remove-selections
   ","   #'hel-remove-all-fake-cursors
   "M-," #'hel-remove-main-cursor
+  "g g" #'hel-first-selection
+  "g e" #'hel-last-selection
+  "G"   #'hel-last-selection
   "("   #'hel-rotate-selections-backward
   ")"   #'hel-rotate-selections-forward
   "M-(" #'hel-rotate-selections-content-backward
