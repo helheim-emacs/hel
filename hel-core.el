@@ -20,11 +20,11 @@
 ;; is changed on every Hel state change.
 ;;
 ;; Every state has general globally shared keymap, and "nested" keymaps that are
-;; stored in other keymaps (typical expample are major-mode maps) under special
+;; stored in other keymaps (typical example are major-mode maps) under special
 ;; keys like "<normal-state>" or "<insert-state>", that are associated with
 ;; particular Hel states and can not be produced by a keyboard. On every Hel
-;; state change, the algorithm traverse all currently active keymaps looking for
-;; these keys, and activates nested keymaps associated with them.
+;; state change, the algorithm traverses all currently active keymaps looking
+;; for these keys, and activates nested keymaps associated with them.
 ;;
 ;;; Code:
 
@@ -63,9 +63,9 @@
                ;; them! They will generate actual commands that are also run in
                ;; the command loop.
                (functionp hel-this-command))
-      ;; Wrap in `condition-case' to protect `hel--post-command-hook' from
-      ;; being removed from `post-command-hook', because the function throwing
-      ;; the error is unconditionally removed from `post-command-hook'.
+      ;; Wrap in `condition-case' to protect this function from being removed
+      ;; from `post-command-hook', because the function throwing the error is
+      ;; unconditionally removed from it.
       (condition-case err
           (progn
             (hel--execute-command-for-all-fake-cursors hel-this-command)

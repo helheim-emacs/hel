@@ -134,11 +134,14 @@ All keys available in Motion state are also work in Normal state.
 - =gs= :: Move to the beginning of a line skipping indentation.
 
 - =gg= ::
-  Move to the beginning of the buffer. With numeric argument go to N/10 of the
-  way from the beginning.
+  - Move to the beginning of the buffer.
+  - With numeric argument go to N/10 of the way from the beginning.
+  - With multiple cursors make the first selection (cursor) the main one. 
 
 - =ge= or =G= ::
-  Move to the end of the buffer. With a numeric argument, go to line N.
+  - Move to the end of the buffer.
+  - With a numeric argument, go to line N.
+  - With multiple cursors make the last selection (cursor) the main one. 
 
 - ={= / =}= or =[p= / =]p= :: Move over paragraphs.
 
@@ -150,6 +153,8 @@ All keys available in Motion state are also work in Normal state.
 - =[f= / =]f= :: Move over functions.
 
 - =[s= / =]s= :: Move over sentences.
+
+- =[l= / =]l= :: Move over pages (=^L= sign in the buffer).
 
 *** Easymotion
 
@@ -219,7 +224,7 @@ All keys available in Motion state are also work in Normal state.
   Interactively enter regexp and create cursors for complements to all matches
   to regexp withing active selections.
 
-- =M-s= :: Split selections on newlines.
+- =M-s= :: Split selections into separate lines.
 
 - =gv= :: Restore last multiple cursors positions.
 

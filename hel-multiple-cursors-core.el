@@ -15,8 +15,8 @@
 ;; The core functionality for multiple cursors. The code is inspired by
 ;; `multiple-cursors.el' package from Magnar Sveen.
 ;;
-;; How multiple cursors works internally. Command is firstly executed for
-;; real cursor by Emacs command loop. Then in `post-command-hook' it executed
+;; How multiple cursors works internally. Command is first executed for
+;; real cursor by Emacs command loop. Then in `post-command-hook' it is executed
 ;; for all fake cursors. Fake cursor is an overlay that emulates cursor and
 ;; stores inside point, mark, kill-ring and some other variables (full list
 ;; is in `hel-fake-cursor-variables'). Executing command for fake cursor looks
@@ -31,8 +31,8 @@
 ;; - no value  property not present: prompt the user and permanently store
 ;;             the choice in `hel-whitelist-file'
 ;;
-;; ID 0 is always corresponding to real cursor.
-
+;; ID 0 always corresponds to the real cursor.
+;;
 ;;; Code:
 
 (eval-when-compile

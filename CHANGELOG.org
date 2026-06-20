@@ -1,22 +1,41 @@
 * [Unreleased]
 ** Added
 
-- =C-:= — a command palette with only commands relevant to the current buffer.
+- Copy with ~universal-argument~ (=M-u y=) appends selection to the last item in
+  the ~kill-ring~.
 
-- Keys for Emacs built-in modes:
+- =gg= / =ge= (=G=) make the *first* / *last* selection (cursor) the main one while there
+  are multiple cursors in the buffer.
+
+- =[l= / =]l= — move over pages (=^L= sign in the buffer).
+
+- New key =C-:= to open command palette with only commands relevant to the
+  current buffer.
+
+- Keys for Emacs debugger are added.
+
+- Keys for following Emacs built-in modes are added:
   - =comint-mode=
   - =image-mode=
   - =calendar-mode=
   - =diff-mode=
 
-- Keys for Emacs debugger.
-
 ** Changed
 
-- =y= — With =M-u= (~universal-argument~) the selection is appended to the last
-  item in the ~kill-ring~.
+- Search commands: ~/~, =?=, =n=, =N=, =*=, =M-*= have been rewritten from the ground
+  up. Search matches now remain highlighted in the buffer, and the number
+  of matches is displayed in the mode line. You can clear the highlights
+  with =Esc= or =;=. Closed folds now open automatically when the cursor lands
+  inside them.
 
-- In =special-mode= in Normal state =Esc= now switches to Motion state.
+- Downcase and upcase commands (=gu= / =gU= or ~`~ / ~M-`~) now accept a numeric
+  argument. The cursor no longer moves after these commands.
+
+- =gw= now calls ~fill-paragraph~ instead of ~fill-region~. It is more generic
+  and falls back to ~fill-region~ when a selection is active.
+
+- *[BREAKING]*
+  ~hel-fake-cursor-specific-vars~ variable is renamed to ~hel-fake-cursor-variables~.
 
 - *[BREAKING]*
   ~hel-unsupported-command~ macro is converted to ~hel-set-unsupported-command~
