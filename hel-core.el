@@ -379,6 +379,7 @@ MODE and STATE should be symbols."
         (hel-with-each-cursor
           (deactivate-mark)))
     ;; else
+    (hel-push-point)
     (when hel--region-was-active-on-insert
       (hel-with-each-cursor
         (activate-mark)))))
