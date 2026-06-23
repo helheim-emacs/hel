@@ -47,7 +47,7 @@ a DEFINITION is ~nil~, that key will be unbound.
 #+end_src
 
 Hel uses a simple heuristic: if letter keys are self-inserting in the major
-mode, Hel starts in Normal state; otherwise, it starts in Motion state.
+mode, Hel starts in Normal state; otherwise, it starts in Emacs state.
 
 ** Surround
 
@@ -76,8 +76,8 @@ structure and examples.
 - ~hel-insert-state-cursor~ ::
   Cursor appearance in Insert state.
 
-- ~hel-motion-state-cursor~ ::
-  Cursor appearance in Motion state.
+- ~hel-emacs-state-cursor~ ::
+  Cursor appearance in Emacs state.
 
 - ~hel-match-fake-cursor-style~ ::
   If non-nil, attempt to match fake cursor style to real cursor type (only bar
@@ -133,7 +133,7 @@ structure and examples.
 
 - ~hel-insert-state-main-cursor~ :: Face for main cursor when Hel in Insert state.
 
-- ~hel-motion-state-main-cursor~ :: Face for main cursor when Hel in Motion state.
+- ~hel-emacs-state-main-cursor~ :: Face for main cursor when Hel in Emacs state.
 
 - ~hel-normal-state-fake-cursor~ :: Face for fake cursors when Hel in Normal state.
 

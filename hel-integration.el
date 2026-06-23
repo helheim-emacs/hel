@@ -169,7 +169,7 @@ C-i and RET from C-m."
 ;;;; Backtrace and Debug
 
 (with-eval-after-load 'backtrace
-  (hel-keymap-set backtrace-mode-map :state 'motion
+  (hel-keymap-set backtrace-mode-map :state 'emacs
     "j"   'backtrace-forward-frame   ;; "n"
     "k"   'backtrace-backward-frame) ;; "p"
   ;; <local leader>
@@ -312,7 +312,7 @@ C-i and RET from C-m."
   (hel-set-initial-state 'helpful-mode 'normal)
   (hel-set-single-cursor-command 'helpful-at-point)
   ;; `helpful-mode' is derived from `special-mode', in which ESC is bound
-  ;; to switching Hel to Motion state. We don't need Motion state in
+  ;; to switching Hel to Emacs state. We don't need Emacs state in
   ;; `helpful-mode', so override it.
   (hel-keymap-set helpful-mode-map :state 'normal
     "<escape>" #'hel-normal-state-escape))
@@ -320,7 +320,7 @@ C-i and RET from C-m."
 ;;;; Calendar
 
 (with-eval-after-load 'calendar
-  (hel-keymap-set calendar-mode-map :state 'motion
+  (hel-keymap-set calendar-mode-map :state 'emacs
     ;; motions
     "h"   'calendar-backward-day
     "j"   'calendar-forward-week
@@ -577,7 +577,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 ;;;; image-mode
 
 (with-eval-after-load 'image-mode
-  (hel-keymap-set image-mode-map :state 'motion
+  (hel-keymap-set image-mode-map :state 'emacs
     "C-y" 'image-previous-line
     "C-e" 'image-next-line
     "C-b" 'image-scroll-right
@@ -671,15 +671,15 @@ If cursor is in read-only area, jump to prompt instead of deleting."
   ;;
   ;; Switch to Normal state. This allows you to select and copy arbitrary text
   ;; in special modes.
-  ;;   Bind it in base keymap instead of Motion state keymap, to not override
+  ;;   Bind it in base keymap instead of Emacs state keymap, to not override
   ;; the "i" key for major modes that inherit from special-mode.
   "i"   #'hel-normal-state)
 
 (hel-keymap-set special-mode-map :state 'normal
-  "<escape>" #'hel-motion-state
-  ;; Use "zx" or "C-x C-s" to switch back to motion state.
+  "<escape>" #'hel-emacs-state
+  ;; Use "zx" or "C-x C-s" to switch back to Emacs state.
   ;; Saving special buffer has little sense, so we can use it.
-  "<remap> <save-buffer>" #'hel-motion-state)
+  "<remap> <save-buffer>" #'hel-emacs-state)
 
 ;;;; prog-mode
 
@@ -776,12 +776,12 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
 
 (defun hel--widget-field-h ()
   (cond ((widget-field-at (point))
-         (when (eq hel-state 'motion)
+         (when (eq hel-state 'emacs)
            (hel-normal-state)
            (hel-update-active-keymaps)))
-        ((not (eq hel-state 'motion))
+        ((not (eq hel-state 'emacs))
          (when hel-multiple-cursors-mode (hel-multiple-cursors-mode -1))
-         (hel-motion-state))))
+         (hel-emacs-state))))
 
 (with-eval-after-load 'wid-edit
   (hel-keymap-set widget-field-keymap :state 'normal
@@ -852,10 +852,10 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
 ;;;; diff-hl
 
 (add-hook 'diff-hl-show-hunk-inline-transient-mode-hook
-          (defun hel-switch-to-motion-state-while-diff-hl-show-hunk-h ()
-            "Switch to motion state while VC diff hunk is shown."
+          (defun hel-switch-to-emacs-state-while-diff-hl-show-hunk-h ()
+            "Switch to Emacs state while VC diff hunk is shown."
             (if diff-hl-show-hunk-inline-transient-mode
-                (hel-motion-state)
+                (hel-emacs-state)
               (hel-normal-state))))
 
 (with-eval-after-load 'diff-hl-show-hunk-inline

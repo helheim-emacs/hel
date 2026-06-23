@@ -50,7 +50,7 @@
     (setq hel-this-command this-command)
     ;; Use our undo mechanism only in Normal state. This will
     ;; - merge all changes in Insert state into one undo step;
-    ;; - ignore buffers in Motion state that use undo, like Dired.
+    ;; - ignore buffers in Emacs state that use undo, like Dired.
     (when hel-normal-state
       (hel--single-undo-step-beginning))))
 
@@ -314,7 +314,7 @@ STATE is the state's symbolic name."
         ;; Temporarily strip Hel's emulation keymaps to inspects the major
         ;; mode's own bindings.
         (let ((hel-mode-map-alist nil))
-          (if (hel-letters-are-self-insert-p) 'normal 'motion)))))
+          (if (hel-letters-are-self-insert-p) 'normal 'emacs)))))
 
 (defun hel-initial-state-for-mode (mode &optional follow-parent checked-modes)
   "Return the Hel state to use for MODE or its alias.
@@ -359,7 +359,7 @@ MODE and STATE should be symbols."
                        (map-elt state)
                        (map-elt :modes))))
 
-;;; Normal, Insert and Motion states
+;;; Normal, Insert and Emacs states
 
 (hel-define-state normal
   "Normal state."
@@ -388,10 +388,10 @@ MODE and STATE should be symbols."
       (hel-with-each-cursor
         (activate-mark)))))
 
-(hel-define-state motion
-  "Motion state."
-  :cursor (list hel-motion-state-cursor-type
-                'hel-motion-state-main-cursor) ; face
+(hel-define-state emacs
+  "Emacs state."
+  :cursor (list hel-emacs-state-cursor-type
+                'hel-emacs-state-main-cursor) ; face
   (setq hel--extend-selection nil)
   (deactivate-mark))
 
@@ -544,7 +544,7 @@ keybindings can be set at once.
 
 Example:
 
-   (hel-keymap-set keymap :state \\='(normal motion)
+   (hel-keymap-set keymap :state \\='(normal emacs)
       \"f\" \\='foo
       \"b\" nil) ; unbind
 
@@ -588,7 +588,7 @@ multiple keybindings can be set at once.
 
 Example:
 
-   (hel-keymap-global-set :state \\='(normal motion)
+   (hel-keymap-global-set :state \\='(normal emacs)
       \"f\" \\='foo
       \"b\" nil) ; unbind
 

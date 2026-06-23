@@ -17,14 +17,14 @@ Hel keybindings are defined in the =hel-keybindings.el= file. Using the advice
 above, you can read the documentation for any command bound to a key you’re
 interested in.
 
-* Motion state
+* Emacs state
 
-Motion state is the default state for special buffers: grep results, error
+Emacs state is the default state for special buffers: grep results, error
 lists, file managers — anything not intended for text editing. A simple
-heuristic is used: if any letter key is not self-inserting, Hel enables Motion
+heuristic is used: if any letter key is not self-inserting, Hel enables Emacs
 state; otherwise, it uses Normal state.
 
-In Motion state Hel provide service keys to control Emacs itself.
+In Emacs state Hel provide service keys to control Emacs itself.
 
 - =:= :: Emacs analoug of command pallete. (Native key is =M-x=)
 
@@ -41,7 +41,7 @@ In Motion state Hel provide service keys to control Emacs itself.
 
 - =i= ::
   Switch to Normal state. This allows you to select and copy arbitrary text in
-  special modes. To switch back, use =zx= or =C-x C-s= (~hel-motion-state~).
+  special modes. To switch back, use =zx= or =C-x C-s= (~hel-emacs-state~).
 
 ** Windows
 
@@ -114,7 +114,7 @@ Scrolling commands are taken from Vim.
 
 * Normal state
 
-All keys available in Motion state are also work in Normal state.
+All keys available in Emacs state are also work in Normal state.
 
 ** Motions
 

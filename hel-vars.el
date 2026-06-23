@@ -95,21 +95,17 @@ shifting subsequent content to the right."
                          (map-elt 'insert)
                          (map-elt :cursor))
                      value))))
-  (defcustom hel-motion-state-cursor-type '(hbar . 4)
-    "`cursor-type' used when Hel is in Motion state."
+  (defcustom hel-emacs-state-cursor-type '(hbar . 4)
+    "`cursor-type' used when Hel is in Emacs state."
     :type type
     :group 'hel
     :set (lambda (symbol value)
            (set-default symbol value)
            (when (bound-and-true-p hel-state-properties)
              (setcar (-> hel-state-properties
-                         (map-elt 'motion)
+                         (map-elt 'emacs)
                          (map-elt :cursor))
                      value)))))
-
-(make-obsolete-variable 'hel-normal-state-cursor 'hel-normal-state-cursor-type "0.10")
-(make-obsolete-variable 'hel-insert-state-cursor 'hel-insert-state-cursor-type "0.10")
-(make-obsolete-variable 'hel-motion-state-cursor 'hel-motion-state-cursor-type "0.10")
 
 (defface hel-normal-state-main-cursor
   `((t :background ,(face-background 'cursor)))
@@ -123,10 +119,10 @@ when Hel is in  Normal state. All other attributes are ignored."
 when Hel is in Insert state. All other attributes are ignored."
   :group 'hel)
 
-(defface hel-motion-state-main-cursor
+(defface hel-emacs-state-main-cursor
   '((t :inherit hel-normal-state-main-cursor))
   "The `:background' attribute of this face defines the color of the cursor when
-Hel is in Motion state. All other attributes are ignored."
+Hel is in Emacs state. All other attributes are ignored."
   :group 'hel)
 
 (defface hel-extend-selection-cursor

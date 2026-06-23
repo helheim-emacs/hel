@@ -353,9 +353,9 @@ use it."
   "m a 8" #'hel-ma-digit-argument
   "m a 9" #'hel-ma-digit-argument)
 
-;;; Motion state
+;;; Emacs state
 
-(hel-keymap-global-set :state 'motion
+(hel-keymap-global-set :state 'emacs
   ":"   #'execute-extended-command
   "] b" #'next-buffer
   "[ b" #'previous-buffer
@@ -372,7 +372,7 @@ use it."
 
 ;;; C-w keys
 
-(hel-keymap-global-set :state '(normal motion)
+(hel-keymap-global-set :state '(normal emacs)
   "C-w" 'hel-window-map)
 
 (hel-keymap-global-set
@@ -448,7 +448,7 @@ use it."
 ;;; Conditional keybindings
 
 (when hel-want-zz-scroll-to-center
-  (hel-keymap-global-set :state '(normal motion)
+  (hel-keymap-global-set :state '(normal emacs)
     "z z" #'hel-smooth-scroll-line-to-center))
 
 ;;; .
