@@ -485,7 +485,8 @@ Return (START END OVERLAYS INDEX) list where:
   (setq hel-search--current nil
         hel-search--total nil
         hel-search--session (hel-search-interactively "?" -1)
-        hel-search--direction -1))
+        hel-search--direction -1)
+  (add-hook 'pre-command-hook 'hel-search--clean-current 95 t))
 
 ;; n
 (hel-define-command hel-search-next (count)
