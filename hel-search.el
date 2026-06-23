@@ -280,8 +280,7 @@ Run search session if REGEXP is provided."
     (overlay-put 'modification-hooks '(hel--delete-overlay-on-modification-h))))
 
 (defun hel--delete-overlay-on-modification-h (ov flag _beg _end &optional _len)
-  (when flag
-    (delete-overlay ov)))
+  (if flag (delete-overlay ov)))
 
 ;; TODO: docstring
 (defun hel-search-session-next-match (self direction)
@@ -666,7 +665,9 @@ Shows a live preview, a match count, and scrolls the first match into view."
         overlays)
     (cl-flet*
         ((highlight (bounds)
-           (hel-put-highlight (car bounds) (cdr bounds) 'region 100))
+           (-doto (make-overlay (car bounds) (cdr bounds) nil t nil)
+             (overlay-put 'face 'region)
+             (overlay-put 'priority 100)))
          (update (regexp)
            (with-minibuffer-selected-window
              (goto-char start-pos)
@@ -679,7 +680,7 @@ Shows a live preview, a match count, and scrolls the first match into view."
                                     (delq nil))))
                  (hel-recenter-point-on-jump
                    ;; (unless (pos-visible-in-window-p min-pos))
-                   (goto-char (->> ranges (-map #'car) (apply #'min)))
+                   (goto-char (apply #'min (-map #'car ranges)))
                    (setq overlays (-map #'highlight ranges)))
                ;; else no matches
                (setq overlays (-map #'highlight regions))
