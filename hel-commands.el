@@ -627,13 +627,13 @@ depending on DIRECTION."
 ;; d
 (hel-define-command hel-cut (count)
   "Kill (cut) text in selection — i.e. delete it and put in the `kill-ring'.
-Without selection delete COUNT characters before point."
+Without selection delete COUNT characters after point."
   :multiple-cursors t
   :merge-selections t
   (interactive "*p")
   (if (use-region-p)
       (kill-region nil nil t)
-    (delete-char (- count)))
+    (delete-char count))
   (hel-extend-selection -1))
 
 ;; D
