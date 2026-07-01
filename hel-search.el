@@ -205,8 +205,8 @@ Run search session if REGEXP is provided."
           (goto-char search-start)
           (let (match)
             (while (setq match (hel-search regexp search-end))
-              (-let* (((m-data _closed-overlays) match)
-                      ((beg . end) (hel-match m-data)))
+              (-let* (((match-data _closed-overlays) match)
+                      ((beg . end) (hel-match match-data)))
                 (if (= beg end)
                     ;; Ensure forward progress on zero-length matches like
                     ;; "^" or "$" to avoid an infinite loop.
@@ -234,8 +234,8 @@ Run search session if REGEXP is provided."
           (goto-char start)
           (while (and (< n hel-search-max-at-a-time)
                       (setq match (hel-search regexp end)))
-            (-let* (((m-data _closed-overlays) match)
-                    ((beg . end) (hel-match m-data)))
+            (-let* (((match-data _closed-overlays) match)
+                    ((beg . end) (hel-match match-data)))
               (cl-incf n)
               (if (= beg end)
                   ;; Zero-width match: advance to avoid an infinite loop.
@@ -312,8 +312,8 @@ Return nil when no match exists."
                          (progn
                            (goto-char (if (< 0 direction) (point-min) (point-max)))
                            (hel-search regexp pos direction)))))
-        (-let* (((m-data closed-overlays) match)
-                ((start . end) (hel-match m-data)))
+        (-let* (((match-data closed-overlays) match)
+                ((start . end) (hel-match match-data)))
           (list start end closed-overlays nil)))))
 
 (defun hel-search-session--next-match-cached (self direction)
