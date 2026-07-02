@@ -399,13 +399,12 @@ MODE and STATE should be symbols."
 
 (defun hel-activate-input-method ()
   "Enable input method in Hel states with `:input-method' property set."
-  (when (and hel-local-mode
-             hel-state
-             (not (hel-state-property hel-state :input-method)))
+  (when (and hel-local-mode hel-state)
     (setq hel-input-method current-input-method)
-    (let ((input-method-activate-hook nil)
-          (input-method-deactivate-hook nil))
-      (deactivate-input-method))))
+    (unless (hel-state-property hel-state :input-method)
+      (let ((input-method-activate-hook nil)
+            (input-method-deactivate-hook nil))
+        (deactivate-input-method)))))
 
 (defun hel-deactivate-input-method ()
   "Disable input method in all states."
