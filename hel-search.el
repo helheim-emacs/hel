@@ -492,7 +492,8 @@ Return nil when no match exists."
   (setq hel-search--current nil
         hel-search--total nil
         hel-search--session (hel-search-interactively "/" 1)
-        hel-search--direction 1)
+        hel-search--direction 1
+        this-command 'hel-search-forward)
   (add-hook 'pre-command-hook 'hel-search--clean-current 95 t))
 
 ;; ?
@@ -505,7 +506,8 @@ Return nil when no match exists."
   (setq hel-search--current nil
         hel-search--total nil
         hel-search--session (hel-search-interactively "?" -1)
-        hel-search--direction -1)
+        hel-search--direction -1
+        this-command 'hel-search-backward)
   (add-hook 'pre-command-hook 'hel-search--clean-current 95 t))
 
 ;; n
