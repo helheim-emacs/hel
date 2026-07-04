@@ -862,6 +862,45 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
   (hel-keymap-set diff-hl-show-hunk-inline-transient-mode-map
     "<remap> <self-insert-command>" 'ignore))
 
+;;;; embark
+
+(declare-function embark--targets "embark")
+(declare-function embark--act "embark")
+(declare-function embark--restart "embark")
+(declare-function embark--confirm "embark")
+
+(defvar hel--embark-action nil
+  "Embark action chosen for the real cursor.")
+
+(defun hel-embark-act-a (orig-fun &rest args)
+  "Around advice for `embark-act' and `embark-dwim' fanning them out to all cursors.
+For the real cursor, forget any previously recorded action and run
+ORIG-FUN normally (which records the chosen action, see the advice on
+`embark--act').  When Hel replays the command for a fake cursor, skip
+the prompter: recompute the target at that cursor's point and run the
+recorded action on it, suppressing confirmations and restarts."
+  (if hel-executing-command-for-fake-cursor
+      (when hel--embark-action
+        (when-let* ((targets (embark--targets)))
+          (cl-letf (((symbol-function 'embark--restart) #'ignore)
+                    ((symbol-function 'embark--confirm) #'ignore))
+            (embark--act hel--embark-action (car targets)))))
+    ;; else
+    (setq hel--embark-action nil)
+    (apply orig-fun args)))
+
+(with-eval-after-load 'embark
+  (hel-define-advice embark--act (:before (action &rest _))
+    "Remember the Embark ACTION chosen for the real cursor."
+    (unless hel-executing-command-for-fake-cursor
+      (setq hel--embark-action action)))
+
+  (hel-set-multiple-cursors-command 'embark-act)
+  (hel-set-multiple-cursors-command 'embark-dwim)
+
+  (hel-advice-add 'embark-act  :around #'hel-embark-act-a)
+  (hel-advice-add 'embark-dwim :around #'hel-embark-act-a))
+
 ;;; .
 (provide 'hel-integration)
 ;;; hel-integration.el ends here
