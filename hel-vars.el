@@ -205,6 +205,60 @@ This variable must be set before Hel is loaded!"
   :type 'boolean
   :group 'hel)
 
+(defcustom hel-scroll-page-duration 0.35
+  "Duration (in seconds) of a full-page smooth scroll (\\`C-f' / \\`C-b')."
+  :type 'float
+  :group 'hel)
+
+(defcustom hel-scroll-half-page-duration 0.28
+  "Duration (in seconds) of a half-page / count smooth scroll (\\`C-d' / \\`C-u')."
+  :type 'float
+  :group 'hel)
+
+(defcustom hel-scroll-line-duration 0.10
+  "Duration (in seconds) of a multi-line smooth scroll (\\`C-e' / \\`C-y')."
+  :type 'float
+  :group 'hel)
+
+(defcustom hel-scroll-easing 'quadratic
+  "Velocity curve of the smooth scroll animation.
+`linear' scrolls at a constant speed. The others are ease-out curves —
+the view starts fast and slows to a gentle stop — of increasing
+sharpness: `quadratic', `cubic', `quartic', `sine'. A scroll key tapped
+mid-animation restarts the curve from the current position, so repeated
+taps read as accelerating pulses."
+  :type '(choice (const linear)
+                 (const quadratic)
+                 (const cubic)
+                 (const quartic)
+                 (const sine))
+  :group 'hel)
+
+(defvar hel-scroll--frame-time 0
+  "The delay (in seconds) between scroll animation frames.")
+
+(defcustom hel-scroll-frame-rate 30
+  "Number of frames per second of smooth-scroll animation.
+Instead of firing `redisplay' as fast as the CPU allows, because
+emitting frames faster than the compositor can present them has
+no sense."
+  :type 'number
+  :group 'hel
+  :set (lambda (symbol value)
+         (set-default symbol value)
+         (setq hel-scroll--frame-time (/ 1.0 value))))
+
+(defcustom hel-scroll-hide-cursor t
+  "If non-nil, hide the cursor while a scroll drags it along the window edge.
+The cursor is restored as soon as the scroll command finishes."
+  :type 'boolean
+  :group 'hel)
+
+(defcustom hel-scroll-preserve-column t
+  "If non-nil, restore the cursor column after a scroll that moved point."
+  :type 'boolean
+  :group 'hel)
+
 (defcustom hel-want-C-hjkl-keys t
   "If non-nil, bind `C-h', `C-j', `C-k', `C-l' to commands for crawling the AST.
 To access help commands, use `F1' instead of `C-h'.
@@ -461,8 +515,7 @@ use `hel-state-property' function.
   "Whether region was active when we last time switched to Insert state.")
 
 (hel-defvar-local hel-scroll-count 0
-  "Hold last used prefix for `hel-smooth-scroll-up' and
-`hel-smooth-scroll-down' commands.
+  "Hold last used prefix for `hel-scroll-up' and `hel-scroll-down' commands.
 Determine how many lines should be scrolled.
 Default value is 0 - scroll half the screen.")
 

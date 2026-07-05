@@ -90,6 +90,382 @@ saved as markers and correctly handle case when text was inserted before region.
                (apply #'hel-set-region ,region)
              (goto-char ,point)))))))
 
+;;; Utils
+
+(defun hel--exchange-point-and-mark ()
+  "Exchange point and mark."
+  (goto-char (prog1 (marker-position (mark-marker))
+               (set-marker (mark-marker) (point)))))
+
+(defun hel-bolp ()
+  "Like `bolp' but consider visual lines when `visual-line-mode' is enabled."
+  (if visual-line-mode
+      (hel-visual-bolp)
+    (bolp)))
+
+(defun hel-visual-bolp ()
+  "Return t if point is at the beginning of visual line."
+  (save-excursion
+    (let ((p (point)))
+      (beginning-of-visual-line)
+      (= p (point)))))
+
+(defun hel-eolp ()
+  "Like `eolp' but consider visual lines when `visual-line-mode' is enabled."
+  (if visual-line-mode
+      (hel-visual-eolp)
+    (eolp)))
+
+(defun hel-visual-eolp ()
+  "Return t if point is at the end of visual line."
+  (save-excursion
+    (let ((p (point)))
+      (end-of-visual-line)
+      (= p (point)))))
+
+(defun hel-line-boundary-p (direction)
+  "If DIRECTION is negative number, checks for beginning of line,
+positive — end of line."
+  (if (< direction 0) (bolp) (eolp)))
+
+(defun hel-region-direction ()
+  "Return the direction of region: -1 if point precedes mark, 1 otherwise."
+  (if (< (point) (mark-marker)) -1 1))
+
+(defun hel-linewise-selection-p (&optional direction)
+  "Return t if active region spawns full logical lines.
+DIRECTION: 1 or -1. If provided — check if region spawns at least one full
+logical line on desired end of the region."
+  (and (use-region-p)
+       (save-excursion
+         (let ((beg (region-beginning))
+               (end (region-end)))
+           (cond ((null direction)
+                  (and (progn (goto-char beg) (bolp))
+                       (progn (goto-char end) (bolp))))
+                 ((<= direction 0)
+                  (and (progn (goto-char beg) (bolp))
+                       ;; at least one full line is selected
+                       (< 0 (- (line-number-at-pos end)
+                               (line-number-at-pos beg)))))
+                 (t
+                  (and (progn (goto-char end) (bolp))
+                       ;; at least one full line is selected
+                       (< 0 (- (line-number-at-pos end)
+                               (line-number-at-pos beg))))))))))
+
+(defun hel-visual-lines-p ()
+  "Return t if active region spawns visual lines."
+  (and visual-line-mode
+       (use-region-p)
+       (save-excursion (goto-char (region-beginning))
+                       (hel-visual-bolp))
+       (save-excursion (goto-char (region-end))
+                       (hel-visual-bolp))))
+
+(defun hel-whitespace? (char)
+  "Non-nil when CHAR belongs to whitespace syntax class."
+  (and (eql (char-syntax char) ?\s)
+       (not (memq char '(?\r ?\n))))
+  ;; Alternative:
+  ;; (memq char '(?\s ?\t))
+  )
+
+(defsubst hel-sign (num)
+  "Return the sign of NUM as -1, 0, or 1."
+  (cond ((< num 0) -1)
+        ((zerop num) 0)
+        (t 1)))
+
+(defsubst hel-distance (x y)
+  "Return the absolute distance between X and Y."
+  (abs (- y x)))
+
+(defsubst hel-clamp (min-val val max-val)
+  "Return VAL clamped to the range [MIN-VAL, MAX-VAL]."
+  (max min-val (min val max-val)))
+
+(cl-defun hel-looking-at (string &optional (direction 1) regexp?)
+  "Return t if text directly after point toward the DIRECTION
+matches STRING.
+
+If REGEXP? is non-nil STRING will be searched as regexp pattern,
+otherwise it will be searched literally.
+
+When REGEXP? is non-nil this function modifies the match data
+that `match-beginning', `match-end' and `match-data' access."
+  (if regexp?
+      (if (< 0 direction)
+          (looking-at string)
+        (looking-back string (line-beginning-position)))
+    ;; literall
+    (let* ((beg (point))
+           (end (+ beg (* (length string) direction))))
+      (and (<= (point-min) end (point-max))
+           (string-equal (buffer-substring-no-properties beg end) string)))))
+
+(defun hel-string-ends-with-newline (string)
+  "Return t if STRING ends with newline character."
+  (eql (elt string (1- (length string)))
+       ?\n))
+
+(cl-defun hel-all-elements-are-the-same-p (list &key (test #'equal))
+  "Return t if all elements in the LIST are the same."
+  (let ((first (car list)))
+    (-all? (lambda (x) (funcall test first x))
+           (cdr list))))
+
+(defun hel-cursor-is-bar-p ()
+  "Return non-nil if `cursor-type' is bar."
+  (let ((cursor-type (if (eq cursor-type t)
+                         (frame-parameter nil 'cursor-type)
+                       cursor-type)))
+    (or (eq cursor-type 'bar)
+        (and (consp cursor-type)
+             (eq (car cursor-type) 'bar)))))
+
+(defun hel-set-region (start end &optional direction)
+  "Set the active region between START and END positions.
+
+DIRECTION of the region:
+  nil      Region direction is from START to END.
+   1       Force forward region (mark < point).
+  -1       Force backward region (point < mark).
+
+When DIRECTION is specified, START and END can be provided in any order."
+  (when (and (numberp direction)
+             (xor (< 0 direction)
+                  (<= start end)))
+    (cl-rotatef start end))
+  (set-mark start)
+  (goto-char end))
+
+(defun hel-region ()
+  "Region list with parameters of the active region. If no region return nil.
+
+The result is a list with following elements:
+
+  (BEG END DIRECTION)
+
+It is suitable to restore region with `hel-set-region':
+
+  (let ((region (hel-region)))
+    ...
+    (apply #'hel-set-region region))"
+  (if (use-region-p)
+      (list (region-beginning) (region-end) (hel-region-direction))))
+
+(defun hel-maybe-set-mark ()
+  "Set mark at point unless extending selection is active."
+  (or hel--extend-selection
+      (set-mark (point))))
+
+(defun hel-maybe-deactivate-mark ()
+  "Deactivate mark unless extending selection is active."
+  (or hel--extend-selection
+      (deactivate-mark)))
+
+(defun hel-ensure-region-direction (direction)
+  "Exchange point and mark if region direction mismatch DIRECTION.
+DIRECTION should be 1 or -1."
+  (when (/= direction (hel-region-direction))
+    (hel--exchange-point-and-mark)))
+
+(defun hel-undo-command-p (command)
+  "Return non-nil if COMMAND is implementing undo/redo functionality."
+  (memq command hel-undo-commands))
+
+(defun hel-destructive-filter (predicate list &optional pointer)
+  "Destructively remove elements in LIST that satisfy PREDICATE
+between start and POINTER.
+
+Returns the modified list, which may have a new starting element
+if removals occur at the beginning of the list, therefore, assign
+the returned list to the original symbol like this:
+
+  (setq foo (hel-destructive-filter #\\='predicate foo))"
+  (let ((tail list)
+        elem head)
+    (while (and tail (not (eq tail pointer)))
+      (setq elem (car tail))
+      (if (funcall predicate elem)
+          (progn
+            (setq tail (cdr tail))
+            (if head
+                (setcdr head tail)
+              (setq list tail)))
+        ;; else advance
+        (setq head tail
+              tail (cdr tail))))
+    list))
+
+(defun hel-pcre-to-elisp (regexp)
+  "Convert PCRE REGEXP into Elisp one if Hel configured to use PCRE syntax."
+  (if (and hel-use-pcre-regex
+           (not (string-empty-p regexp)))
+      (condition-case err
+          (pcre-to-elisp regexp)
+        (rxt-invalid-regexp
+         (message (-> (error-message-string err)
+                      (propertize 'face 'error)))))
+    regexp))
+
+(cl-defun hel-collect-positions (fun &optional (start (window-start))
+                                               (end (window-end)))
+  "Consecutively call FUN and collect point positions after each invocation.
+Finish as soon as point moves outside of START END buffer positions.
+FUN on each invocation should move point."
+  (save-excursion
+    (cl-loop with win = (get-buffer-window)
+             for old-point = (point)
+             do (ignore-errors
+                  ;; Bind `last-command' and `this-command' to the same value,
+                  ;; to get uniform result in case `fun' behaves differently
+                  ;; depending on their values.
+                  (let ((last-command fun)
+                        (this-command fun))
+                    (call-interactively fun)))
+             while (and (/= (point) old-point)
+                        (<= start (point) end))
+             collect (cons (point) win))))
+
+(defun hel-invert-case-in-region (start end)
+  "Invert case of characters within START...END buffer positions."
+  (goto-char start)
+  (while (< (point) end)
+    (let ((char (following-char)))
+      (delete-char 1)
+      (insert-char (if (eq (upcase char) char)
+                       (downcase char)
+                     (upcase char))))))
+
+(defun hel-letters-are-self-insert-p ()
+  "Return t if any of the a-z keys are bound to self-insert command."
+  (-any (lambda (key)
+          (and-let* ((cmd (key-binding key))
+                     ((symbolp cmd))
+                     ((string-match-p "\\`.*self-insert.*\\'"
+                                      (symbol-name cmd))))))
+        ;; This is just a fancy way to produce ("a"..."z") list in compile time.
+        ;; I just couldn't help myself :)
+        (eval-when-compile
+          (-map #'char-to-string (number-sequence ?a ?z)))))
+
+(defun hel-comment-at-pos-p (pos)
+  "Return non-nil if position POS is inside a comment, or comment starts
+right after the point."
+  (ignore-errors
+    ;; We cannot be in a comment if we are inside a string
+    (unless (nth 3 (syntax-ppss pos))
+      (or (nth 4 (syntax-ppss pos))
+          ;; This test opening and closing comment delimiters... We need
+          ;; to check that it is not newline, which is in "comment ender"
+          ;; class in elisp-mode, but we just want it to be treated as
+          ;; whitespace.
+          (and (< pos (point-max))
+               (memq (char-syntax (char-after pos)) '(?< ?>))
+               (not (eq (char-after pos) ?\n)))
+          ;; We also need to test the special syntax flag for comment
+          ;; starters and enders, because `syntax-ppss' does not yet know if
+          ;; we are inside a comment or not (e.g. / can be a division or
+          ;; comment starter...).
+          (when-let ((s (car (syntax-after pos))))
+            (or
+             ;; First char of 2 chars comment opener
+             (and (/= 0 (logand (ash 1 16) s))
+                  (nth 4 (syntax-ppss (+ pos 2))))
+             ;; Second char of 2 chars comment opener
+             (and (/= 0 (logand (ash 1 17) s))
+                  (nth 4 (syntax-ppss (+ pos 1))))
+             ;; First char of 2 chars comment closer
+             (and (/= 0 (logand (ash 1 18) s))
+                  (nth 4 (syntax-ppss (- pos 1))))
+             ;; Second char of 2 chars comment closer
+             (and (/= 0 (logand (ash 1 19) s))
+                  (nth 4 (syntax-ppss (- pos 2))))))))))
+
+(defun hel-string-at-pos-p (position)
+  "Return non-nil if POSITION is inside string.
+This function actually returns the 3rd element of `syntax-ppss' which
+can be a number if the string is delimited by that character or t if
+the string is delimited by general string fences."
+  (ignore-errors
+    (save-excursion
+      (nth 3 (syntax-ppss position)))))
+
+(defun hel-overlay-live-p (overlay)
+  "Return non-nil if OVERLAY is not deleted from buffer."
+  (-some-> overlay
+    (overlay-buffer)
+    (buffer-live-p)))
+
+(defun hel-pulse-main-region (&optional face)
+  (pulse-momentary-highlight-region (region-beginning) (region-end) face))
+
+(defun hel-reveal-point-when-on-top (&rest _)
+  "Reveal point when it's only partially visible.
+For some reason, Emacs can become slow while point is partially visible, so this
+function prevents that. It is intended to be used as `:after' advice."
+  (unless hel-executing-command-for-fake-cursor
+    (redisplay)
+    (when (zerop (cdr (posn-col-row (posn-at-point))))
+      (recenter 0))))
+
+(defun hel-split-keyword-args (args)
+  "Split ARGS list into keyword-value pairs and remaining arguments.
+Returns a cons cell: (PLIST . REST)
+PLIST is a list with keyword-value pairs from the beginning of ARGS list.
+REST contains all other elements."
+  (let (plist)
+    (while (keywordp (car-safe args))
+      (cl-callf plist-put plist (car args) (cadr args))
+      (cl-callf cddr args)) ; advance by 2
+    (cons plist args)))
+
+(defun hel-transpose (lol)
+  "Transpose list of lists.
+  ((1 2 3)    ((1 1 1)
+   (1 2)   =>  (2 2)
+   (1))        (3))"
+  (let (result)
+    (while (progn
+             (push (-map #'car lol) result)
+             (setq lol (-non-nil (-map #'cdr lol)))))
+    (nreverse result)))
+
+(defun hel-replace-chars (beg end char)
+  "Replace each non-newline character between BEG and END with CHAR."
+  (save-excursion
+    (goto-char beg)
+    (while (< (point) end)
+      (if (eq (char-after) ?\n)
+          (forward-char 1)
+        (insert-char char)
+        (delete-char 1)))))
+
+(defun hel-read-char-and-replace (beg end)
+  "Replace characters in BEG..END with an interactive entered one."
+  (when (< beg end)
+    (let ((overlay (-doto (make-overlay beg end nil t nil)
+                     (overlay-put 'face 'region))))
+      (unwind-protect
+          (hel-replace-chars beg end (read-char "replace: " t))
+        (delete-overlay overlay)))))
+
+(cl-defun hel-hide-cursor (&optional (window (selected-window)))
+  "Hide the cursor in WINDOW and return a function that restores it."
+  (cond ((fboundp 'set-window-cursor-type) ;; Emacs 31
+         (let ((orig (window-cursor-type window)))
+           (set-window-cursor-type window nil)
+           (lambda () (set-window-cursor-type window orig))))
+        ((local-variable-p 'cursor-type)
+         (let ((orig cursor-type))
+           (setq-local cursor-type nil)
+           (lambda () (setq-local cursor-type orig))))
+        (t
+         (setq-local cursor-type nil)
+         (lambda () (kill-local-variable 'cursor-type)))))
+
 ;;; Motions
 
 (defun hel-forward-following-thing (thing &optional count)
@@ -396,8 +772,7 @@ line(s). With no region, select current line."
     (hel--fix-newline-at-end-of-buffer)
     t))
 
-(defun hel-mark-inner-thing (thing &optional count)
-  (or count (setq count 1))
+(cl-defun hel-mark-inner-thing (thing &optional (count 1))
   (cl-assert (/= count 0))
   (-let (((beg . end) (hel-bounds-of-count-things-at-point thing count)))
     (hel-set-region beg end (hel-sign count))))
@@ -1110,361 +1485,6 @@ See `isearch-open-necessary-overlays'."
 (defun hel-reveal-position (pos)
   "Permanently open fold at POS."
   (-each (overlays-at pos) #'hel-open-overlay))
-
-;;; Utils
-
-(defun hel--exchange-point-and-mark ()
-  "Exchange point and mark."
-  (goto-char (prog1 (marker-position (mark-marker))
-               (set-marker (mark-marker) (point)))))
-
-(defun hel-bolp ()
-  "Like `bolp' but consider visual lines when `visual-line-mode' is enabled."
-  (if visual-line-mode
-      (hel-visual-bolp)
-    (bolp)))
-
-(defun hel-visual-bolp ()
-  "Return t if point is at the beginning of visual line."
-  (save-excursion
-    (let ((p (point)))
-      (beginning-of-visual-line)
-      (= p (point)))))
-
-(defun hel-eolp ()
-  "Like `eolp' but consider visual lines when `visual-line-mode' is enabled."
-  (if visual-line-mode
-      (hel-visual-eolp)
-    (eolp)))
-
-(defun hel-visual-eolp ()
-  "Return t if point is at the end of visual line."
-  (save-excursion
-    (let ((p (point)))
-      (end-of-visual-line)
-      (= p (point)))))
-
-(defun hel-line-boundary-p (direction)
-  "If DIRECTION is negative number, checks for beginning of line,
-positive — end of line."
-  (if (< direction 0) (bolp) (eolp)))
-
-(defun hel-region-direction ()
-  "Return the direction of region: -1 if point precedes mark, 1 otherwise."
-  (if (< (point) (mark-marker)) -1 1))
-
-(defun hel-linewise-selection-p (&optional direction)
-  "Return t if active region spawns full logical lines.
-DIRECTION: 1 or -1. If provided — check if region spawns at least one full
-logical line on desired end of the region."
-  (and (use-region-p)
-       (save-excursion
-         (let ((beg (region-beginning))
-               (end (region-end)))
-           (cond ((null direction)
-                  (and (progn (goto-char beg) (bolp))
-                       (progn (goto-char end) (bolp))))
-                 ((<= direction 0)
-                  (and (progn (goto-char beg) (bolp))
-                       ;; at least one full line is selected
-                       (< 0 (- (line-number-at-pos end)
-                               (line-number-at-pos beg)))))
-                 (t
-                  (and (progn (goto-char end) (bolp))
-                       ;; at least one full line is selected
-                       (< 0 (- (line-number-at-pos end)
-                               (line-number-at-pos beg))))))))))
-
-(defun hel-visual-lines-p ()
-  "Return t if active region spawns visual lines."
-  (and visual-line-mode
-       (use-region-p)
-       (save-excursion (goto-char (region-beginning))
-                       (hel-visual-bolp))
-       (save-excursion (goto-char (region-end))
-                       (hel-visual-bolp))))
-
-(defun hel-whitespace? (char)
-  "Non-nil when CHAR belongs to whitespace syntax class."
-  (and (eql (char-syntax char) ?\s)
-       (not (memq char '(?\r ?\n))))
-  ;; Alternative:
-  ;; (memq char '(?\s ?\t))
-  )
-
-(defsubst hel-sign (&optional num)
-  (cond ((< num 0) -1)
-        ((zerop num) 0)
-        (t 1)))
-
-(defsubst hel-distance (x y) (abs (- y x)))
-
-(cl-defun hel-looking-at (string &optional (direction 1) regexp?)
-  "Return t if text directly after point toward the DIRECTION
-matches STRING.
-
-If REGEXP? is non-nil STRING will be searched as regexp pattern,
-otherwise it will be searched literally.
-
-When REGEXP? is non-nil this function modifies the match data
-that `match-beginning', `match-end' and `match-data' access."
-  (if regexp?
-      (if (< 0 direction)
-          (looking-at string)
-        (looking-back string (line-beginning-position)))
-    ;; literall
-    (let* ((beg (point))
-           (end (+ beg (* (length string) direction))))
-      (and (<= (point-min) end (point-max))
-           (string-equal (buffer-substring-no-properties beg end) string)))))
-
-(defun hel-string-ends-with-newline (string)
-  "Return t if STRING ends with newline character."
-  (eql (elt string (1- (length string)))
-       ?\n))
-
-(cl-defun hel-all-elements-are-the-same-p (list &key (test #'equal))
-  "Return t if all elements in the LIST are the same."
-  (let ((first (car list)))
-    (-all? (lambda (x) (funcall test first x))
-           (cdr list))))
-
-(defun hel-cursor-is-bar-p ()
-  "Return non-nil if `cursor-type' is bar."
-  (let ((cursor-type (if (eq cursor-type t)
-                         (frame-parameter nil 'cursor-type)
-                       cursor-type)))
-    (or (eq cursor-type 'bar)
-        (and (consp cursor-type)
-             (eq (car cursor-type) 'bar)))))
-
-(defun hel-set-region (start end &optional direction)
-  "Set the active region between START and END positions.
-
-DIRECTION of the region:
-  nil      Region direction is from START to END.
-   1       Force forward region (mark < point).
-  -1       Force backward region (point < mark).
-
-When DIRECTION is specified, START and END can be provided in any order."
-  (when (and (numberp direction)
-             (xor (< 0 direction)
-                  (<= start end)))
-    (cl-rotatef start end))
-  (set-mark start)
-  (goto-char end))
-
-(defun hel-region ()
-  "Region list with parameters of the active region. If no region return nil.
-
-The result is a list with following elements:
-
-  (BEG END DIRECTION)
-
-It is suitable to restore region with `hel-set-region':
-
-  (let ((region (hel-region)))
-    ...
-    (apply #'hel-set-region region))"
-  (if (use-region-p)
-      (list (region-beginning) (region-end) (hel-region-direction))))
-
-(defun hel-maybe-set-mark ()
-  "Set mark at point unless extending selection is active."
-  (or hel--extend-selection
-      (set-mark (point))))
-
-(defun hel-maybe-deactivate-mark ()
-  "Deactivate mark unless extending selection is active."
-  (or hel--extend-selection
-      (deactivate-mark)))
-
-(defun hel-ensure-region-direction (direction)
-  "Exchange point and mark if region direction mismatch DIRECTION.
-DIRECTION should be 1 or -1."
-  (when (/= direction (hel-region-direction))
-    (hel--exchange-point-and-mark)))
-
-(defun hel-undo-command-p (command)
-  "Return non-nil if COMMAND is implementing undo/redo functionality."
-  (memq command hel-undo-commands))
-
-(defun hel-destructive-filter (predicate list &optional pointer)
-  "Destructively remove elements in LIST that satisfy PREDICATE
-between start and POINTER.
-
-Returns the modified list, which may have a new starting element
-if removals occur at the beginning of the list, therefore, assign
-the returned list to the original symbol like this:
-
-  (setq foo (hel-destructive-filter #\\='predicate foo))"
-  (let ((tail list)
-        elem head)
-    (while (and tail (not (eq tail pointer)))
-      (setq elem (car tail))
-      (if (funcall predicate elem)
-          (progn
-            (setq tail (cdr tail))
-            (if head
-                (setcdr head tail)
-              (setq list tail)))
-        ;; else advance
-        (setq head tail
-              tail (cdr tail))))
-    list))
-
-(defun hel-pcre-to-elisp (regexp)
-  "Convert PCRE REGEXP into Elisp one if Hel configured to use PCRE syntax."
-  (if (and hel-use-pcre-regex
-           (not (string-empty-p regexp)))
-      (condition-case err
-          (pcre-to-elisp regexp)
-        (rxt-invalid-regexp
-         (message (-> (error-message-string err)
-                      (propertize 'face 'error)))))
-    regexp))
-
-(cl-defun hel-collect-positions (fun &optional (start (window-start))
-                                               (end (window-end)))
-  "Consecutively call FUN and collect point positions after each invocation.
-Finish as soon as point moves outside of START END buffer positions.
-FUN on each invocation should move point."
-  (save-excursion
-    (cl-loop with win = (get-buffer-window)
-             for old-point = (point)
-             do (ignore-errors
-                  ;; Bind `last-command' and `this-command' to the same value,
-                  ;; to get uniform result in case `fun' behaves differently
-                  ;; depending on their values.
-                  (let ((last-command fun)
-                        (this-command fun))
-                    (call-interactively fun)))
-             while (and (/= (point) old-point)
-                        (<= start (point) end))
-             collect (cons (point) win))))
-
-(defun hel-invert-case-in-region (start end)
-  "Invert case of characters within START...END buffer positions."
-  (goto-char start)
-  (while (< (point) end)
-    (let ((char (following-char)))
-      (delete-char 1)
-      (insert-char (if (eq (upcase char) char)
-                       (downcase char)
-                     (upcase char))))))
-
-(defun hel-letters-are-self-insert-p ()
-  "Return t if any of the a-z keys are bound to self-insert command."
-  (-any (lambda (key)
-          (and-let* ((cmd (key-binding key))
-                     ((symbolp cmd))
-                     ((string-match-p "\\`.*self-insert.*\\'"
-                                      (symbol-name cmd))))))
-        ;; This is just a fancy way to produce ("a"..."z") list in compile time.
-        ;; I just couldn't help myself :)
-        (eval-when-compile
-          (-map #'char-to-string (number-sequence ?a ?z)))))
-
-(defun hel-comment-at-pos-p (pos)
-  "Return non-nil if position POS is inside a comment, or comment starts
-right after the point."
-  (ignore-errors
-    ;; We cannot be in a comment if we are inside a string
-    (unless (nth 3 (syntax-ppss pos))
-      (or (nth 4 (syntax-ppss pos))
-          ;; This test opening and closing comment delimiters... We need
-          ;; to check that it is not newline, which is in "comment ender"
-          ;; class in elisp-mode, but we just want it to be treated as
-          ;; whitespace.
-          (and (< pos (point-max))
-               (memq (char-syntax (char-after pos)) '(?< ?>))
-               (not (eq (char-after pos) ?\n)))
-          ;; We also need to test the special syntax flag for comment
-          ;; starters and enders, because `syntax-ppss' does not yet know if
-          ;; we are inside a comment or not (e.g. / can be a division or
-          ;; comment starter...).
-          (when-let ((s (car (syntax-after pos))))
-            (or
-             ;; First char of 2 chars comment opener
-             (and (/= 0 (logand (ash 1 16) s))
-                  (nth 4 (syntax-ppss (+ pos 2))))
-             ;; Second char of 2 chars comment opener
-             (and (/= 0 (logand (ash 1 17) s))
-                  (nth 4 (syntax-ppss (+ pos 1))))
-             ;; First char of 2 chars comment closer
-             (and (/= 0 (logand (ash 1 18) s))
-                  (nth 4 (syntax-ppss (- pos 1))))
-             ;; Second char of 2 chars comment closer
-             (and (/= 0 (logand (ash 1 19) s))
-                  (nth 4 (syntax-ppss (- pos 2))))))))))
-
-(defun hel-string-at-pos-p (position)
-  "Return non-nil if POSITION is inside string.
-This function actually returns the 3rd element of `syntax-ppss' which
-can be a number if the string is delimited by that character or t if
-the string is delimited by general string fences."
-  (ignore-errors
-    (save-excursion
-      (nth 3 (syntax-ppss position)))))
-
-(defun hel-overlay-live-p (overlay)
-  "Return non-nil if OVERLAY is not deleted from buffer."
-  (-some-> overlay
-    (overlay-buffer)
-    (buffer-live-p)))
-
-(defun hel-pulse-main-region (&optional face)
-  (pulse-momentary-highlight-region (region-beginning) (region-end) face))
-
-(defun hel-reveal-point-when-on-top (&rest _)
-  "Reveal point when it's only partially visible.
-For some reason, Emacs can become slow while point is partially visible, so this
-function prevents that. It is intended to be used as `:after' advice."
-  (unless hel-executing-command-for-fake-cursor
-    (redisplay)
-    (when (zerop (cdr (posn-col-row (posn-at-point))))
-      (recenter 0))))
-
-(defun hel-split-keyword-args (args)
-  "Split ARGS list into keyword-value pairs and remaining arguments.
-Returns a cons cell: (PLIST . REST)
-PLIST is a list with keyword-value pairs from the beginning of ARGS list.
-REST contains all other elements."
-  (let (plist)
-    (while (keywordp (car-safe args))
-      (cl-callf plist-put plist (car args) (cadr args))
-      (cl-callf cddr args)) ; advance by 2
-    (cons plist args)))
-
-(defun hel-transpose (lol)
-  "Transpose list of lists.
-  ((1 2 3)    ((1 1 1)
-   (1 2)   =>  (2 2)
-   (1))        (3))"
-  (let (result)
-    (while (progn
-             (push (-map #'car lol) result)
-             (setq lol (-non-nil (-map #'cdr lol)))))
-    (nreverse result)))
-
-(defun hel-replace-chars (beg end char)
-  "Replace each non-newline character between BEG and END with CHAR."
-  (save-excursion
-    (goto-char beg)
-    (while (< (point) end)
-      (if (eq (char-after) ?\n)
-          (forward-char 1)
-        (insert-char char)
-        (delete-char 1)))))
-
-(defun hel-read-char-and-replace (beg end)
-  "Replace characters in BEG..END with an interactive entered one."
-  (when (< beg end)
-    (let ((overlay (-doto (make-overlay beg end nil t nil)
-                     (overlay-put 'face 'region))))
-      (unwind-protect
-          (hel-replace-chars beg end (read-char "replace: " t))
-        (delete-overlay overlay)))))
 
 ;;; Advices
 

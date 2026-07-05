@@ -1,9 +1,16 @@
-* [Unreleased]
+* [0.12.0]
 ** Added
 
 - New =r= and =R= commands.
 
 - Integration with [[https://github.com/oantolin/embark][Embark]] package.
+
+** Changed
+
+- *[BREAKING]*
+  Scroll commands have been rewritten from the ground up with better
+  performance and nice animation. Switched the dependency from the built-in
+  pixel-scroll.el to [[https://github.com/jdtsmith/ultra-scroll][ultra-scroll]].
 
 * [0.11.0]
 ** Added

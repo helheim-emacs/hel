@@ -14,7 +14,7 @@
 
 (require 'hel-core)
 (require 'hel-commands)
-(require 'hel-scrolling)
+(require 'hel-scroll)
 
 ;;; Universal argument
 
@@ -161,15 +161,15 @@ use it."
   "N"   #'hel-search-previous
 
   ;; Scrolling
-  "C-b" #'hel-smooth-scroll-page-up
-  "C-f" #'hel-smooth-scroll-page-down
-  "C-d" #'hel-smooth-scroll-down
-  "C-u" #'hel-smooth-scroll-up
-  "C-e" #'hel-mix-scroll-line-down
-  "C-y" #'hel-mix-scroll-line-up
-  "z z" #'hel-smooth-scroll-line-to-eye-level
-  "z t" #'hel-smooth-scroll-line-to-top
-  "z b" #'hel-smooth-scroll-line-to-bottom
+  "C-b" #'hel-scroll-page-up
+  "C-f" #'hel-scroll-page-down
+  "C-d" #'hel-scroll-down
+  "C-u" #'hel-scroll-up
+  "C-e" #'hel-scroll-line-down
+  "C-y" #'hel-scroll-line-up
+  "z z" '("scroll to eye level" . hel-scroll-line-to-eye-level)
+  "z t" '("scroll to top" . hel-scroll-line-to-top)
+  "z b" '("scroll to bottom" . hel-scroll-line-to-bottom)
 
   ;; Misc
   "."     #'repeat
@@ -361,15 +361,15 @@ use it."
   "] b" #'next-buffer
   "[ b" #'previous-buffer
   ;; Scrolling
-  "C-b" #'hel-smooth-scroll-page-up
-  "C-f" #'hel-smooth-scroll-page-down
-  "C-d" #'hel-smooth-scroll-down
-  "C-u" #'hel-smooth-scroll-up
-  "C-e" #'hel-mix-scroll-line-down
-  "C-y" #'hel-mix-scroll-line-up
-  "z z" '("scroll to eye level" . hel-smooth-scroll-line-to-eye-level)
-  "z t" '("scroll to top" . hel-smooth-scroll-line-to-top)
-  "z b" '("scroll to bottom" . hel-smooth-scroll-line-to-bottom))
+  "C-b" #'hel-scroll-page-up
+  "C-f" #'hel-scroll-page-down
+  "C-d" #'hel-scroll-down
+  "C-u" #'hel-scroll-up
+  "C-e" #'hel-scroll-line-down
+  "C-y" #'hel-scroll-line-up
+  "z z" '("scroll to eye level" . hel-scroll-line-to-eye-level)
+  "z t" '("scroll to top" . hel-scroll-line-to-top)
+  "z b" '("scroll to bottom" . hel-scroll-line-to-bottom))
 
 ;;; C-w keys
 
@@ -450,7 +450,7 @@ use it."
 
 (when hel-want-zz-scroll-to-center
   (hel-keymap-global-set :state '(normal emacs)
-    "z z" #'hel-smooth-scroll-line-to-center))
+    "z z" #'hel-scroll-line-to-center))
 
 ;;; .
 (provide 'hel-keybindings)

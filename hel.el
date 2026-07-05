@@ -24,7 +24,7 @@
 (require 'hel-core)
 (require 'hel-commands)
 (require 'hel-search)
-(require 'hel-scrolling)
+(require 'hel-scroll)
 (require 'hel-integration)
 (require 'hel-keybindings)
 

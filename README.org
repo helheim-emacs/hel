@@ -83,6 +83,7 @@ This is the most minimal example of the =init.el= file:
 (use-package dash :ensure t)
 (use-package avy :ensure t)
 (use-package pcre2el :ensure t)
+(use-package ultra-scroll :ensure t)
 
 (use-package hel
   :vc (:url "https://github.com/anuvyklack/hel.git" :rev "main")
@@ -98,6 +99,7 @@ This is the most minimal example of the =init.el= file:
 (elpaca 'dash)
 (elpaca 'avy)
 (elpaca 'pcre2el)
+(elpaca 'ultra-scroll)
 
 (elpaca '(hel :host github :repo "anuvyklack/hel")
   (setopt inhibit-startup-screen t)
@@ -110,6 +112,7 @@ This is the most minimal example of the =init.el= file:
 (straight-use-package 'dash)
 (straight-use-package 'avy)
 (straight-use-package 'pcre2el)
+(straight-use-package 'ultra-scroll)
 
 (straight-use-package '(hel :host github :repo "anuvyklack/hel"))
 (setopt inhibit-startup-screen t)
@@ -235,7 +238,7 @@ tap and =Ctrl= on hold. You can use any of the these tools: [[https://github.com
 
 ** Acknowledgments
 
-Hel depends on [[https://github.com/magnars/dash.el][dash.el]], [[https://github.com/joddie/pcre2el][pcre2el]], and [[https://github.com/abo-abo/avy][avy]] wonderful packages.
+Hel depends on [[https://github.com/magnars/dash.el][dash.el]], [[https://github.com/joddie/pcre2el][pcre2el]], [[https://github.com/abo-abo/avy][avy]] and [[https://github.com/jdtsmith/ultra-scroll][ultra-scroll]] wonderful packages.
 
 Hel is heavily inspired by:
 - [[https://github.com/emacs-evil/evil][evil]]
@@ -243,8 +246,9 @@ Hel is heavily inspired by:
 - [[https://github.com/aome510/kak.el][kak.el]]
 - [[https://github.com/mkleehammer/surround][surround]]
 - [[https://github.com/meow-edit/meow][meow]]
-- [[https://github.com/doomemacs/doomemacs][doomemacs]]
 - isearch (built-in)
+- [[https://github.com/karb94/neoscroll.nvim][neoscroll.nvim]]
+- [[https://github.com/doomemacs/doomemacs][doomemacs]]
 - [[https://github.com/bbatsov/crux][crux]]
 
 You are welcome to go and give them all at least a star!
