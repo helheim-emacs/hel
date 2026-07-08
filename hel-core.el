@@ -36,7 +36,7 @@
 (require 'hel-multiple-cursors-core)
 
 ;; Declarations
-(defvar edebug-mode nil)
+(defvar edebug-mode)
 (defvar edebug-mode-map)
 
 ;;; Hel mode
