@@ -179,18 +179,20 @@ Otherwise it is left as the standard ESC prefix (e.g. for `M-x')."
   :group 'hel)
 
 (defcustom hel-mode-line-info
-  '((hel-multiple-cursors-mode
-     (:eval (-> (format " %s cursors " (hel-number-of-cursors))
-                (propertize 'face 'mode-line-emphasis))))
+  '(:propertize
+    ((hel-multiple-cursors-mode
+      (:eval (format " %s cursors " (hel-number-of-cursors))))
     (hel-search--current
-     (:eval (-> (format " %s/" hel-search--current)
-                (propertize 'face 'mode-line-emphasis)))
-     (-> " " (propertize 'face 'mode-line-emphasis)))
+      (:eval (format " %s/" hel-search--current))
+      " ")
     (hel-search--total
-     (:eval (-> (format "%s " hel-search--total)
-                (propertize 'face 'mode-line-emphasis)))
-     (-> " " (propertize 'face 'mode-line-emphasis))))
-  ""
+      (:eval (format "%s " hel-search--total))))
+    face mode-line-emphasis)
+  "Alist of (VARIABLE MODE-LINE-CONSTRUCT...) entries controlling what
+Hel shows in the mode line. Each VARIABLE is evaluated; while it is
+non-nil, its MODE-LINE-CONSTRUCTs are shown, in the same format as
+`mode-line-format'."
+  :type 'sexp
   :group 'hel)
 (put 'hel-mode-line-info 'risky-local-variable t)
 
