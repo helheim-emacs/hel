@@ -464,7 +464,7 @@ according to the Hel STATE."
             ;; so earlier keymaps has higher priority.
             `(
               ;; Edebug takes precedence over all other keymaps
-              ,@(if edebug-mode
+              ,@(if (bound-and-true-p edebug-mode)
                     (list `(edebug-mode . ,edebug-mode-map)))
               ;; Hel buffer local overriding map
               ,@(if-let* ((map (hel-get-nested-hel-keymap hel-overriding-local-map state)))
