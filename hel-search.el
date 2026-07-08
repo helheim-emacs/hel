@@ -320,27 +320,27 @@ Return nil when no match exists."
 
 (defun hel-search-session--next-match-cached (self direction)
   "Binary search in cached results."
-  (condition-case nil
-      (let* ((pos (if (use-region-p)
-                      (if (< direction 0) (region-beginning) (region-end))
-                    (point)))
-             (overlays (hel-search-session-overlays self))
-             (index (if (< 0 direction)
-                        (hel-search-session--next-match self pos)
-                      (hel-search-session--previous-match self pos)))
-             (overlay (elt overlays index))
-             (start (overlay-start overlay))
-             (end (overlay-end overlay))
-             (closed-overlays
-              (->> (overlays-in start end)
-                   (-filter (lambda (ov)
-                              (and (invisible-p (overlay-get ov 'invisible))
-                                   (overlay-get ov 'isearch-open-invisible)))))))
-        (list start end closed-overlays index))
-    (t
-     ;; Search session is corrupted: restart it and search live.
-     (hel-search-session-restart self)
-     (hel-search-session--next-match-live self pos))))
+  (let ((pos (if (use-region-p)
+                 (if (< direction 0) (region-beginning) (region-end))
+               (point))))
+    (condition-case nil
+        (let* ((overlays (hel-search-session-overlays self))
+               (index (if (< 0 direction)
+                          (hel-search-session--next-match self pos)
+                        (hel-search-session--previous-match self pos)))
+               (overlay (elt overlays index))
+               (start (overlay-start overlay))
+               (end (overlay-end overlay))
+               (closed-overlays
+                (->> (overlays-in start end)
+                     (-filter (lambda (ov)
+                                (and (invisible-p (overlay-get ov 'invisible))
+                                     (overlay-get ov 'isearch-open-invisible)))))))
+          (list start end closed-overlays index))
+      (t
+       ;; Search session is corrupted: restart it and search live.
+       (hel-search-session-restart self)
+       (hel-search-session--next-match-live self pos)))))
 
 (defun hel-search-session--next-match (self pos)
   "Return the index of the next overlay that starts after POS."
