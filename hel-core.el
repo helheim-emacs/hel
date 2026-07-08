@@ -161,9 +161,6 @@ ensures `hel-local-mode' is activated in such cases."
 (hel-advice-add 'use-global-map :after #'hel-update-active-keymaps-a)
 (hel-advice-add 'use-local-map  :after #'hel-update-active-keymaps-a)
 
-(hel-define-advice select-window (:after (&rest _))
-  (hel-update-cursor))
-
 ;;; Hel states
 
 (defmacro hel-define-state (state doc &rest body)
