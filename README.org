@@ -286,6 +286,8 @@ Hel was developed on an old laptop with a cracked screen, and I worked on it
 instead of grinding LeetCode. If you'd like to support Hel's development, you
 can do so with a donation:
 
+- [[https://github.com/sponsors/anuvyklack][GitHub Sponsors]]
 - [[https://www.paypal.me/anuvyklack][PayPal]]
+- Bitcoin and USDT wallets — coming soon.
 
 Every contribution is greatly appreciated.
