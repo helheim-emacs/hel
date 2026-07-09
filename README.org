@@ -5,6 +5,8 @@
 
 https://github.com/user-attachments/assets/09d1a77d-2a3e-4cae-a005-e69ae03e5a7e
 
+https://github.com/user-attachments/assets/df9f6785-a359-4191-908d-2b2abb274d22
+
 ** Key features
 
 - Multiple cursors based modal editing inside Emacs!
