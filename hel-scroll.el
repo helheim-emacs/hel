@@ -261,8 +261,7 @@ instead."
   :multiple-cursors nil
   (interactive "p")
   (or count (setq count 1))
-  (let* ((win-height (window-body-height nil t))
-         (delta (* count win-height)))
+  (let ((delta (* count (window-body-height) (default-line-height))))
     (hel-smooth-scroll delta hel-scroll-page-duration)
     (list delta hel-scroll-page-duration)))
 
@@ -277,8 +276,7 @@ backward instead."
   :multiple-cursors nil
   (interactive "p")
   (or count (setq count 1))
-  (let* ((win-height (window-body-height nil t))
-         (delta (- (* count win-height))))
+  (let ((delta (- (* count (window-body-height) (default-line-height)))))
     (hel-smooth-scroll delta hel-scroll-page-duration)
     (list delta hel-scroll-page-duration)))
 
