@@ -91,6 +91,12 @@ saved as markers and correctly handle case when text was inserted before region.
 
 ;;; Utils
 
+(defun hel-unquote (form)
+  "Strip a leading `\'' (`quote') or `#\'' (`function') from FORM."
+  (if (memq (car-safe form) '(quote function))
+      (cadr form)
+    form))
+
 (defun hel--exchange-point-and-mark ()
   "Exchange point and mark."
   (goto-char (prog1 (marker-position (mark-marker))

@@ -316,41 +316,10 @@ C-i and RET from C-m."
   (hel-keymap-set helpful-mode-map :state 'normal
     "<escape>" #'hel-normal-state-escape))
 
-;;;; Calendar
-
-(with-eval-after-load 'calendar
-  (hel-keymap-set calendar-mode-map :state 'emacs
-    ;; motions
-    "h"   'calendar-backward-day
-    "j"   'calendar-forward-week
-    "k"   'calendar-backward-week
-    "l"   'calendar-forward-day
-    "g h" 'calendar-beginning-of-week
-    "g l" 'calendar-end-of-week
-    "("   'calendar-beginning-of-month
-    ")"   'calendar-end-of-month
-    "{"   'calendar-backward-month
-    "}"   'calendar-forward-month
-    "g g" 'calendar-beginning-of-year
-    "G"   'calendar-end-of-year
-    "[ [" 'calendar-backward-year
-    "] ]" 'calendar-forward-year
-    ;; scrolling
-    "C-d" 'calendar-scroll-left
-    "C-u" 'calendar-scroll-right
-    "C-f" 'calendar-scroll-left-three-months
-    "C-b" 'calendar-scroll-right-three-months)
-  (hel-keymap-set calendar-mode-map
-    ;; holidays
-    "v"   'calendar-set-mark
-    "u"   'calendar-unmark
-    "="   'calendar-count-days-region
-    "g H" 'calendar-hebrew-goto-date  ; "gh"
-    "r"   'calendar-cursor-holidays)) ; "h"
-
 ;;;; Comint
 
 (with-eval-after-load 'comint
+  (defvar comint-mode-map)
   (hel-keymap-set comint-mode-map
     "<remap> <hel-insert>"      'hel-comint-insert      ; "i"
     "<remap> <hel-append>"      'hel-comint-append      ; "a"
@@ -424,104 +393,23 @@ If cursor is in read-only area, jump to prompt instead of deleting."
     (hel-comint--goto-process-mark)
     (hel-insert-state 1)))
 
-;;;; Compilation
+;;;; Compile
 
-(hel-advice-add 'next-error     :around #'hel-jump-command-a)
-(hel-advice-add 'previous-error :around #'hel-jump-command-a)
+(hel-advice-add 'next-error         :around #'hel-jump-command-a)
+(hel-advice-add 'previous-error     :around #'hel-jump-command-a)
+(hel-advice-add 'compile-goto-error :around #'hel-jump-command-a)
 
-(with-eval-after-load 'compile
-  (dolist (keymap (list compilation-minor-mode-map
-                        compilation-mode-map))
-    (hel-keymap-set keymap
-      "o"    'compilation-display-error
+;;;; wgrep
 
-      "g"     nil ; unbind `recompile'
-      "g o"  'compile-goto-error
-      "g r"  'recompile ; revert
-
-      "n"    'next-error-no-select
-      "N"    'previous-error-no-select
-      "C-j"  'next-error-no-select
-      "C-k"  'previous-error-no-select
-
-      "}"    'compilation-next-file
-      "{"    'compilation-previous-file
-      "] p"  'compilation-next-file
-      "[ p"  'compilation-previous-file
-      "z j"  'compilation-next-file
-      "z k"  'compilation-previous-file))
-
-  (hel-keymap-set compilation-mode-map
-    "g f" 'next-error-follow-minor-mode
-    "Z Q" 'kill-compilation)
-
-  (hel-advice-add 'compile-goto-error :around #'hel-jump-command-a))
-
-;;;; diff-mode
-
-(with-eval-after-load 'diff-mode
-  (hel-keymap-set diff-mode-shared-map
-    "k"    nil ; unbind `diff-hunk-kill'
-    "K"    nil ; unbind `diff-file-kill'
-    "d"   'diff-hunk-kill
-    "D"   'diff-file-kill
-    "u"   'diff-undo)
-  ;;
-  (hel-keymap-set diff-mode-map
-    "C-j" 'diff-hunk-next
-    "C-k" 'diff-hunk-prev
-    "g j" 'diff-hunk-next
-    "g k" 'diff-hunk-prev
-    "[ [" 'diff-file-prev
-    "] ]" 'diff-file-next))
-
-;;;; grep-mode
-
-(with-eval-after-load 'grep
-  ;; `grep-mode-map' is inherited from `compilation-minor-mode-map'
-  (hel-keymap-set grep-mode-map
-    "i"   'wgrep-change-to-wgrep-mode
-    "g f" 'next-error-follow-minor-mode))
-
-;;;;; wgrep
-
-(with-eval-after-load 'wgrep
-  (hel-advice-add 'wgrep-change-to-wgrep-mode :after #'hel-switch-to-initial-state)
-
-  (hel-keymap-set wgrep-mode-map :state 'normal
-    "<escape>" 'wgrep-exit
-    "Z Z"      'wgrep-finish-edit
-    "Z Q"      'wgrep-abort-changes)
-
-  (hel-keymap-set wgrep-mode-map
-    "<remap> <save-buffer>" 'wgrep-finish-edit)
-
-  (hel-advice-add 'wgrep-to-original-mode :before #'hel-deactivate-mark-a)
-  (hel-advice-add 'wgrep-to-original-mode :before #'hel-disable-multiple-cursors-mode)
-  (hel-advice-add 'wgrep-to-original-mode :after  #'hel-switch-to-initial-state))
+(hel-advice-add 'wgrep-change-to-wgrep-mode :after #'hel-switch-to-initial-state)
+(hel-advice-add 'wgrep-to-original-mode :before #'hel-deactivate-mark-a)
+(hel-advice-add 'wgrep-to-original-mode :before #'hel-disable-multiple-cursors-mode)
+(hel-advice-add 'wgrep-to-original-mode :after  #'hel-switch-to-initial-state)
 
 ;;;; occur-mode
 
-(with-eval-after-load 'replace
-  (hel-keymap-set occur-mode-map
-    "i"   #'occur-edit-mode
-    "o"   #'occur-mode-display-occurrence           ; default `C-o'
-    "g o" #'occur-mode-goto-occurrence-other-window ; default `o'
-    "g f" #'next-error-follow-minor-mode
-
-    "n"   #'next-error-no-select
-    "N"   #'previous-error-no-select
-    "C-j" #'next-error-no-select
-    "C-k" #'previous-error-no-select)
-
-  (hel-keymap-set occur-edit-mode-map :state 'normal
-    "g o"      #'occur-mode-goto-occurrence-other-window
-    "<escape>" #'occur-cease-edit
-    "Z Z"      #'occur-cease-edit
-    "Z Q"      #'occur-cease-edit)
-
-  (hel-advice-add 'occur-mode-goto-occurrence    :around #'hel-jump-command-a)
-  (hel-advice-add 'occur-mode-display-occurrence :around #'hel-jump-command-a))
+(hel-advice-add 'occur-mode-goto-occurrence    :around #'hel-jump-command-a)
+(hel-advice-add 'occur-mode-display-occurrence :around #'hel-jump-command-a)
 
 ;;;; dired
 ;;;;; wdired
@@ -577,6 +465,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 
 (with-eval-after-load 'image-mode
   (hel-keymap-set image-mode-map :state 'emacs
+    ;; scroll
     "C-y" 'image-previous-line
     "C-e" 'image-next-line
     "C-b" 'image-scroll-right
@@ -621,16 +510,14 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 
 (hel-advice-add 'outline-insert-heading :after #'hel-switch-to-insert-state-a)
 
-(dolist (cmd '(outline-up-heading
-               outline-next-visible-heading
-               outline-previous-visible-heading
-               outline-forward-same-level
-               outline-backward-same-level))
-  (hel-advice-add cmd :before #'hel-maybe-deactivate-mark-a))
+(hel-advice-add 'outline-up-heading               :before #'hel-maybe-deactivate-mark-a)
+(hel-advice-add 'outline-next-visible-heading     :before #'hel-maybe-deactivate-mark-a)
+(hel-advice-add 'outline-previous-visible-heading :before #'hel-maybe-deactivate-mark-a)
+(hel-advice-add 'outline-forward-same-level       :before #'hel-maybe-deactivate-mark-a)
+(hel-advice-add 'outline-backward-same-level      :before #'hel-maybe-deactivate-mark-a)
 
-(dolist (cmd '(outline-promote
-               outline-demote))
-  (hel-advice-add cmd :around #'hel-keep-selection-a))
+(hel-advice-add 'outline-promote :around #'hel-keep-selection-a)
+(hel-advice-add 'outline-demote  :around #'hel-keep-selection-a)
 
 ;;;; repeat-mode
 
@@ -650,6 +537,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 ;;;; shortdoc
 
 (with-eval-after-load 'shortdoc
+  (defvar shortdoc-mode-map)
   (keymap-set shortdoc-mode-map "y" 'shortdoc-copy-function-as-kill))
 
 ;;;; special-mode
@@ -735,6 +623,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 
 (with-eval-after-load 'which-key
   ;; Do not display "C-w C-" and "C-c w C-" keys duplicates in which-key popup.
+  (defvar which-key-replacement-alist)
   (add-to-list 'which-key-replacement-alist
                '(("^\\(?:C-c w\\|C-w\\) C-[a-z]" . nil) . ignore))
   ;; Do not display keys bound to following commands in which-key popup.
@@ -803,53 +692,34 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
 
 ;;;; Xref
 
-(with-eval-after-load 'xref
-  (dolist (cmd '(xref-find-definitions
-                 xref-find-references
-                 xref-go-back
-                 xref-go-forward
-                 xref-goto-xref
-                 xref--show-xrefs
-                 xref--show-defs))
-    (hel-advice-add cmd :around #'hel-jump-command-a))
-
-  (hel-keymap-set xref--xref-buffer-mode-map
-    "o"   'xref-show-location-at-point
-    "Q"   'xref-quit-and-pop-marker-stack
-
-    "C-j" 'xref-next-line
-    "C-k" 'xref-prev-line
-
-    "}"   'xref-next-group
-    "{"   'xref-prev-group
-    "] p" 'xref-next-group
-    "[ p" 'xref-prev-group
-    "z j" 'xref-next-group
-    "z k" 'xref-prev-group))
+(hel-advice-add 'xref-find-definitions :around #'hel-jump-command-a)
+(hel-advice-add 'xref-find-references  :around #'hel-jump-command-a)
+(hel-advice-add 'xref-go-back          :around #'hel-jump-command-a)
+(hel-advice-add 'xref-go-forward       :around #'hel-jump-command-a)
+(hel-advice-add 'xref-goto-xref        :around #'hel-jump-command-a)
+(hel-advice-add 'xref--show-xrefs      :around #'hel-jump-command-a)
+(hel-advice-add 'xref--show-defs       :around #'hel-jump-command-a)
 
 ;;; External packages
 ;;;; corfu
 
-(with-eval-after-load 'corfu
-  ;; Close corfu popup on Insert state exit.
-  (add-hook 'hel-insert-state-exit-hook 'corfu-quit))
+;; Close corfu popup on Insert state exit.
+(add-hook 'hel-insert-state-exit-hook 'corfu-quit)
 
 ;;;; consult
 
-(with-eval-after-load 'consult
-  (hel-cache-input consult--read)
+(hel-cache-input consult--read)
 
-  (hel-set-multiple-cursors-command 'consult-yank-pop)
+(hel-set-multiple-cursors-command 'consult-yank-pop)
 
-  (dolist (cmd '(consult-line
-                 consult-mark
-                 consult-global-mark
-                 consult-imenu
-                 consult-outline
-                 consult-grep
-                 consult-git-grep
-                 consult-ripgrep))
-    (hel-advice-add cmd :before #'hel-deactivate-mark-a)))
+(hel-advice-add 'consult-line        :before #'hel-deactivate-mark-a)
+(hel-advice-add 'consult-mark        :before #'hel-deactivate-mark-a)
+(hel-advice-add 'consult-global-mark :before #'hel-deactivate-mark-a)
+(hel-advice-add 'consult-imenu       :before #'hel-deactivate-mark-a)
+(hel-advice-add 'consult-outline     :before #'hel-deactivate-mark-a)
+(hel-advice-add 'consult-grep        :before #'hel-deactivate-mark-a)
+(hel-advice-add 'consult-git-grep    :before #'hel-deactivate-mark-a)
+(hel-advice-add 'consult-ripgrep     :before #'hel-deactivate-mark-a)
 
 ;;;; diff-hl
 
@@ -867,12 +737,23 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
 ;;;; embark
 
 (declare-function embark--targets "embark")
-(declare-function embark--act "embark")
+(declare-function embark--act     "embark")
 (declare-function embark--restart "embark")
 (declare-function embark--confirm "embark")
 
 (defvar hel--embark-action nil
   "Embark action chosen for the real cursor.")
+
+(hel-define-advice embark--act (:before (action &rest _))
+  "Remember the Embark ACTION chosen for the real cursor."
+  (unless hel-executing-command-for-fake-cursor
+    (setq hel--embark-action action)))
+
+(hel-set-multiple-cursors-command 'embark-act)
+(hel-set-multiple-cursors-command 'embark-dwim)
+
+(hel-advice-add 'embark-act  :around 'hel-embark-act-a)
+(hel-advice-add 'embark-dwim :around 'hel-embark-act-a)
 
 (defun hel-embark-act-a (orig-fun &rest args)
   "Around advice for `embark-act' and `embark-dwim' fanning them out to all cursors.
@@ -891,17 +772,14 @@ recorded action on it, suppressing confirmations and restarts."
     (setq hel--embark-action nil)
     (apply orig-fun args)))
 
-(with-eval-after-load 'embark
-  (hel-define-advice embark--act (:before (action &rest _))
-    "Remember the Embark ACTION chosen for the real cursor."
-    (unless hel-executing-command-for-fake-cursor
-      (setq hel--embark-action action)))
+;;;; magit
 
-  (hel-set-multiple-cursors-command 'embark-act)
-  (hel-set-multiple-cursors-command 'embark-dwim)
+(defvar magit-blame-mode)
 
-  (hel-advice-add 'embark-act  :around #'hel-embark-act-a)
-  (hel-advice-add 'embark-dwim :around #'hel-embark-act-a))
+(add-hook 'magit-blame-mode-hook (defun hel-magit-blame-h ()
+                                   (if magit-blame-mode
+                                       (hel-emacs-state)
+                                     (hel-normal-state))))
 
 ;;; .
 (provide 'hel-integration)
