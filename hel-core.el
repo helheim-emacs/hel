@@ -343,8 +343,8 @@ MODE and STATE should be symbols."
   ;; Remove current settings.
   (-each hel-state-properties
     (-lambda ((_ . plist))
-      (setf (map-elt plist :modes)
-            (delq mode (map-elt plist :modes)))))
+      (cl-symbol-macrolet ((modes (plist-get plist :modes)))
+        (setf modes (delq mode modes)))))
   ;; Add new settings.
   (cl-pushnew mode (-> hel-state-properties
                        (map-elt state)
