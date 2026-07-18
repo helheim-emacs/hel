@@ -16,6 +16,7 @@
 ;;; Code:
 
 (eval-when-compile (require 'hel-macros))
+(require 'dash)
 (require 'hel-vars)
 (require 'hel-multiple-cursors-core)
 (require 'hel-lib)
@@ -167,6 +168,9 @@ C-i and RET from C-m."
 
 ;;;; Backtrace and Debug
 
+(defvar backtrace-mode-map)
+(defvar debugger-mode-map)
+
 (with-eval-after-load 'backtrace
   (hel-keymap-set backtrace-mode-map :state 'emacs
     "j"   'backtrace-forward-frame   ;; "n"
@@ -196,6 +200,8 @@ C-i and RET from C-m."
     ", R" 'debugger-record-expression))
 
 ;;;; Edebug
+
+(defvar edebug-mode-map)
 
 (with-eval-after-load 'edebug
   (add-hook 'edebug-mode-hook #'hel-update-active-keymaps)
@@ -313,6 +319,7 @@ C-i and RET from C-m."
   ;; `helpful-mode' is derived from `special-mode', in which ESC is bound
   ;; to switching Hel to Emacs state. We don't need Emacs state in
   ;; `helpful-mode', so override it.
+  (defvar helpful-mode-map)
   (hel-keymap-set helpful-mode-map :state 'normal
     "<escape>" #'hel-normal-state-escape))
 
@@ -411,8 +418,10 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 (hel-advice-add 'occur-mode-goto-occurrence    :around #'hel-jump-command-a)
 (hel-advice-add 'occur-mode-display-occurrence :around #'hel-jump-command-a)
 
-;;;; dired
-;;;;; wdired
+;;;; wdired
+
+(defvar wdired-mode-map)
+(declare-function wdired-exit "wdired")
 
 (with-eval-after-load 'wdired
   (hel-advice-add 'wdired-change-to-wdired-mode :after #'hel-switch-to-initial-state)
@@ -449,8 +458,6 @@ If cursor is in read-only area, jump to prompt instead of deleting."
   (hel-advice-add 'wdired-next-line     :before #'hel-deactivate-mark-a)
   (hel-advice-add 'wdired-previous-line :before #'hel-deactivate-mark-a))
 
-(declare-function wdired-exit "wdired")
-
 (hel-define-command helheim-wdired-exit ()
   :multiple-cursors t
   (interactive)
@@ -464,6 +471,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 ;;;; image-mode
 
 (with-eval-after-load 'image-mode
+  (defvar image-mode-map)
   (hel-keymap-set image-mode-map :state 'emacs
     ;; scroll
     "C-y" 'image-previous-line
@@ -593,6 +601,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 ;;;; conf-mode
 
 (with-eval-after-load 'conf-mode
+  (defvar conf-mode-map)
   (hel-keymap-set conf-mode-map :state 'insert
     "C-w" #'hel-delete-backward-word))
 
@@ -615,6 +624,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 ;;;; VC
 
 (with-eval-after-load 'log-view
+  (defvar log-view-mode-map)
   (hel-keymap-set log-view-mode-map
     "j" 'log-view-msg-next
     "k" 'log-view-msg-prev))
@@ -722,6 +732,9 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
 (hel-advice-add 'consult-ripgrep     :before #'hel-deactivate-mark-a)
 
 ;;;; diff-hl
+
+(defvar diff-hl-show-hunk-inline-transient-mode)
+(defvar diff-hl-show-hunk-inline-transient-mode-map)
 
 (add-hook 'diff-hl-show-hunk-inline-transient-mode-hook
           (defun hel-switch-to-emacs-state-while-diff-hl-show-hunk-h ()
