@@ -713,8 +713,9 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
 ;;; External packages
 ;;;; corfu
 
-;; Close corfu popup on Insert state exit.
-(add-hook 'hel-insert-state-exit-hook 'corfu-quit)
+(with-eval-after-load 'corfu
+  ;; Close corfu popup on Insert state exit.
+  (add-hook 'hel-insert-state-exit-hook 'corfu-quit))
 
 ;;;; consult
 
