@@ -78,19 +78,15 @@ the structure and examples.
   Default is =U+2000= (EN QUAD), which should be bound to a variable-pitch font.
 #+end_quote
 
-- ~hel-normal-state-cursor~ ::
-  Cursor appearance in Normal state. Can be a cursor type, color string,
-  function, or list of these.
+- ~hel-normal-state-cursor-type~ :: ~cursor-type~ in Normal state.
 
-- ~hel-insert-state-cursor~ ::
-  Cursor appearance in Insert state.
+- ~hel-insert-state-cursor-type~ :: ~cursor-type~ in Insert state.
 
-- ~hel-emacs-state-cursor~ ::
-  Cursor appearance in Emacs state.
+- ~hel-emacs-state-cursor-type~ :: ~cursor-type~ in Emacs state.
 
 - ~hel-match-fake-cursor-style~ ::
-  If non-nil, attempt to match fake cursor style to real cursor type (only bar
-  and box).
+  If non-nil, attempt to match fake cursor style to real cursor type (only
+  bar and box).
 
 ** Multiple Cursors Settings
 
