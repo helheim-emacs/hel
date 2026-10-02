@@ -158,7 +158,9 @@ ensures `hel-local-mode' is activated in such cases."
 
 (defun hel-esc (map)
   "Translate `\\e' to `escape' if no further event arrives."
-  (if (and (not hel-inhibit-esc)
+  (if (and (or (not (display-graphic-p))
+               hel-want-gui-esc-translation)
+           (not hel-inhibit-esc)
            (or hel-local-mode
                (active-minibuffer-window))
            (let ((keys (this-single-command-keys)))
@@ -174,7 +176,9 @@ ensures `hel-local-mode' is activated in such cases."
 
 (defun hel-setup-terminal-keys (frame)
   "Make Emacs correctly handle ESC in terminal, and distinguish TAB from
-C-i and RET from C-m."
+C-i and RET from C-m.
+In GUI frames, also translate ESC when `hel-want-gui-esc-translation'
+is non-nil."
   (with-selected-frame frame
     (if (eq t (terminal-live-p (frame-terminal frame)))
         ;; Text terminal.
@@ -192,7 +196,13 @@ C-i and RET from C-m."
                                :filter hel-esc)))
       ;; GUI Emacs
       (keymap-set input-decode-map "C-i" [C-i])
-      (keymap-set input-decode-map "C-m" [C-m]))))
+      (keymap-set input-decode-map "C-m" [C-m])
+      (unless (terminal-parameter nil 'hel--terminal-keys-set-up)
+        (set-terminal-parameter nil 'hel--terminal-keys-set-up t)
+        (keymap-set input-decode-map
+                    "ESC" `( menu-item ""
+                             ,(keymap-lookup input-decode-map "ESC")
+                             :filter hel-esc))))))
 
 ;;; Hel states
 

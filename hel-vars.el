@@ -190,8 +190,15 @@ Hel is in Emacs state. All other attributes are ignored."
              (add-hook 'minibuffer-setup-hook #'hel-local-mode)
            (remove-hook 'minibuffer-setup-hook #'hel-local-mode))))
 
+(defcustom hel-want-gui-esc-translation t
+  "Whether to translate a lone GUI `\\e' input to `escape'.
+When non-nil, `C-[' behaves as the Escape key if no further input
+arrives within `hel-esc-delay' seconds."
+  :type 'boolean
+  :group 'hel)
+
 (defcustom hel-esc-delay 0.01
-  "Seconds to wait for another key after a terminal Esc keypress.
+  "Seconds to wait for another key after an Esc keypress.
 If no further event arrives within this time, the lone `\\e' is
 translated to the `escape' event so Hel's `<escape>' bindings fire.
 Otherwise it is left as the standard ESC prefix (e.g. for `M-x')."
@@ -199,7 +206,7 @@ Otherwise it is left as the standard ESC prefix (e.g. for `M-x')."
   :group 'hel)
 
 (defvar hel-inhibit-esc nil
-  "If non-nil, never translate a terminal `\\e' to `escape'.")
+  "If non-nil, never translate a lone `\\e' to `escape'.")
 
 (defcustom hel-use-pcre-regex t
   "If non-nil use PCRE regexp syntax instead of Emacs regular expressions."
