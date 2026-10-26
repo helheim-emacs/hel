@@ -321,12 +321,15 @@ Return CURSOR."
 (defun hel-all-fake-cursors (&optional sort)
   "Return list with all fake cursors in current buffer.
 If SORT is non-nil sort cursors in order they are located in the buffer."
-  (if sort
-      (sort (hash-table-values hel--cursors-table)
-            (lambda (c1 c2)
-              (< (overlay-get c1 'point)
-                 (overlay-get c2 'point))))
-    (hash-table-values hel--cursors-table)))
+  ;; The table is nil in buffers without `hel-local-mode', for example the
+  ;; minibuffer, but global advices such as `current-kill@hel' run there too.
+  (when hel--cursors-table
+    (if sort
+        (sort (hash-table-values hel--cursors-table)
+              (lambda (c1 c2)
+                (< (overlay-get c1 'point)
+                   (overlay-get c2 'point))))
+      (hash-table-values hel--cursors-table))))
 
 (defun hel-cursor-with-id (id)
   "Return the cursor with the given ID if it is stil alive."
