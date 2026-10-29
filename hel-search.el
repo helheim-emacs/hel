@@ -94,47 +94,6 @@ This function modifies the match data that `match-beginning',
                                            val)))))
     found))
 
-(defun hel-put-highlight (start end face &optional priority overlay)
-  (-doto (if overlay
-             (move-overlay overlay start end)
-           ;; Bug#77121: highlight overlays must be non-sticky at both ends.
-           (make-overlay start end nil t nil))
-    (overlay-put 'face face)
-    (overlay-put 'priority priority)))
-
-(defun hel-search-highlight-all-matches (match-data &optional overlays)
-  "Highlight all submatches in MATCH-DATA.
-Return list with overlays. Reuse OVERLAYS if provided.
-
-The faces used to do the highlights are named `isearch-group-1',
-`isearch-group-2', etc. (By default, only these 2 are defined.) When there
-are more matches than faces, then faces are reused from the beginning, in a
-cyclical manner, so the `isearch-group-1' face is reused for the third
-match. If you want to use more distinctive colors, you can define more of
-these faces using the same numbering scheme."
-  (setq match-data (-partition 2 match-data))
-  (prog1 (cons
-          ;; Whole match
-          (-let [(start end) (car match-data)]
-            (hel-put-highlight start end 'isearch '(nil . 51)
-                               (if overlays (pop overlays))))
-          ;; Submatches
-          (let ((group 0))
-            (->> (cdr match-data)
-                 (-map (-lambda ((start end))
-                         (when (and (integer-or-marker-p start)
-                                    (integer-or-marker-p end))
-                           (let* ((next (intern-soft (format "isearch-group-%d"
-                                                             (cl-incf group))))
-                                  (face (if (facep next)
-                                            next
-                                          (setq group 0)
-                                          'isearch-group-1)))
-                             (hel-put-highlight start end face '(nil . 52)
-                                                (if overlays (pop overlays))))))))))
-    ;; Remove remaining overlays
-    (-each overlays #'delete-overlay)))
-
 (defun hel-invert-ranges (ranges start end)
   "Return the list with complements to RANGES withing [START, END] positions.
 
