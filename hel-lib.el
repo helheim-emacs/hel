@@ -494,6 +494,34 @@ A major mode may remap `self-insert-command' like Org mode does."
   (or (eq command 'self-insert-command)
       (eq command (command-remapping 'self-insert-command))))
 
+(defun hel-partition-index (vector pred)
+  "Return the first index I in VECTOR for which (PRED VECTOR[I]) is non-nil.
+VECTOR must be partitioned by PRED: all elements for which PRED is nil
+come before all elements for which it is non-nil.  Return (length VECTOR)
+when PRED holds for no element.  Call PRED O(log n) times."
+  (let ((low 0)
+        (high (length vector)))
+    (while (< low high)
+      (let ((mid (/ (+ low high) 2)))
+        (if (funcall pred (aref vector mid))
+            (setq high mid)
+          (setq low (1+ mid)))))
+    low))
+
+(cl-defun hel-lower-bound (vector value &key (key #'identity))
+  "Return the first index I in VECTOR for which (KEY VECTOR[I]) >= VALUE.
+This is the first index where VALUE can be inserted with the order kept:
+before all elements whose key equals VALUE. VECTOR must be sorted by KEY
+in ascending order. Return (length VECTOR) when there is no such index."
+  (hel-partition-index vector (lambda (x) (<= value (funcall key x)))))
+
+(cl-defun hel-upper-bound (vector value &key (key #'identity))
+  "Return the first index I in VECTOR for which (KEY VECTOR[I]) > VALUE.
+This is the last index where VALUE can be inserted with the order kept:
+after all elements whose key equals VALUE. VECTOR must be sorted by KEY
+in ascending order. Return (length VECTOR) when there is no such index."
+  (hel-partition-index vector (lambda (x) (< value (funcall key x)))))
+
 ;;; Motions
 
 (defun hel-forward-following-thing (thing &optional count)
