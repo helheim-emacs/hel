@@ -402,7 +402,7 @@ text differs from the scanned one."
          (point (point))
          (win-start (window-start))
          (win-hscroll (window-hscroll))
-         target opened-overlays)
+         target opened-overlays timer)
     (cl-flet*
         ((highlight (start end &optional overlay)
            (-doto (if overlay
@@ -434,14 +434,21 @@ text differs from the scanned one."
                        hel-search--current nil)
                  (let ((message-log-max nil))
                    (message (propertize "No matches" 'face 'error)))))))
+         (refresh (input)
+           (update (unless (string-empty-p input)
+                     (hel-pcre-to-elisp input))))
          (after-change (_beg _end _len)
-           (hel-search-session-cleanup ss)
-           (unless (input-pending-p)
-             (update (let ((s (minibuffer-contents-no-properties)))
-                       (unless (string-empty-p s)
-                         (hel-pcre-to-elisp s))))))
+           ;; Update once Emacs has handled all pending input.  An input
+           ;; method commits a character together with events that change
+           ;; no text, so a skipped update would never run again.
+           (when timer (cancel-timer timer))
+           (setq timer (run-with-idle-timer 0 nil #'refresh
+                                            (minibuffer-contents-no-properties))))
+         (stop ()
+           (when timer (cancel-timer timer)))
          (start ()
-           (add-hook 'after-change-functions #'after-change nil t)))
+           (add-hook 'after-change-functions #'after-change nil t)
+           (add-hook 'minibuffer-exit-hook #'stop nil t)))
       ;; main
       (deactivate-mark)
       (when-let* ((input (condition-case nil
@@ -656,7 +663,8 @@ Shows a live preview, a match count, and scrolls the first match into view."
                               (-uniq)
                               (-filter (lambda (ov)
                                          (invisible-p (overlay-get ov 'invisible))))))
-        hl-overlays)
+        hl-overlays
+        timer)
     (cl-flet*
         ((ranges-for (regexp)
            (let ((matches (-map (-lambda ((from . to))
@@ -690,13 +698,19 @@ Shows a live preview, a match count, and scrolls the first match into view."
                (setq hl-overlays (-map #'highlight regions))
                (let ((message-log-max nil))
                  (message (propertize "No matches" 'face 'error))))))
+         (refresh (input)
+           (-each hl-overlays #'delete-overlay)
+           (update (unless (string-empty-p input)
+                     (hel-pcre-to-elisp input))))
          (after (_beg _end _len)
-           (unless (input-pending-p)
-             (-each hl-overlays #'delete-overlay)
-             (update (let ((s (minibuffer-contents-no-properties)))
-                       (unless (string-empty-p s)
-                         (hel-pcre-to-elisp s))))))
+           ;; Update once Emacs has handled all pending input.  An input
+           ;; method commits a character together with events that change
+           ;; no text, so a skipped update would never run again.
+           (when timer (cancel-timer timer))
+           (setq timer (run-with-idle-timer 0 nil #'refresh
+                                            (minibuffer-contents-no-properties))))
          (stop ()
+           (when timer (cancel-timer timer))
            (-each hl-overlays #'delete-overlay)
            (-each closed-overlays #'hel-close-temporary-opened-overlay))
          (start ()
@@ -744,7 +758,8 @@ If INVERT is non-nil — remove selections that match regexp."
                                     (buffer-substring-no-properties
                                      (overlay-get cursor 'point)
                                      (overlay-get cursor 'mark)))
-                                  cursors)))
+                                  cursors))
+           timer)
       (cl-flet*
           ((update (regexp)
              (if-let* ((regexp)
@@ -761,13 +776,21 @@ If INVERT is non-nil — remove selections that match regexp."
                  (message (propertize "No matches" 'face 'error)))
                (-each regions-overlays (lambda (ov)
                                          (overlay-put ov 'face 'region)))))
+           (refresh (input)
+             (update (unless (string-empty-p input)
+                       (hel-pcre-to-elisp input))))
            (after (_beg _end _len)
-             (unless (input-pending-p)
-               (update (let ((s (minibuffer-contents-no-properties)))
-                         (unless (string-empty-p s)
-                           (hel-pcre-to-elisp s))))))
+             ;; Update once Emacs has handled all pending input.  An input
+             ;; method commits a character together with events that change
+             ;; no text, so a skipped update would never run again.
+             (when timer (cancel-timer timer))
+             (setq timer (run-with-idle-timer 0 nil #'refresh
+                                              (minibuffer-contents-no-properties))))
+           (stop ()
+             (when timer (cancel-timer timer)))
            (start ()
-             (add-hook 'after-change-functions #'after nil t)))
+             (add-hook 'after-change-functions #'after nil t)
+             (add-hook 'minibuffer-exit-hook #'stop nil t)))
         ;; main
         (deactivate-mark)
         (-each cursors #'delete-overlay)
