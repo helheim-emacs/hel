@@ -58,10 +58,7 @@ Execute in order:
         ((region-active-p)
          (deactivate-mark))
         (hel-search--session
-         (hel-search-session-cleanup hel-search--session)
-         (setq hel-search--session nil
-               hel-search--current nil
-               hel-search--total nil))))
+         (hel-search-stop))))
 
 ;;; Motions
 
@@ -941,10 +938,7 @@ When called interactively — toggle extending selection."
         ((use-region-p)
          (deactivate-mark))
         (hel-search--session
-         (hel-search-session-cleanup hel-search--session)
-         (setq hel-search--session nil
-               hel-search--current nil
-               hel-search--total nil))))
+         (hel-search-stop))))
 
 ;; x
 (hel-define-command hel-expand-line-selection (count)

@@ -64,51 +64,90 @@
       (hel-pcre-to-elisp pattern)
     (user-error "Register / is empty")))
 
-(cl-defun hel-match (&optional (match-data (match-data)))
+(cl-defun hel-match (&optional (match-data (match-data t)))
   "Return cons cell with bounds of the first match group in `match-data'.
 If there were no match groups in the last used regexp — return the bounds
 of the full regexp match."
   (setq match-data (-partition 2 match-data))
-  (-let [(start end) (or (-second-item match-data)
-                         (-first-item match-data))]
-    (cons start end))
-  ;; (set-match-data match-data)
-  ;; (if (match-beginning 1)
-  ;;     (cons (match-beginning 1) (match-end 1))
-  ;;   (cons (match-beginning 0) (match-end 0)))
-  )
+  ;; Group 1 is nil when it did not take part in the match.
+  (-let [(start end) (if (car (-second-item match-data))
+                         (-second-item match-data)
+                       (-first-item match-data))]
+    (cons start end)))
 
 (cl-defun hel-search (regexp &optional bound (direction 1))
-  "Find the first match for the REGEXP toward the DIRECTION.
+  "Find the first visible match for the REGEXP toward the DIRECTION.
+A match is visible when the bounds that `hel-match' returns for it are.
 Return list (MATCH-DATA OVERLAYS) where:
-- MATCH-DATA is the same as `match-data' returns;
+- MATCH-DATA is the same as `match-data' returns with integer positions;
 - OVERLAYS is a list with openable overlays that currently hide the match.
 
 This function modifies the match data that `match-beginning',
 `match-end' and `match-data' access."
+  (or bound (setq bound (if (< 0 direction) (point-max) (point-min))))
   (let (found)
     (while (and (not found)
+                (/= (point) bound)
                 (re-search-forward regexp bound t direction))
-      (when-let* ((val (hel-range-visible? (match-beginning 0) (match-end 0))))
-        (setq found (list (match-data) (if (consp val)
-                                           val)))))
+      (if (= (match-beginning 0) (match-end 0))
+          ;; Step over a zero-length match like "^" or "$" to ensure
+          ;; progress: the search finds it again at the same point.
+          (unless (= (point) bound)
+            (forward-char direction))
+        (-let* ((mdata (match-data t))
+                ((beg . end) (hel-match mdata)))
+          (when-let* ((visible (hel-range-visible? beg end)))
+            (setq found (list mdata (if (consp visible)
+                                        visible)))))))
     found))
 
-(defun hel-invert-ranges (ranges start end)
-  "Return the list with complements to RANGES withing [START, END] positions.
+(cl-defun hel-matches-in-region ( regexp from to
+                                  &optional (max-matches most-positive-fixnum))
+  "Find the visible matches of REGEXP in the current buffer from FROM to TO.
+MAX-MATCHES limits how many regexp matches, visible or not, will be
+examined. It is unlimited by default.
 
-  ((1 . 2) (3 . 4) (5 . 6))  =>  ((start . 1) (2 . 3) (4 . 5) (6 . end))
+Return (RANGES . STOP) cons-cell, where:
+- RANGES is a list of (START . END) positions of the visible non-empty
+  matches in buffer order, as `hel-match' returns them;
+- STOP is the position where the scan ended when it examined MAX-MATCHES
+  matches.  STOP equals TO when the range is exhausted."
+  (save-excursion
+    (goto-char from)
+    (let ((n 0)
+          ranges)
+      (while (and (< n max-matches)
+                  (< (point) to)
+                  (re-search-forward regexp to t))
+        (cl-incf n)
+        (if (= (match-beginning 0) (match-end 0))
+            ;; Step over a zero-length match like "^" or "$" to ensure
+            ;; forward progress.
+            (unless (= (point) to)
+              (forward-char 1))
+          (-let [(beg . end) (hel-match)]
+            (when (hel-range-visible? beg end)
+              (push (cons beg end) ranges)))))
+      (cons (nreverse ranges)
+            (if (< n max-matches)
+                to
+              (point))))))
 
-RANGES is a list of cons cells with positions (START . END)."
-  (when ranges
-    (let (result)
-      (dolist (range ranges)
-        (when (< start (car range))
-          (push (cons start (car range)) result))
-        (setq start (cdr range)))
-      (when (< start end)
-        (push (cons start end) result))
-      (nreverse result))))
+(defun hel-complement-ranges (ranges from to)
+  "Return the parts between FROM and TO that RANGES do not cover.
+RANGES is a list of (START . END) positions: sorted, non-overlapping,
+and between FROM and TO. Empty parts are left out, so adjacent ranges
+produce no part between them.
+
+  from (3 . 5) (8 . 9) to  =>  (from . 3) (5 . 8) (9 . to)"
+  (let (result)
+    (dolist (range ranges)
+      (when (< from (car range))
+        (push (cons from (car range)) result))
+      (setq from (cdr range)))
+    (when (< from to)
+      (push (cons from to) result))
+    (nreverse result)))
 
 ;;; Search session
 
@@ -117,29 +156,27 @@ RANGES is a list of cons cells with positions (START . END)."
                                   (:copier nil))
   ;; Public
   regexp
-  (start    nil :documentation "Limit that bounds the search area.")
-  (end      nil :documentation "Limit that bounds the search area.")
   (callback nil :documentation "Executed when searching session is complete.")
   ;; Private
-  (counter  0   :documentation "Running counter.")
-  (total    nil :documentation "Total matches; nil while scanning in progress.")
+  (buffer   nil :read-only t)
+  (tick     nil :documentation "`buffer-chars-modified-tick'")
   (timer    nil :documentation "Active timer for the scanning pipeline.")
   (scan-pos nil :documentation "Where the buffer scan left off.")
-  ;; It is a list during scanning and a sorted vector after the scan completes.
-  (overlays nil :documentation "Search matches overlays.")
-  (buffer   nil :read-only t)
-  (buffer-hash nil))
+  (window-region   nil :documentation "(FROM . TO) positions that the window scan phase has searched.")
+  (window-matches  nil :documentation "Overlays from the window scan phase, in buffer order.")
+  (scanned-matches nil :documentation "Overlays from the buffer scan phase, last first.")
+  (matches  nil :documentation "Sorted vector of all match overlays.
+The scan is complete exactly when this slot holds a vector."))
 
-(cl-defun hel-search-session-create ( &optional regexp start end
-                                      &key callback)
+(cl-defun hel-search-session-create ( &optional regexp
+                                      &key (callback 'hel-search--show-counter))
   "Create `hel-search-session' object.
 Run search session if REGEXP is provided."
   (let ((self (hel-search-session--create
                :regexp regexp
-               :start start :end end
-               :callback (or callback 'hel-search-session--update-modeline)
+               :callback callback
                :buffer (current-buffer)
-               :buffer-hash (buffer-hash))))
+               :tick (buffer-chars-modified-tick))))
     (when regexp
       (setf (hel-search-session-timer self)
             (run-at-time nil nil #'hel-search-session--scan-window self)))
@@ -148,15 +185,16 @@ Run search session if REGEXP is provided."
 (defun hel-search-session-cleanup (self)
   "Destructor for `hel-search-session' objects."
   (-some-> (hel-search-session-timer self) (cancel-timer))
-  ;; The overlays slot may be either a list (during a scan) or a vector
-  ;; (after scan is completed); `mapc' iterates both.
-  (mapc #'delete-overlay (hel-search-session-overlays self))
-  (setf (hel-search-session-counter self)     0
-        (hel-search-session-total self)       nil
-        (hel-search-session-scan-pos self)    nil
-        (hel-search-session-overlays self)    nil
-        (hel-search-session-timer self)       nil
-        (hel-search-session-buffer-hash self) nil))
+  (mapc #'delete-overlay (hel-search-session-window-matches self))
+  (mapc #'delete-overlay (hel-search-session-scanned-matches self))
+  (mapc #'delete-overlay (hel-search-session-matches self))
+  (setf (hel-search-session-tick self)            nil
+        (hel-search-session-timer self)           nil
+        (hel-search-session-scan-pos self)        nil
+        (hel-search-session-window-region self)   nil
+        (hel-search-session-window-matches self)  nil
+        (hel-search-session-scanned-matches self) nil
+        (hel-search-session-matches self)         nil))
 
 (defun hel-search-session-restart (self &optional regexp)
   (hel-search-session-cleanup self)
@@ -164,8 +202,8 @@ Run search session if REGEXP is provided."
       (setf (hel-search-session-regexp self) regexp)
     (setf regexp (hel-search-session-regexp self)))
   (when regexp
-    (setf (hel-search-session-buffer-hash self)
-          (buffer-hash (hel-search-session-buffer self)))
+    (setf (hel-search-session-tick self)
+          (buffer-chars-modified-tick (hel-search-session-buffer self)))
     (setf (hel-search-session-timer self)
           (run-at-time (if (length< regexp hel-search-no-delay-length)
                            hel-search-initial-delay)
@@ -177,85 +215,71 @@ Run search session if REGEXP is provided."
     (cond ((not (buffer-live-p buffer))
            (hel-search-session-cleanup self))
           (window
-           (with-current-buffer (hel-search-session-buffer self)
-             (let* ((regexp (hel-search-session-regexp self))
-                    (search-start (max (or (hel-search-session-start self) (point-min))
-                                       (window-group-start window)))
-                    (search-end   (min (or (hel-search-session-end self) (point-max))
-                                       (window-group-end window t)))
-                    window-overlays)
-               (save-excursion
-                 (goto-char search-start)
-                 (let (match)
-                   (while (setq match (hel-search regexp search-end))
-                     (-let* (((match-data _closed-overlays) match)
-                             ((beg . end) (hel-match match-data)))
-                       (if (= beg end)
-                           ;; Ensure forward progress on zero-length matches
-                           ;; like "^" or "$" to avoid an infinite loop.
-                           (unless (eobp) (forward-char 1))
-                         (push (hel-search-session--highlight-overlay beg end)
-                               window-overlays))))))
-               (cl-callf nreverse window-overlays)
+           (with-current-buffer buffer
+             (-let* ((start (window-group-start window))
+                     (end   (min (window-group-end window t) (point-max)))
+                     ((matches . _) (hel-matches-in-region
+                                     (hel-search-session-regexp self)
+                                     start end)))
+               (setf (hel-search-session-tick self)
+                     (buffer-chars-modified-tick))
+               (setf (hel-search-session-window-region self)
+                     (cons start end))
+               (setf (hel-search-session-window-matches self)
+                     (-map #'hel-search-session--highlight matches))
                (setf (hel-search-session-timer self)
                      (run-at-time hel-lazy-highlight-interval nil
-                                  #'hel-search-session--scan-buffer
-                                  self window-overlays))))))))
+                                  #'hel-search-session--scan-buffer self))))))))
 
-(defun hel-search-session--scan-buffer (self window-overlays)
-  (if (not (buffer-live-p (hel-search-session-buffer self)))
-      (hel-search-session-cleanup self)
-    (with-current-buffer (hel-search-session-buffer self)
-      (let ((regexp (hel-search-session-regexp self))
-            (start (or (hel-search-session-scan-pos self)
-                       (hel-search-session-start self)
-                       (point-min)))
-            (end   (or (hel-search-session-end self) (point-max)))
-            (n 0)
-            match)
-        (save-excursion
-          (goto-char start)
-          (while (and (< n hel-search-max-at-a-time)
-                      (setq match (hel-search regexp end)))
-            (-let* (((match-data _closed-overlays) match)
-                    ((beg . end) (hel-match match-data)))
-              (cl-incf n)
-              (if (= beg end)
-                  ;; Zero-width match: advance to avoid an infinite loop.
-                  ;; Can be when regexp consists only of "^" or "$".
-                  (unless (eobp) (forward-char 1))
-                (if (and window-overlays
-                         (= beg (overlay-start (car window-overlays))))
-                    (progn
-                      (cl-callf + (hel-search-session-counter self)
-                                  (length window-overlays))
-                      (setf (hel-search-session-overlays self)
-                            (nconc (nreverse window-overlays)
-                                   (hel-search-session-overlays self)))
-                      (setq window-overlays nil)
-                      (goto-char (-> (hel-search-session-overlays self)
-                                     (-first-item)
-                                     (overlay-end))))
-                  ;; else
-                  (cl-incf (hel-search-session-counter self))
-                  (push (hel-search-session--highlight-overlay beg end)
-                        (hel-search-session-overlays self))))))
-          (setf (hel-search-session-scan-pos self) (point)))
-        (if (>= n hel-search-max-at-a-time)
-            ;; Limit hit: reschedule the next cycle.
-            (setf (hel-search-session-timer self)
-                  (run-at-time hel-lazy-highlight-interval nil
-                               #'hel-search-session--scan-buffer
-                               self window-overlays))
-          ;; Search finished.
-          (setf (hel-search-session-timer self) nil
-                (hel-search-session-total self) (hel-search-session-counter self))
-          ;; Reverse list and convert it to vector.
-          (setf (hel-search-session-overlays self)
-                (vconcat (nreverse (hel-search-session-overlays self))))
-          (-some-> (hel-search-session-callback self) (funcall self)))))))
+(defun hel-search-session--scan-buffer (self)
+  (let ((buffer (hel-search-session-buffer self)))
+    (cond
+     ((not (buffer-live-p buffer))
+      (hel-search-session-cleanup self))
+     ((/= (hel-search-session-tick self) (buffer-chars-modified-tick buffer))
+      ;; The text has changed, so the overlays found so far are stale.
+      (hel-search-session-restart self))
+     (t
+      (with-current-buffer buffer
+        (-let* ((start (or (hel-search-session-scan-pos self)
+                           (point-min)))
+                (end   (point-max))
+                ((win-start . win-end) (hel-search-session-window-region self))
+                ;; Search only up to the region that the window scan
+                ;; has searched.
+                ((ranges . stop) (hel-matches-in-region
+                                  (hel-search-session-regexp self)
+                                  start
+                                  (or win-start end)
+                                  hel-search-max-at-a-time)))
+          (dolist (range ranges)
+            (push (hel-search-session--highlight range)
+                  (hel-search-session-scanned-matches self)))
+          (when (eql stop win-start)
+            ;; The scan has reached the window region: take the overlays
+            ;; of the window scan and resume after the region.
+            (setf (hel-search-session-scanned-matches self)
+                  (nconc (reverse (hel-search-session-window-matches self))
+                         (hel-search-session-scanned-matches self)))
+            (setf (hel-search-session-window-region self)  nil
+                  (hel-search-session-window-matches self) nil)
+            (setq stop win-end))
+          (setf (hel-search-session-scan-pos self) stop)
+          (if (< stop end)
+              (setf (hel-search-session-timer self)
+                    (run-at-time hel-lazy-highlight-interval nil
+                                 #'hel-search-session--scan-buffer self))
+            ;; Search finished.
+            (setf (hel-search-session-timer self) nil)
+            (setf (hel-search-session-matches self)
+                  (-> (hel-search-session-scanned-matches self)
+                      (nreverse)
+                      (vconcat)))
+            (setf (hel-search-session-scanned-matches self) nil)
+            (-some-> (hel-search-session-callback self) (funcall self)))))))))
 
-(defun hel-search-session--highlight-overlay (start end)
+(cl-defun hel-search-session--highlight ((start . end))
+  "Put a search highlighting overlay from START to END and return it."
   ;; Bug#77121: highlight overlays must be non-sticky at both ends.
   (-doto (make-overlay start end nil t nil)
     (overlay-put 'face 'hel-search-highlight)
@@ -265,135 +289,110 @@ Run search session if REGEXP is provided."
 (defun hel--delete-overlay-on-modification-h (ov flag _beg _end &optional _len)
   (if flag (delete-overlay ov)))
 
-(defun hel-search-session-next-match (self direction)
-  "Find the next search match in DIRECTION.
+(defun hel-search-session-next-match (self direction pos)
+  "Find the next search match from POS in DIRECTION.
 
-Return (START END CLOSED-OVERLAYS INDEX) on success where:
+Return (START END INDEX CLOSED-OVERLAYS) on success where:
 
 - START, END       Match bounds.
-- CLOSED-OVERLAYS  Closed overlays that currently hide the match.
 - INDEX            Position of the match in the session's overlay vector,
-                   or nil when this inforation is unavailable.
+                   or nil when this information is unavailable.
+- CLOSED-OVERLAYS  Closed overlays that currently hide the match.
 
 Return nil when no match exists."
-  (save-excursion
-    (if-let* ((total (hel-search-session-total self)))
-        ;; search session is complete
-        (unless (= total 0)
-          (hel-search-session--next-match-cached self direction))
-      ;; else search session is running
-      (hel-search-session--next-match-live self direction))))
+  (let ((matches (hel-search-session-matches self)))
+    (cond ((null matches)
+           ;; The scan is still running.
+           (hel-search-session--next-match-live self direction pos))
+          ((< 0 (length matches))
+           (hel-search-session--next-match-cached self direction pos)))))
 
-(defun hel-search-session--next-match-live (self direction)
-  "Live search in the buffer."
+(defun hel-search-session--next-match-live (self direction pos)
+  "Search the buffer for the next match from POS in DIRECTION."
   (with-current-buffer (hel-search-session-buffer self)
-    (if-let* ((pos (if (use-region-p)
-                       (if (< direction 0) (region-beginning) (region-end))
-                     (point)))
-              (regexp (hel-search-session-regexp self))
-              (match (or (hel-search regexp nil direction)
-                         (progn
-                           (goto-char (if (< 0 direction) (point-min) (point-max)))
-                           (hel-search regexp pos direction)))))
-        (-let* (((match-data closed-overlays) match)
-                ((start . end) (hel-match match-data)))
-          (list start end closed-overlays nil)))))
+    (save-excursion
+      (goto-char pos)
+      (if-let* ((regexp (hel-search-session-regexp self))
+                (match (or (hel-search regexp nil direction)
+                           (progn
+                             (goto-char (if (< 0 direction) (point-min) (point-max)))
+                             (hel-search regexp pos direction)))))
+          (-let* (((match-data closed-overlays) match)
+                  ((start . end) (hel-match match-data)))
+            (list start end nil closed-overlays))))))
 
-(defun hel-search-session--next-match-cached (self direction)
-  "Binary search in cached results."
-  (let ((pos (if (use-region-p)
-                 (if (< direction 0) (region-beginning) (region-end))
-               (point))))
-    (condition-case nil
-        (let* ((overlays (hel-search-session-overlays self))
-               (index (if (< 0 direction)
-                          (hel-search-session--next-match self pos)
-                        (hel-search-session--previous-match self pos)))
-               (overlay (elt overlays index))
-               (start (overlay-start overlay))
-               (end (overlay-end overlay))
-               (closed-overlays
-                (->> (overlays-in start end)
-                     (-filter (lambda (ov)
-                                (and (invisible-p (overlay-get ov 'invisible))
-                                     (overlay-get ov 'isearch-open-invisible)))))))
-          (list start end closed-overlays index))
-      (t
-       ;; Search session is corrupted: restart it and search live.
-       (hel-search-session-restart self)
-       (hel-search-session--next-match-live self pos)))))
+(defun hel-search-session--next-match-cached (self direction pos)
+  "Find the next match from POS in DIRECTION."
+  (with-current-buffer (hel-search-session-buffer self)
+    (let* ((matches (hel-search-session-matches self))
+           (index (if (< 0 direction)
+                      ;; The first match that starts at or after POS.
+                      ;; Past the last match `mod' wraps to the first one.
+                      (mod (hel-lower-bound matches pos :key #'overlay-start)
+                           (length matches))
+                    ;; The last match that ends at or before POS.
+                    ;; `mod' takes the sign of the divisor, so the index -1
+                    ;; before the first match wraps to the last one.
+                    (mod (1- (hel-upper-bound matches pos :key #'overlay-end))
+                         (length matches))))
+           (overlay (elt matches index))
+           (start (overlay-start overlay))
+           (end   (overlay-end overlay))
+           (closed-overlays
+            (->> (overlays-in start end)
+                 (-filter (lambda (ov)
+                            (and (invisible-p (overlay-get ov 'invisible))
+                                 (overlay-get ov 'isearch-open-invisible)))))))
+      (list start end index closed-overlays))))
 
-(defun hel-search-session--next-match (self pos)
-  "Return the index of the next overlay that starts after POS."
-  (let* ((overlays (hel-search-session-overlays self))
-         (low 0)
-         (high (hel-search-session-total self))
-         (mid 0)
-         (result 0))
-    (while (< low high)
-      (setq mid (/ (+ low high) 2))
-      (if (<= pos (overlay-start (elt overlays mid)))
-          (setq result mid
-                high mid)
-        (setq low (1+ mid))))
-    result))
+(defun hel-search-session-current-match (self pos)
+  "Return (START END INDEX) of the match at POS or nil."
+  (with-current-buffer (hel-search-session-buffer self)
+    (if-let* ((matches (hel-search-session-matches self))
+              (index (hel-lower-bound matches pos :key #'overlay-end))
+              ((< index (length matches)))
+              (overlay (elt matches index))
+              (start (overlay-start overlay))
+              (end   (overlay-end overlay))
+              ((<= start pos)))
+        (list start end index))))
 
-(defun hel-search-session--previous-match (self pos)
-  "Return the index of the previous overlay that ends before POS."
-  (let ((overlays (hel-search-session-overlays self))
-        (low 0)
-        (high (hel-search-session-total self))
-        (mid 0)
-        (result (1- (hel-search-session-total self))))
-    (while (< low high)
-      (setq mid (/ (+ low high) 2))
-      (if (<= (overlay-end (elt overlays mid)) pos)
-          (setq result mid
-                low (1+ mid))
-        (setq high mid)))
-    result))
+(defun hel-search--show-counter (search-session)
+  "Show the match counter of SEARCH-SESSION in the mode line.
+The counter follows point until `hel-search-stop' ends the session."
+  (with-current-buffer (hel-search-session-buffer search-session)
+    (hel-search--refresh-counter search-session)
+    (add-hook 'post-command-hook #'hel-search--refresh-counter 95 t)))
 
-(defun hel-search-session--current-match (self pos)
-  (let ((overlays (hel-search-session-overlays self))
-        (low 0)
-        (high (hel-search-session-total self))
-        (mid 0)
-        ov found)
-    (while (and (not found) (< low high))
-      (setq mid (/ (+ low high) 2)
-            ov (elt overlays mid))
-      (cond ((<= (overlay-start ov) pos (overlay-end ov))
-             (setq found ov))
-            ((< pos (overlay-start ov))
-             (setq high mid))
-            (t
-             (setq low (1+ mid)))))
-    (if found mid)))
+(cl-defun hel-search--refresh-counter (&optional (search-session hel-search--session))
+  "Show the number of matches of SEARCH-SESSION and the index of the match at point.
+Show only the number of matches when point is inside no match, and
+nothing while the scan of SEARCH-SESSION is incomplete or the buffer
+text differs from the scanned one."
+  (-let [(current . total)
+         (if-let* ((ss search-session)
+                   (matches (hel-search-session-matches ss))
+                   ((< 0 (length matches)))
+                   ;; After an edit the overlays may be deleted or stale.
+                   ((eql (buffer-chars-modified-tick)
+                         (hel-search-session-tick ss))))
+             (cons (-if-let* (((_ _ index)
+                               (hel-search-session-current-match ss (point))))
+                       (1+ index))
+                   (length matches)))]
+    (unless (and (eql current hel-search--current)
+                 (eql total hel-search--total))
+      (setq hel-search--current current
+            hel-search--total   total)
+      (force-mode-line-update))))
 
-(defun hel-search-session--update-modeline (ss)
-  (with-current-buffer (hel-search-session-buffer ss)
-    (if-let* ((total (hel-search-session-total ss))
-              ((not (zerop total))))
-        (progn
-          (setq hel-search--total total
-                hel-search--current (-some-> (hel-search-session--current-match ss (point))
-                                      (1+)))
-          (add-hook 'post-command-hook #'hel-search--clean-current 95 t))
-      ;; else
-      (setq hel-search--total nil
-            hel-search--current nil))
-    (force-mode-line-update)))
-
-(defun hel-search--clean-current ()
-  (if-let* ((current hel-search--current)
-            (ss hel-search--session)
-            (overlays (hel-search-session-overlays ss))
-            (ov (elt overlays (1- current)))
-            ((<= (overlay-start ov) (point) (overlay-end ov))))
-      nil
-    (remove-hook 'post-command-hook #'hel-search--clean-current t)
-    (setq hel-search--current nil)
-    (force-mode-line-update)))
+(defun hel-search-stop ()
+  "End the search session in the current buffer and clear the match counter."
+  (remove-hook 'post-command-hook #'hel-search--refresh-counter t)
+  (-some-> hel-search--session (hel-search-session-cleanup))
+  (setq hel-search--session nil
+        hel-search--current nil
+        hel-search--total nil))
 
 ;;; Search: /, ?, n, N, *
 
@@ -405,7 +404,14 @@ Return nil when no match exists."
          (win-hscroll (window-hscroll))
          target opened-overlays)
     (cl-flet*
-        ((update (regexp)
+        ((highlight (start end &optional overlay)
+           (-doto (if overlay
+                      (move-overlay overlay start end)
+                    ;; Bug#77121: highlight overlays must be non-sticky at both ends.
+                    (make-overlay start end nil t nil))
+             (overlay-put 'face 'region)
+             (overlay-put 'priority 100)))
+         (update (regexp)
            (with-minibuffer-selected-window
              (hel-recenter-point-on-jump
                (goto-char point)
@@ -414,10 +420,10 @@ Return nil when no match exists."
                (if-let* ((regexp)
                          (match (progn
                                   (hel-search-session-restart ss regexp)
-                                  (hel-search-session-next-match ss direction))))
-                   (-let [(start end closed-overlays) match]
+                                  (hel-search-session-next-match ss direction (point)))))
+                   (-let [(start end _ closed-overlays) match]
                      (goto-char (if (< direction 0) start end))
-                     (setq target (hel-put-highlight start end 'region 100 target))
+                     (setq target (highlight start end target))
                      (-each closed-overlays #'hel-temporary-open-overlay)
                      (cl-callf append opened-overlays closed-overlays))
                  ;; else
@@ -468,13 +474,10 @@ Return nil when no match exists."
   :multiple-cursors nil
   :merge-selections t
   (interactive)
-  (-some-> hel-search--session (hel-search-session-cleanup))
-  (setq hel-search--current nil
-        hel-search--total nil
-        hel-search--session (hel-search-interactively "/" 1)
+  (hel-search-stop)
+  (setq hel-search--session (hel-search-interactively "/" 1)
         hel-search--direction 1
-        this-command 'hel-search-forward)
-  (add-hook 'pre-command-hook #'hel-search--clean-current 95 t))
+        this-command 'hel-search-forward))
 
 ;; ?
 (hel-define-command hel-search-backward ()
@@ -482,13 +485,10 @@ Return nil when no match exists."
   :multiple-cursors nil
   :merge-selections t
   (interactive)
-  (-some-> hel-search--session (hel-search-session-cleanup))
-  (setq hel-search--current nil
-        hel-search--total nil
-        hel-search--session (hel-search-interactively "?" -1)
+  (hel-search-stop)
+  (setq hel-search--session (hel-search-interactively "?" -1)
         hel-search--direction -1
-        this-command 'hel-search-backward)
-  (add-hook 'pre-command-hook #'hel-search--clean-current 95 t))
+        this-command 'hel-search-backward))
 
 ;; n
 (hel-define-command hel-search-next (count)
@@ -509,22 +509,25 @@ Return nil when no match exists."
       (hel-push-point))
     ;;
     (if-let* ((ss hel-search--session))
-        (unless (and (equal (buffer-hash) (hel-search-session-buffer-hash ss))
-                     (equal regexp (hel-search-session-regexp ss)))
+        (unless (and (eql (hel-search-session-tick ss)
+                          (buffer-chars-modified-tick))
+                     (equal (hel-search-session-regexp ss)
+                            regexp))
           (hel-search-session-restart ss regexp))
       (setq hel-search--session (hel-search-session-create regexp)))
     ;;
     (let ((region-dir (if (use-region-p) (hel-region-direction) 1)))
       (hel-recenter-point-on-jump
         (hel-motion-loop (dir count)
-          (when-let* ((match (hel-search-session-next-match hel-search--session dir)))
-            (-let [(start end closed-overlays index) match]
+          (when-let* ((pos (if (use-region-p)
+                               (if (< dir 0) (region-beginning) (region-end))
+                             (point)))
+                      (match (hel-search-session-next-match hel-search--session dir pos)))
+            (-let [(start end _ closed-overlays) match]
               (when (and hel--extend-selection (use-region-p))
                 (hel-create-fake-cursor-from-point))
               (hel-set-region start end region-dir)
-              (-each closed-overlays #'hel-open-overlay)
-              (setq hel-search--current (if index (1+ index)))
-              (add-hook 'post-command-hook #'hel-search--clean-current 95 t))))))))
+              (-each closed-overlays #'hel-open-overlay))))))))
 
 ;; N
 (hel-define-command hel-search-previous (count)
@@ -571,7 +574,7 @@ Auto-detect word boundaries at the beginning and end of the search pattern."
       (let* ((separator (if hel-use-pcre-regex "|" "\\|"))
              (regexp (apply #'concat (-interpose separator patterns))))
         (hel-add-to-regex-history regexp)
-        (-some-> hel-search--session (hel-search-session-cleanup))
+        (hel-search-stop)
         (setq hel-search--session (hel-search-session-create
                                    (hel-pcre-to-elisp regexp)))))))
 
@@ -592,7 +595,7 @@ Do not auto-detect word boundaries in the search pattern."
       (let* ((separator (if hel-use-pcre-regex "|" "\\|"))
              (regexp (apply #'concat (-interpose separator patterns))))
         (hel-add-to-regex-history regexp)
-        (-some-> hel-search--session (hel-search-session-cleanup))
+        (hel-search-stop)
         (setq hel-search--session (hel-search-session-create
                                    (hel-pcre-to-elisp regexp)))))))
 
@@ -655,7 +658,21 @@ Shows a live preview, a match count, and scrolls the first match into view."
                                          (invisible-p (overlay-get ov 'invisible))))))
         hl-overlays)
     (cl-flet*
-        ((highlight ((start . end))
+        ((ranges-for (regexp)
+           (let ((matches (-map (-lambda ((from . to))
+                                  (car (hel-matches-in-region regexp from to)))
+                                regions)))
+             ;; Return nil when REGEXP matches in no region. The complement is
+             ;; never empty, so test the matches before taking it.
+             (when (-any? #'identity matches)
+               (if invert
+                   (->> (-zip-with (cl-function
+                                    (lambda (ranges (from . to))
+                                      (hel-complement-ranges ranges from to)))
+                                   matches regions)
+                        (-flatten-n 1))
+                 (-flatten-n 1 matches)))))
+         (highlight ((start . end))
            (-doto (make-overlay start end nil t nil)
              (overlay-put 'face 'region)
              (overlay-put 'priority 100)))
@@ -665,13 +682,9 @@ Shows a live preview, a match count, and scrolls the first match into view."
              (set-window-start nil win-start :noforce)
              (set-window-hscroll nil win-hscroll)
              (if-let* ((regexp)
-                       (ranges (->> regions
-                                    (-mapcat (-lambda ((beg . end))
-                                               (hel-select--search regexp beg end invert)))
-                                    (delq nil))))
+                       (ranges (ranges-for regexp)))
                  (hel-recenter-point-on-jump
-                   ;; (unless (pos-visible-in-window-p min-pos))
-                   (goto-char (apply #'min (-map #'car ranges)))
+                   (goto-char (->> ranges (-map #'car) (apply #'min)))
                    (setq hl-overlays (-map #'highlight ranges)))
                ;; else no matches
                (setq hl-overlays (-map #'highlight regions))
@@ -692,35 +705,14 @@ Shows a live preview, a match count, and scrolls the first match into view."
            (add-hook 'after-change-functions #'after nil t)
            (add-hook 'minibuffer-exit-hook #'stop nil t)))
       ;; main body
-      (when-let* ((input (condition-case nil
+      (when-let* ((regexp (condition-case nil
                              (minibuffer-with-setup-hook #'start
                                (hel-read-regexp (if invert "split: " "select: ")))
                            (quit))) ;; "C-g"
-                  ((stringp input))
-                  ((not (string-empty-p input))))
-        (hel-add-to-regex-history input)
-        (let ((regexp (hel-pcre-to-elisp input)))
-          (->> regions
-               (-mapcat (-lambda ((beg . end))
-                          (hel-select--search regexp beg end invert)))
-               (delq nil)))))))
-
-(defun hel-select--search (regexp start end &optional invert)
-  (save-excursion
-    (goto-char start)
-    (let ((continue t) ranges)
-      (while (and continue (re-search-forward regexp end t))
-        (-let ((bounds (hel-match)))
-          (if (/= (car bounds) (cdr bounds))
-              (push bounds ranges)
-            ;; Break on zero-length match like "^" or "$", to avoid an
-            ;; infinite loop.
-            (setq continue nil
-                  ranges nil))))
-      (cl-callf nreverse ranges)
-      (if invert
-          (hel-invert-ranges ranges start end)
-        ranges))))
+                  ((stringp regexp))
+                  ((not (string-empty-p regexp))))
+        (hel-add-to-regex-history regexp)
+        (ranges-for (hel-pcre-to-elisp regexp))))))
 
 ;;; Filter: K, M-K
 
