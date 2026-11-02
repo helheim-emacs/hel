@@ -395,37 +395,40 @@ when the user enters a regexp, and nil when the user cancels."
              (overlay-put 'face 'region)
              (overlay-put 'priority 100)))
          (update (regexp)
-           (with-minibuffer-selected-window
-             (hel-recenter-point-on-jump
-               (goto-char point)
-               (set-window-start nil win-start :noforce)
-               (set-window-hscroll nil win-hscroll)
-               (if-let* ((regexp)
-                         (match (progn
-                                  (hel-search-session-restart ss regexp)
-                                  (hel-search-session-next-match-from-pos ss (point) direction))))
-                   (-let [(_ start end closed-overlays) match]
-                     (goto-char (if (< direction 0) start end))
-                     (setq target (highlight start end target))
-                     (-each closed-overlays #'hel-temporary-open-overlay)
-                     (cl-callf append opened-overlays closed-overlays))
-                 ;; else
-                 (-some-> target (delete-overlay))
-                 (hel-search-session-cleanup ss)
-                 (setq target nil)
-                 (let ((message-log-max nil))
-                   (message (propertize "No matches" 'face 'error))))
-               (force-mode-line-update))))
-         (refresh (input)
-           (update (unless (string-empty-p input)
-                     (hel-pcre-to-elisp input))))
+           ;; Search for REGEXP from the original point in the selected
+           ;; window and highlight the match.
+           (hel-recenter-point-on-jump
+             (goto-char point)
+             (set-window-start nil win-start :noforce)
+             (set-window-hscroll nil win-hscroll)
+             (if-let* ((regexp)
+                       ((not (string-empty-p regexp)))
+                       (match (progn
+                                (hel-search-session-restart ss regexp)
+                                (hel-search-session-next-match-from-pos ss (point) direction))))
+                 (-let [(_ start end closed-overlays) match]
+                   (goto-char (if (< direction 0) start end))
+                   (setq target (highlight start end target))
+                   (-each closed-overlays #'hel-temporary-open-overlay)
+                   (cl-callf append opened-overlays closed-overlays))
+               ;; else
+               (-some-> target (delete-overlay))
+               (setq target nil)
+               (hel-search-session-cleanup ss)
+               (let ((message-log-max nil))
+                 (message (propertize "No matches" 'face 'error))))
+             (force-mode-line-update)))
          (after-change (_beg _end _len)
-           ;; Update once Emacs has handled all pending input.  An input
-           ;; method commits a character together with events that change
-           ;; no text, so a skipped update would never run again.
-           (-some-> timer (cancel-timer))
-           (setq timer (run-with-idle-timer 0 nil #'refresh
-                                            (minibuffer-contents-no-properties))))
+           ;; Update once Emacs has handled all pending input. An input method
+           ;; commits a character together with events that change no text, so
+           ;; a skipped update would never run again.
+           (let ((regexp (-> (minibuffer-contents-no-properties)
+                             (hel-pcre-to-elisp))))
+             (-some-> timer (cancel-timer))
+             (setq timer (run-with-idle-timer 0 nil
+                          (lambda ()
+                            (with-minibuffer-selected-window
+                              (update regexp)))))))
          (stop ()
            (-some-> timer (cancel-timer)))
          (start ()
