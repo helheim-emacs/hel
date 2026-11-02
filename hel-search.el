@@ -259,10 +259,10 @@ Run search session if REGEXP is provided."
             ;; The scan has reached the window region: take the overlays
             ;; of the window scan and resume after the region.
             (setf (hel-search-session-scanned-matches self)
-                  (nconc (reverse (hel-search-session-window-matches self))
+                  (nconc (nreverse (hel-search-session-window-matches self))
                          (hel-search-session-scanned-matches self)))
-            (setf (hel-search-session-window-region self)  nil
-                  (hel-search-session-window-matches self) nil)
+            (setf (hel-search-session-window-region self)  nil)
+            (setf (hel-search-session-window-matches self) nil)
             (setq stop win-end))
           (setf (hel-search-session-scan-pos self) stop)
           (if (< stop end)
@@ -441,11 +441,11 @@ text differs from the scanned one."
            ;; Update once Emacs has handled all pending input.  An input
            ;; method commits a character together with events that change
            ;; no text, so a skipped update would never run again.
-           (when timer (cancel-timer timer))
+           (-some-> timer (cancel-timer))
            (setq timer (run-with-idle-timer 0 nil #'refresh
                                             (minibuffer-contents-no-properties))))
          (stop ()
-           (when timer (cancel-timer timer)))
+           (-some-> timer (cancel-timer)))
          (start ()
            (add-hook 'after-change-functions #'after-change nil t)
            (add-hook 'minibuffer-exit-hook #'stop nil t)))
@@ -578,8 +578,9 @@ Auto-detect word boundaries at the beginning and end of the search pattern."
                 patterns))))
     (setq patterns (nreverse (-uniq patterns)))
     (when patterns
-      (let* ((separator (if hel-use-pcre-regex "|" "\\|"))
-             (regexp (apply #'concat (-interpose separator patterns))))
+      (let ((regexp (->> patterns
+                         (-interpose (if hel-use-pcre-regex "|" "\\|"))
+                         (apply #'concat))))
         (hel-add-to-regex-history regexp)
         (hel-search-stop)
         (setq hel-search--session (hel-search-session-create
@@ -591,16 +592,18 @@ Auto-detect word boundaries at the beginning and end of the search pattern."
 Do not auto-detect word boundaries in the search pattern."
   :multiple-cursors nil
   (interactive)
-  (let ((quote (if hel-use-pcre-regex #'rxt-quote-pcre #'regexp-quote))
-        patterns)
-    (hel-with-each-cursor
-      (when (use-region-p)
-        (push (funcall quote (buffer-substring-no-properties (point) (mark)))
-              patterns)))
-    (cl-callf nreverse patterns)
+  (let* ((quote-fn (if hel-use-pcre-regex #'rxt-quote-pcre #'regexp-quote))
+         (patterns (let (patterns)
+                     (hel-with-each-cursor
+                       (when (use-region-p)
+                         (push (->> (buffer-substring-no-properties (point) (mark))
+                                    (funcall quote-fn))
+                               patterns)))
+                     (nreverse patterns))))
     (when patterns
-      (let* ((separator (if hel-use-pcre-regex "|" "\\|"))
-             (regexp (apply #'concat (-interpose separator patterns))))
+      (let ((regexp (->> patterns
+                         (-interpose (if hel-use-pcre-regex "|" "\\|"))
+                         (apply #'concat))))
         (hel-add-to-regex-history regexp)
         (hel-search-stop)
         (setq hel-search--session (hel-search-session-create
@@ -690,6 +693,7 @@ Shows a live preview, a match count, and scrolls the first match into view."
              (set-window-start nil win-start :noforce)
              (set-window-hscroll nil win-hscroll)
              (if-let* ((regexp)
+                       ((not (string-empty-p regexp)))
                        (ranges (ranges-for regexp)))
                  (hel-recenter-point-on-jump
                    (goto-char (->> ranges (-map #'car) (apply #'min)))
@@ -700,17 +704,16 @@ Shows a live preview, a match count, and scrolls the first match into view."
                  (message (propertize "No matches" 'face 'error))))))
          (refresh (input)
            (-each hl-overlays #'delete-overlay)
-           (update (unless (string-empty-p input)
-                     (hel-pcre-to-elisp input))))
+           (update (hel-pcre-to-elisp input)))
          (after (_beg _end _len)
            ;; Update once Emacs has handled all pending input.  An input
            ;; method commits a character together with events that change
            ;; no text, so a skipped update would never run again.
-           (when timer (cancel-timer timer))
+           (-some-> timer (cancel-timer))
            (setq timer (run-with-idle-timer 0 nil #'refresh
                                             (minibuffer-contents-no-properties))))
          (stop ()
-           (when timer (cancel-timer timer))
+           (-some-> timer (cancel-timer))
            (-each hl-overlays #'delete-overlay)
            (-each closed-overlays #'hel-close-temporary-opened-overlay))
          (start ()
@@ -726,7 +729,7 @@ Shows a live preview, a match count, and scrolls the first match into view."
                   ((stringp regexp))
                   ((not (string-empty-p regexp))))
         (hel-add-to-regex-history regexp)
-        (ranges-for (hel-pcre-to-elisp regexp))))))
+        (-some-> (hel-pcre-to-elisp regexp) (ranges-for))))))
 
 ;;; Filter: K, M-K
 
@@ -763,6 +766,7 @@ If INVERT is non-nil — remove selections that match regexp."
       (cl-flet*
           ((update (regexp)
              (if-let* ((regexp)
+                       ((not (string-empty-p regexp)))
                        (flags (-map (lambda (str)
                                       (xor (string-match regexp str)
                                            invert))
@@ -777,17 +781,16 @@ If INVERT is non-nil — remove selections that match regexp."
                (-each regions-overlays (lambda (ov)
                                          (overlay-put ov 'face 'region)))))
            (refresh (input)
-             (update (unless (string-empty-p input)
-                       (hel-pcre-to-elisp input))))
+             (update (hel-pcre-to-elisp input)))
            (after (_beg _end _len)
              ;; Update once Emacs has handled all pending input.  An input
              ;; method commits a character together with events that change
              ;; no text, so a skipped update would never run again.
-             (when timer (cancel-timer timer))
+             (-some-> timer (cancel-timer))
              (setq timer (run-with-idle-timer 0 nil #'refresh
                                               (minibuffer-contents-no-properties))))
            (stop ()
-             (when timer (cancel-timer timer)))
+             (-some-> timer (cancel-timer)))
            (start ()
              (add-hook 'after-change-functions #'after nil t)
              (add-hook 'minibuffer-exit-hook #'stop nil t)))
