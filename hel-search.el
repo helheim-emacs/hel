@@ -455,6 +455,7 @@ when the user enters a regexp, and nil when the user cancels."
                                           (<= (point) (overlay-end ov))))))]
               (-each open #'hel-open-overlay)
               (-each close #'hel-close-temporary-opened-overlay))
+            (setq hel-search--direction direction)
             ss)
         ;; else
         (hel-search-stop)
@@ -495,9 +496,15 @@ index in `hel-search-counter' depends on point.")
   :multiple-cursors nil
   :merge-selections t
   (interactive)
-  (hel-search--interactively "/" 1)
-  (setq hel-search--direction 1
-        this-command 'hel-search-forward))
+  ;; `hel-search-next' continues a search only when `last-command' is a search
+  ;; command. The minibuffer commands overwrite `this-command', so set it again
+  ;; here. When the user cancels the search or enters nothing, restore the
+  ;; previous command, so that `hel-search-next' behaves as if this search
+  ;; never ran.
+  (let ((prev-command last-command))
+    (if (hel-search--interactively "/" 1)
+        (setq this-command 'hel-search-forward)
+      (setq this-command prev-command))))
 
 ;; ?
 (hel-define-command hel-search-backward ()
@@ -505,9 +512,10 @@ index in `hel-search-counter' depends on point.")
   :multiple-cursors nil
   :merge-selections t
   (interactive)
-  (hel-search--interactively "?" -1)
-  (setq hel-search--direction -1
-        this-command 'hel-search-backward))
+  (let ((prev-command last-command))
+    (if (hel-search--interactively "?" -1)
+        (setq this-command 'hel-search-backward)
+      (setq this-command prev-command))))
 
 ;; n
 (hel-define-command hel-search-next (count)
