@@ -357,42 +357,12 @@ Return nil when no match exists."
                                  (overlay-get ov 'isearch-open-invisible)))))))
       (list index start end closed-overlays))))
 
-(defun hel-search--show-counter (search-session)
-  "Show the match counter of SEARCH-SESSION in the mode line.
-The counter follows point until `hel-search-stop' ends the session."
-  (with-current-buffer (hel-search-session-buffer search-session)
-    (hel-search--refresh-counter search-session)
-    (add-hook 'post-command-hook #'hel-search--refresh-counter 95 t)))
-
-(cl-defun hel-search--refresh-counter (&optional (search-session hel-search--session))
-  "Show the number of matches of SEARCH-SESSION and the index of the match at point.
-Show only the number of matches when point is inside no match, and
-nothing while the scan of SEARCH-SESSION is incomplete or the buffer
-text differs from the scanned one."
-  (-let [(current . total)
-         (if-let* ((ss search-session)
-                   (matches (hel-search-session-matches ss))
-                   ((< 0 (length matches)))
-                   ;; After an edit the overlays may be deleted or stale.
-                   ((eql (buffer-chars-modified-tick)
-                         (hel-search-session-tick ss))))
-             (cons (-if-let* (((index)
-                               (hel-search-session-match-at-pos ss (point))))
-                       (1+ index))
-                   (length matches)))]
-    (unless (and (eql current hel-search--current)
-                 (eql total hel-search--total))
-      (setq hel-search--current current
-            hel-search--total   total)
-      (force-mode-line-update))))
-
 (defun hel-search-stop ()
   "End the search session in the current buffer and clear the match counter."
-  (remove-hook 'post-command-hook #'hel-search--refresh-counter t)
+  (remove-hook 'post-command-hook #'hel-search--update-mode-line t)
   (-some-> hel-search--session (hel-search-session-cleanup))
-  (setq hel-search--session nil
-        hel-search--current nil
-        hel-search--total nil))
+  (setq hel-search--session nil)
+  (force-mode-line-update))
 
 ;;; Search: /, ?, n, N, *
 
@@ -429,11 +399,10 @@ text differs from the scanned one."
                  ;; else
                  (-some-> target (delete-overlay))
                  (hel-search-session-cleanup ss)
-                 (setq target nil
-                       hel-search--total nil
-                       hel-search--current nil)
+                 (setq target nil)
                  (let ((message-log-max nil))
-                   (message (propertize "No matches" 'face 'error)))))))
+                   (message (propertize "No matches" 'face 'error))))
+               (force-mode-line-update))))
          (refresh (input)
            (update (unless (string-empty-p input)
                      (hel-pcre-to-elisp input))))
@@ -474,6 +443,35 @@ text differs from the scanned one."
           (-each open #'hel-open-overlay)
           (-each close #'hel-close-temporary-opened-overlay))
         ss))))
+
+(defun hel-search-counter ()
+  "Return the (CURRENT . TOTAL) search match counter in the current buffer.
+TOTAL is the number of matches and CURRENT is the 1-based index of the
+match at point, or nil when point is in no match. Return nil while the
+scan is incomplete, when there are no matches, or when the buffer text
+differs from the scanned one."
+  (when-let* ((ss hel-search--session)
+              (matches (hel-search-session-matches ss))
+              ((< 0 (length matches)))
+              ;; After an edit the overlays may be deleted or stale.
+              ((eql (buffer-chars-modified-tick)
+                    (hel-search-session-tick ss))))
+    (cons (-some->> (hel-search-session-match-at-pos ss (point))
+            (car)
+            (1+))
+          (length matches))))
+
+(defun hel-search--show-counter (ss)
+  "Show the match counter of the search session SS in the mode line.
+The counter follows point until `hel-search-stop' ends the session."
+  (with-current-buffer (hel-search-session-buffer ss)
+    (force-mode-line-update)
+    (add-hook 'post-command-hook #'hel-search--update-mode-line 95 t)))
+
+(defalias 'hel-search--update-mode-line #'force-mode-line-update
+  "Update the mode line of the current buffer.
+Emacs does not update the mode line when only point moves, but the
+index in `hel-search-counter' depends on point.")
 
 ;; /
 (hel-define-command hel-search-forward ()

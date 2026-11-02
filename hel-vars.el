@@ -215,16 +215,16 @@ Otherwise it is left as the standard ESC prefix (e.g. for `M-x')."
   '(:propertize
     ((hel-multiple-cursors-mode
       (:eval (format " %s cursors " (hel-number-of-cursors))))
-    (hel-search--current
-      (:eval (format " %s/" hel-search--current))
-      " ")
-    (hel-search--total
-      (:eval (format "%s " hel-search--total))))
+     (:eval (when-let* ((counter (hel-search-counter)))
+              (-let [(current . total) counter]
+                (if current
+                    (format " %d/%d " current total)
+                  (format " %d " total))))))
     face mode-line-emphasis)
-  "Alist of (VARIABLE MODE-LINE-CONSTRUCT...) entries controlling what
-Hel shows in the mode line. Each VARIABLE is evaluated; while it is
-non-nil, its MODE-LINE-CONSTRUCTs are shown, in the same format as
-`mode-line-format'."
+  "Mode line construct for the Hel state shown in the mode line.
+It has the same format as `mode-line-format'.  The default shows the
+number of cursors and the search match counter from
+`hel-search-counter'."
   :type 'sexp
   :group 'hel)
 (put 'hel-mode-line-info 'risky-local-variable t)
@@ -658,8 +658,6 @@ multiple cursors.")
 
 (hel-defvar-permanent-local hel-search--direction nil)
 (hel-defvar-permanent-local hel-search--session nil)
-(hel-defvar-permanent-local hel-search--current nil)
-(hel-defvar-permanent-local hel-search--total nil)
 
 (hel-defvar-permanent-local hel--narrowed-base-buffer nil)
 
