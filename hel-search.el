@@ -168,8 +168,7 @@ produce no part between them.
   (matches  nil :documentation "Sorted vector of all match overlays.
 The scan is complete exactly when this slot holds a vector."))
 
-(cl-defun hel-search-session-create ( &optional regexp
-                                      &key (callback 'hel-search--show-counter))
+(cl-defun hel-search-session-create (&key regexp callback)
   "Create `hel-search-session' object.
 Run search session if REGEXP is provided."
   (let ((self (hel-search-session--create
@@ -357,6 +356,19 @@ Return nil when no match exists."
                                  (overlay-get ov 'isearch-open-invisible)))))))
       (list index start end closed-overlays))))
 
+;;; Search: /, ?, n, N, *
+
+(hel-defvar-permanent-local hel-search--direction nil)
+(hel-defvar-permanent-local hel-search--session nil)
+
+(defun hel-search-start (&optional regexp)
+  "Start the search session in the current buffer.
+Search for REGEXP when it is non-nil. Return the new search session."
+  (hel-search-stop)
+  (setq hel-search--session (hel-search-session-create
+                             :regexp regexp
+                             :callback #'hel-search--show-counter)))
+
 (defun hel-search-stop ()
   "End the search session in the current buffer and clear the match counter."
   (remove-hook 'post-command-hook #'hel-search--update-mode-line t)
@@ -364,11 +376,12 @@ Return nil when no match exists."
   (setq hel-search--session nil)
   (force-mode-line-update))
 
-;;; Search: /, ?, n, N, *
-
-(cl-defun hel-search-interactively (prompt &optional (direction 1))
+(cl-defun hel-search--interactively (prompt &optional (direction 1))
+  "Read a regexp with PROMPT and select its first match in DIRECTION.
+Highlight the match while the user types.  Return the search session
+when the user enters a regexp, and nil when the user cancels."
   (redisplay) ; To ensure `window-start' position is not stale.
-  (let* ((ss (hel-search-session-create))
+  (let* ((ss (hel-search-start))
          (point (point))
          (win-start (window-start))
          (win-hscroll (window-hscroll))
@@ -420,29 +433,32 @@ Return nil when no match exists."
            (add-hook 'minibuffer-exit-hook #'stop nil t)))
       ;; main
       (deactivate-mark)
-      (when-let* ((input (condition-case nil
-                             (minibuffer-with-setup-hook #'start
-                               (hel-read-regexp prompt))
-                           (t
-                            (hel-search-session-cleanup ss))))
-                  ((stringp input))
-                  ((not (string-empty-p input))))
-        (hel-add-to-regex-history input)
-        (let ((regexp (hel-pcre-to-elisp input)))
-          (unless (equal regexp (hel-search-session-regexp ss))
-            (update regexp)))
-        (when target
-          (hel-recenter-point-on-jump
-            (hel-set-region (overlay-start target) (overlay-end target)))
-          (delete-overlay target))
-        (-let [(open close)
-               (->> opened-overlays
-                    (-separate (lambda (ov)
-                                 (and (< (overlay-start ov) (point))
-                                      (<= (point) (overlay-end ov))))))]
-          (-each open #'hel-open-overlay)
-          (-each close #'hel-close-temporary-opened-overlay))
-        ss))))
+      (if-let* ((input (condition-case nil
+                           (minibuffer-with-setup-hook #'start
+                             (hel-read-regexp prompt))
+                         (t nil)))
+                ((stringp input))
+                ((not (string-empty-p input))))
+          (progn
+            (hel-add-to-regex-history input)
+            (let ((regexp (hel-pcre-to-elisp input)))
+              (unless (equal regexp (hel-search-session-regexp ss))
+                (update regexp)))
+            (when target
+              (hel-recenter-point-on-jump
+                (hel-set-region (overlay-start target) (overlay-end target)))
+              (delete-overlay target))
+            (-let [(open close)
+                   (->> opened-overlays
+                        (-separate (lambda (ov)
+                                     (and (< (overlay-start ov) (point))
+                                          (<= (point) (overlay-end ov))))))]
+              (-each open #'hel-open-overlay)
+              (-each close #'hel-close-temporary-opened-overlay))
+            ss)
+        ;; else
+        (hel-search-stop)
+        nil))))
 
 (defun hel-search-counter ()
   "Return the (CURRENT . TOTAL) search match counter in the current buffer.
@@ -479,9 +495,8 @@ index in `hel-search-counter' depends on point.")
   :multiple-cursors nil
   :merge-selections t
   (interactive)
-  (hel-search-stop)
-  (setq hel-search--session (hel-search-interactively "/" 1)
-        hel-search--direction 1
+  (hel-search--interactively "/" 1)
+  (setq hel-search--direction 1
         this-command 'hel-search-forward))
 
 ;; ?
@@ -490,9 +505,8 @@ index in `hel-search-counter' depends on point.")
   :multiple-cursors nil
   :merge-selections t
   (interactive)
-  (hel-search-stop)
-  (setq hel-search--session (hel-search-interactively "?" -1)
-        hel-search--direction -1
+  (hel-search--interactively "?" -1)
+  (setq hel-search--direction -1
         this-command 'hel-search-backward))
 
 ;; n
@@ -519,7 +533,7 @@ index in `hel-search-counter' depends on point.")
                      (equal (hel-search-session-regexp ss)
                             regexp))
           (hel-search-session-restart ss regexp))
-      (setq hel-search--session (hel-search-session-create regexp)))
+      (hel-search-start regexp))
     ;;
     (let ((region-dir (if (use-region-p) (hel-region-direction) 1)))
       (hel-recenter-point-on-jump
@@ -581,9 +595,7 @@ Auto-detect word boundaries at the beginning and end of the search pattern."
                          (-interpose (if hel-use-pcre-regex "|" "\\|"))
                          (apply #'concat))))
         (hel-add-to-regex-history regexp)
-        (hel-search-stop)
-        (setq hel-search--session (hel-search-session-create
-                                   (hel-pcre-to-elisp regexp)))))))
+        (hel-search-start (hel-pcre-to-elisp regexp))))))
 
 ;; M-*
 (hel-define-command hel-construct-search-pattern-no-bounds ()
@@ -604,9 +616,7 @@ Do not auto-detect word boundaries in the search pattern."
                          (-interpose (if hel-use-pcre-regex "|" "\\|"))
                          (apply #'concat))))
         (hel-add-to-regex-history regexp)
-        (hel-search-stop)
-        (setq hel-search--session (hel-search-session-create
-                                   (hel-pcre-to-elisp regexp)))))))
+        (hel-search-start (hel-pcre-to-elisp regexp))))))
 
 ;;; Select: s, S
 

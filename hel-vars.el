@@ -656,9 +656,6 @@ multiple cursors.")
 
 (defvar-local hel--input-cache nil)
 
-(hel-defvar-permanent-local hel-search--direction nil)
-(hel-defvar-permanent-local hel-search--session nil)
-
 (hel-defvar-permanent-local hel--narrowed-base-buffer nil)
 
 ;;; .
