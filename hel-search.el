@@ -289,26 +289,38 @@ Run search session if REGEXP is provided."
 (defun hel--delete-overlay-on-modification-h (ov flag _beg _end &optional _len)
   (if flag (delete-overlay ov)))
 
-(defun hel-search-session-next-match (self direction pos)
+(defun hel-search-session-match-at-pos (self pos)
+  "Return (INDEX START END) of the match at POS, or nil.
+INDEX is the position of the match in the session's overlay vector, and
+START and END are the match bounds."
+  (when-let* ((matches (hel-search-session-matches self))
+              (index (hel-lower-bound matches pos :key #'overlay-end))
+              ((< index (length matches)))
+              (overlay (aref matches index))
+              (start (overlay-start overlay))
+              ((<= start pos)))
+    (list index start (overlay-end overlay))))
+
+(defun hel-search-session-next-match-from-pos (self pos direction)
   "Find the next search match from POS in DIRECTION.
 
-Return (START END INDEX CLOSED-OVERLAYS) on success where:
+Return (INDEX START END CLOSED-OVERLAYS) on success where:
 
-- START, END       Match bounds.
 - INDEX            Position of the match in the session's overlay vector,
-                   or nil when this information is unavailable.
+                   or nil while the scan is incomplete.
+- START, END       Match bounds.
 - CLOSED-OVERLAYS  Closed overlays that currently hide the match.
 
 Return nil when no match exists."
   (let ((matches (hel-search-session-matches self)))
     (cond ((null matches)
            ;; The scan is still running.
-           (hel-search-session--next-match-live self direction pos))
+           (hel-search-session--next-match-from-pos-live self pos direction))
           ((< 0 (length matches))
-           (hel-search-session--next-match-cached self direction pos)))))
+           (hel-search-session--next-match-from-pos-cached self pos direction)))))
 
-(defun hel-search-session--next-match-live (self direction pos)
-  "Search the buffer for the next match from POS in DIRECTION."
+(defun hel-search-session--next-match-from-pos-live (self pos direction)
+  "Find the next match from POS in DIRECTION by searching the buffer."
   (with-current-buffer (hel-search-session-buffer self)
     (save-excursion
       (goto-char pos)
@@ -319,10 +331,10 @@ Return nil when no match exists."
                              (hel-search regexp pos direction)))))
           (-let* (((match-data closed-overlays) match)
                   ((start . end) (hel-match match-data)))
-            (list start end nil closed-overlays))))))
+            (list nil start end closed-overlays))))))
 
-(defun hel-search-session--next-match-cached (self direction pos)
-  "Find the next match from POS in DIRECTION."
+(defun hel-search-session--next-match-from-pos-cached (self pos direction)
+  "Find the next match from POS in DIRECTION among the scanned matches."
   (with-current-buffer (hel-search-session-buffer self)
     (let* ((matches (hel-search-session-matches self))
            (index (if (< 0 direction)
@@ -335,7 +347,7 @@ Return nil when no match exists."
                     ;; before the first match wraps to the last one.
                     (mod (1- (hel-upper-bound matches pos :key #'overlay-end))
                          (length matches))))
-           (overlay (elt matches index))
+           (overlay (aref matches index))
            (start (overlay-start overlay))
            (end   (overlay-end overlay))
            (closed-overlays
@@ -343,19 +355,7 @@ Return nil when no match exists."
                  (-filter (lambda (ov)
                             (and (invisible-p (overlay-get ov 'invisible))
                                  (overlay-get ov 'isearch-open-invisible)))))))
-      (list start end index closed-overlays))))
-
-(defun hel-search-session-current-match (self pos)
-  "Return (START END INDEX) of the match at POS or nil."
-  (with-current-buffer (hel-search-session-buffer self)
-    (if-let* ((matches (hel-search-session-matches self))
-              (index (hel-lower-bound matches pos :key #'overlay-end))
-              ((< index (length matches)))
-              (overlay (elt matches index))
-              (start (overlay-start overlay))
-              (end   (overlay-end overlay))
-              ((<= start pos)))
-        (list start end index))))
+      (list index start end closed-overlays))))
 
 (defun hel-search--show-counter (search-session)
   "Show the match counter of SEARCH-SESSION in the mode line.
@@ -376,8 +376,8 @@ text differs from the scanned one."
                    ;; After an edit the overlays may be deleted or stale.
                    ((eql (buffer-chars-modified-tick)
                          (hel-search-session-tick ss))))
-             (cons (-if-let* (((_ _ index)
-                               (hel-search-session-current-match ss (point))))
+             (cons (-if-let* (((index)
+                               (hel-search-session-match-at-pos ss (point))))
                        (1+ index))
                    (length matches)))]
     (unless (and (eql current hel-search--current)
@@ -420,8 +420,8 @@ text differs from the scanned one."
                (if-let* ((regexp)
                          (match (progn
                                   (hel-search-session-restart ss regexp)
-                                  (hel-search-session-next-match ss direction (point)))))
-                   (-let [(start end _ closed-overlays) match]
+                                  (hel-search-session-next-match-from-pos ss (point) direction))))
+                   (-let [(_ start end closed-overlays) match]
                      (goto-char (if (< direction 0) start end))
                      (setq target (highlight start end target))
                      (-each closed-overlays #'hel-temporary-open-overlay)
@@ -529,8 +529,9 @@ text differs from the scanned one."
           (when-let* ((pos (if (use-region-p)
                                (if (< dir 0) (region-beginning) (region-end))
                              (point)))
-                      (match (hel-search-session-next-match hel-search--session dir pos)))
-            (-let [(start end _ closed-overlays) match]
+                      (match (hel-search-session-next-match-from-pos
+                              hel-search--session pos dir)))
+            (-let [(_ start end closed-overlays) match]
               (when (and hel--extend-selection (use-region-p))
                 (hel-create-fake-cursor-from-point))
               (hel-set-region start end region-dir)
