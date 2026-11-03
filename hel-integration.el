@@ -246,6 +246,23 @@ in the command loop, and the fake cursors can pick up on those instead."
 ;; `emacs-lisp-mode' is inherited from `lisp-data-mode'.
 (add-hook 'lisp-data-mode-hook #'hel--emacs-lisp-mode-h)
 
+(dolist (hook '(lisp-data-mode-hook
+                scheme-mode-hook
+                inferior-emacs-lisp-mode-hook
+                inferior-lisp-mode-hook
+                inferior-scheme-mode-hook
+                clojure-mode-hook
+                cider-repl-mode-hook
+                fennel-mode-hook
+                hy-mode-hook
+                janet-mode-hook
+                racket-mode-hook
+                racket-repl-mode-hook
+                geiser-repl-mode-hook
+                sly-mrepl-mode-hook
+                slime-repl-mode-hook))
+  (add-hook hook #'hel-use-lisp-nodes))
+
 (defun hel--emacs-lisp-mode-h ()
   ;; Add legacy quotes marks to Hel surround functionality.
   (let ((spec '(:insert ("`" . "'") :remove ("`" . "'"))))

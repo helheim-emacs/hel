@@ -76,6 +76,25 @@ a parser and Emacs 29 and 30.
 * Commands
 ** Node selection
 
+| Key | Extra | Action                                | Helix command       |
+|-----+-------+---------------------------------------+---------------------|
+| =M-o= | =C-k=   | expand to the enclosing node          | ~expand_selection~    |
+| =M-i= | =C-j=   | shrink back to the previous selection | ~shrink_selection~    |
+| =M-n= | =C-l=   | select the next sibling               | ~select_next_sibling~ |
+| =M-p= | =C-h=   | select the previous sibling           | ~select_prev_sibling~ |
+| =M-b= |       | expand, with point at the start       | ~expand_selection~    |
+| =M-e= |       | expand, with point at the end         | ~expand_selection~    |
+| =M-a= |       | select all siblings, a cursor on each | ~select_all_siblings~ |
+| =M-I= | =M-j=   | select all children, a cursor on each | ~select_all_children~ |
+
+=M-o= and =M-b= run ~hel-expand-selection-backward~, =M-e= runs
+~hel-expand-selection-forward~. The =C-hjkl= keys are bound only when
+~hel-want-C-hjkl-keys~ is non-nil; =M-j= is always bound.
+
+No command selects from point to the edge of a parent: such a selection
+holds a closing bracket without its opening one, so it cannot be copied,
+cut or surrounded.
+
 ** Text objects and motions
 
 | Keys                   | Object                | Sources, in order                          |
@@ -132,6 +151,243 @@ global ~backward-sentence~, ~backward-word~ and ~forward-sentence~ do not
 run in Normal state. The nested Hel keymaps of minor modes come first in
 ~hel-mode-map-alist~, so a user's binding there wins: =]t= bound to
 ~tab-next~ in the nested keymap of ~tab-bar-mode-map~ hides the class motion.
+
+* Selection rules
+
+1. *Expand starts from the whole selection.* It selects the smallest region
+   that contains the selection and is larger than it, so the first =M-o=
+   always changes the selection. Without a selection, it starts from the
+   empty range at point.
+2. *Siblings are named nodes only.* Otherwise =M-n= would stop on every
+   comma.
+3. *Shrink follows a history of selections.* Expand saves the old region and
+   =M-i= returns to it, along the exact path. When the region does not match
+   the last entry, shrink selects the first child: the first named child with
+   a parser, the first sexp inside the region without one. Without
+   a selection, it selects the first child of the node that starts at point,
+   so =M-i= in =(foo |(bar baz))= selects =bar=. With no child, the
+   selection stays. =mi= and =ma= write to the same history, so =M-i= after
+   =maf= returns to the selection before it.
+4. *Each cursor has its own history*, through ~hel-fake-cursor-variables~.
+5. *An embedded language uses the parser at point.* The commands pass no
+   parser to ~treesit-node-on~, which then uses the language at the start of
+   the range, and on Emacs 30 and later prefers a local parser.
+6. *Commands are Hel commands.* They use ~hel-define-command~ with
+   =:multiple-cursors t= and set the selection with ~hel-select~ or
+   ~hel-motion-select~.
+
+   =M-a= and =M-I= are the exception. They create fake cursors, and Hel
+   would replay a =:multiple-cursors t= command for the new cursors too:
+   a new cursor on =[3, 4]= would select =3= and =4=. So they use
+   =:multiple-cursors nil= and visit the cursors that existed before the
+   command with ~hel-with-each-cursor~.
+
+   A command pushes the old point to the mark ring only when it changes the
+   selection. The sibling commands, =mi=, =ma=, =]= and =[= push it. Expand
+   pushes it only at the start of a series of expands and shrinks, so
+   a series leaves one entry. Shrink, =M-a= and =M-I= do not push it.
+7. *The command decides the direction of the new selection.* Each choice
+   comes from use, not from one rule:
+
+   | Commands                        | Point after the command |
+   |---------------------------------+-------------------------|
+   | =M-o= =M-b=                         | at the start            |
+   | =M-e=                             | at the end              |
+   | =miw= =maw= =miW= =maW= =mis= =mas= =mia= =maa= | at the end              |
+   | =mif= =maf= =mit= =mat= =mip= =map= =mic= =mac= | at the start            |
+
+   Point at the start keeps the beginning of a large object on screen; a
+   small object fits a forward selection. =M-o= can reach any size, so it
+   follows the large objects. The property ~hel-thing-selection-direction~
+   holds this edge.
+
+   When the command adds objects, on a repeat or with a count beyond ±1,
+   point goes to the edge where they were added: a second =maf= puts point
+   at the end of the next function, and =-2 miw= on =foo b|ar= selects
+   =foo bar= with point before =foo=. Shrink, =M-a=, =M-I=, =M-n= and =M-p=
+   keep the direction, so after =mif= the =M-n= shows the header of the next
+   function. Without a selection, =M-n= gives a forward selection and =M-p=
+   a backward one. Other motions put point on their own side: =]f= at the
+   end, =[f= at the start.
+
+   *=v= works with motions*: =w=, =b=, =e=, ={=, =}=, =]f=, =M-n=, =M-p= and
+   the others keep the mark and move point. =M-n= on =(a ^b| c d)= selects
+   =b c=. A sibling command against the selection gives back its last node,
+   and at the last node it turns around: =M-p= on =(a ^b| c)= selects =a b=.
+   =mi=, =ma=, =M-o=, =M-b=, =M-e= and =M-i= create a selection, so =v= does
+   not change them.
+8. *A count repeats the command.* =3 M-o= expands three times, =3 M-n= moves
+   three siblings. A negative count reverses it: =-3 M-i= expands three
+   times. For =mi= and =ma= a count is the number of objects
+   ([[*Selecting an object][Selecting an object]]).
+9. *A selection is an object, and point without a selection is
+   a position.* The cursor of a selection is its last character in
+   a forward selection and its first character otherwise. Point lies between
+   two characters and can touch two objects. Helix has no such case, because
+   its cursor is always a one-character selection. A command with
+   a direction takes the object on its side: =M-n= and =]= look forward,
+   =M-p= and =[= backward. A command without a direction takes the object
+   after point, the one the cursor block shows, unless only the object
+   before point is a node (rule 10).
+10. *The tree commands start from the node at the selection.* With
+    a selection, this is the smallest named node that covers the region
+    without the whitespace at its edges. =w= and =x= select trailing space and
+    indentation; without trimming, the space after =filterOid= in
+    =filterOid = [&]{…}()= would make the node the whole =init_declarator=.
+    Helix uses the whole region.
+
+    Without a selection, /E/ is the smallest named node that contains point
+    strictly, not at its edge. No named child of E contains point. When E
+    has no named children it is a /leaf/, and every command starts from it.
+    Otherwise:
+
+    - =M-n= starts from the first child of E that starts at or after point,
+      =M-p= from the last child that ends at or before point.
+    - =M-o= starts from the smallest named node that starts at point, then
+      the smallest that ends at point, and otherwise from E. When point
+      touches two nodes, the one after point wins.
+    - =M-i= starts from the node that starts at point (rule 3).
+    - =M-a= and =M-I= start like =M-o=. When nothing touches point, the nodes
+      around it are the children of E: =M-a= in =(f a | b)= puts a cursor
+      on =f=, =a= and =b=.
+
+    #+begin_example
+    Point                 M-n             M-p                 M-o
+    name |(mode state)    (mode state)    name                (mode state)
+    name| (mode state)    (mode state)    name                name
+    Callback |_callback,  _callback       Callback            _callback
+    Callback _callback|,  next parameter  Callback _callback  _callback
+    _cal|lback            _callback       _callback           _callback
+    foo|(x)               (x)             foo                 (x)
+    (a| b)                b               a                   a
+    (a |b)                b               a                   b
+    (a | b)               b               a                   (a  b)
+    #+end_example
+
+    The =|= takes no space, so =(a | b)= has two spaces and point touches no
+    node: =M-o= selects the whole list at once. In =f(Callback _callback|,
+    ...)= the character after point is the comma, an anonymous node, and the
+    smallest named node around it is the whole parameter list. A rule that
+    started from the character after point would make =M-o= select every
+    parameter.
+
+    Without a parser the same rule works on sexps: the children are the
+    sexps in the innermost bracket pair around point, and a symbol or
+    a string with point in it is a leaf, so in a string =M-n= starts from
+    the whole string. The =M-o= column holds with a parser and in Lisp. In
+    other buffers without a parser the syntax producer gives smaller steps
+    ([[*The syntax producer][The syntax producer]]): in ~c-mode~, =M-o= in =_cal|lback= selects
+    =callback= before =_callback=, in =(a | b)= it selects =a  b= before
+    =(a  b)=, and in =(a| b)= it selects =a=, =a b=, then =(a b)=.
+
+The sibling and children commands follow Helix
+(~helix-core/src/object.rs~ and ~movement.rs~), except the first rule:
+
+- *A sibling command stays inside the parent.* At the last argument, =M-n=
+  keeps the selection. Helix climbs to the next sibling of the nearest
+  ancestor that has one, so from the last parameter of a C++ constructor it
+  jumps to the member initializer list. Only a parent with the same range as
+  the node counts as the node itself: the Python =assignment= in =x = 1= has
+  no siblings, but its =expression_statement= has, so =M-p= selects the
+  function before it.
+- *=M-a= climbs to the first parent with more than one named child* and puts
+  a cursor on each named child.
+- *=M-I= skips nodes that have one child with the same range*, such as
+  a Python =expression_statement= that holds only a =call=. With no named
+  children, the selection stays.
+
+** Node commands without a parser
+
+A sexp is what ~hel-forward-sexp-only~ moves over; it never moves to the
+end of the buffer when no sexp is left. The parent of a sexp is the
+innermost bracket pair around it (element 9 of ~syntax-ppss~), and
+a top-level sexp has the whole buffer as its parent, as a node has the root.
+=M-n= and =M-p= stay inside the pair, =M-a= puts a cursor on every sexp in
+the enclosing pair (every top-level form at top level), and =M-I= on every
+sexp inside the pair under the selection.
+
+* Expand and shrink
+
+Expand asks the producer for the regions around the selection as
+=(BEG . END)= pairs, keeps the ones that contain the whole selection and are
+larger, takes the smallest, and records the old selection in the cursor's
+history. The hook ~hel-node-source-functions~ chooses one producer: the Lisp
+producer in modes that call ~hel-use-lisp-nodes~, the tree-sitter producer
+with a parser, the syntax producer elsewhere. So expand with a parser uses
+nodes only, as Helix does.
+
+** The tree-sitter producer
+
+The producer starts from ~treesit-node-on~ over the selection and walks up
+with ~treesit-node-parent~, without the root. For the selection =abc, [1=
+in =return g(abc, [1, 2])= this gives =(abc, [1, 2])=, the region that
+Helix selects.
+
+** The syntax producer
+
+One ~syntax-ppss~ at the selection start describes what encloses it:
+element 9 lists all enclosing brackets, element 8 the start of the
+enclosing string or comment, and ~scan-lists~ turns each into a form. The
+producer returns:
+
+- *the word and the symbol at point*, only on a word or symbol constituent;
+  on a bracket the word is the bracket itself;
+- *the inside and the whole of the enclosing string*;
+- *the enclosing comment*, the bounds of =mic= without the indentation of
+  the first line and the line end of the last. A single line of a =//=
+  comment, or the text inside the markers, usually holds part of
+  a sentence, so neither is a step;
+- *the whole of each enclosing bracket pair, and the inside of the innermost
+  one*, without the whitespace after the opening and before the closing
+  bracket. An outer pair gives no inside, so each level costs one =M-o=;
+- *the sentence*, only in modes derived from ~text-mode~;
+- *the paragraph*.
+
+The word, the sentence and the paragraph come from their text objects, so
+expand and =mi= agree on them.
+
+The producer scans at the selection start and at the next position, because
+the cursor sits on the character after point: with the cursor on =(= or on
+an opening quote, the first =M-o= selects the whole form or string.
+
+Each =M-o= asks for the regions around the selection where the chain of
+expands began, the oldest entry of ~hel-selection-history~. So =(b + c)=
+reached by expanding from =b= gives no inside of the pair around it.
+
+~syntax-ppss~ treats a string or a comment as one unit, so inside a comment
+expand goes from the word straight to the whole comment. In ~text-mode~,
+with point on "parenthetical":
+
+#+begin_example
+First sentence here. Second one, with (a parenthetical remark) inside.
+
+M-o once:    parenthetical
+M-o twice:   a parenthetical remark
+M-o 3 times: (a parenthetical remark)
+M-o 4 times: Second one, with (a parenthetical remark) inside.
+M-o 5 times: the whole paragraph
+#+end_example
+
+The sentence step follows ~sentence-end-double-space~. When it is t, the
+Emacs default, the single space after "here." ends no sentence, and the
+step is the whole line without its newline.
+
+** Why Hel does not build on expreg
+
+The idea comes from [[https://github.com/casouri/expreg][expreg]], but tests of expreg 1.4.1 in Emacs 31.1 show
+three misfits, and together they would replace all of its logic:
+
+1. *It expands from point, not from the selection.* A candidate that only
+   partly overlaps the selection gets selected: from =abc, [1= it selects
+   =1,=, where Helix selects =(abc, [1, 2])=. In Hel, =w=, =x= and =s=
+   leave arbitrary regions, so this case is common.
+2. *All cursors share one history*, in buffer-local variables, and contract
+   does not check the region against it.
+3. *It always puts point at the start and calls ~push-mark~.*
+
+expreg also mixes nodes with syntax-table steps in a tree-sitter buffer,
+while Helix and Hel use nodes only there. Both are GPL-3.0-or-later, so Hel
+may copy parts of it with the copyright notice.
 
 * Text objects
 ** Why Hel needs query files

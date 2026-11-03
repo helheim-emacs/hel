@@ -311,8 +311,9 @@ The cursor is restored as soon as the scroll command finishes."
 To access help commands, use `F1' instead of `C-h'.
 AST stands for Abstract Syntax Tree.
 
-These commands are also bound to `M-i', `M-n', `M-p', `M-o' for compatibility
-with the Hel text editor.
+The keys select the previous sibling, shrink the selection, expand it, and
+select the next sibling. These commands are also bound to `M-p', `M-i',
+`M-o', `M-n', as in the Helix text editor.
 
 This variable must be set before Hel is loaded!"
   :type 'boolean
