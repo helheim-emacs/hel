@@ -571,10 +571,23 @@ The command `hel-extend-selection', bound to `v', toggles it. A motion
 command passes it as `:merge-selections' to `hel-define-command'.")
 
 (hel-defvar-permanent-local hel-selection-history nil
-  "The history of selections.")
+  "The selections of expand and text object commands run one after another.
+The newest entry comes first and holds the active region. The oldest entry
+holds the selection before the first of these commands.
+`hel-shrink-selection' returns to the previous entry.
+
+Each entry is a list (RANGE DIRECTION RUN). RANGE and DIRECTION have the form
+that `hel-selection' returns. When there was no selection before the first
+command, the oldest entry is the position of point instead.
+
+RUN is non-nil when a repeated command selects several text objects in a row.
+For example, select two functions with `mif mif'. The first `mif' creates the
+selection and the second one extends it. RUN is a list (KEY FIRST LAST). KEY is
+a list of the object name and the kind of range, `:inner' or `:around'.
+FIRST and LAST are the first and the last selected objects.")
 
 (hel-defvar-permanent-local hel--selection-was-active-on-insert nil
-  "Whether a selection was active when we last time switched to Insert state.")
+  "Whether a selection was active the last time Hel switched to Insert state.")
 
 (hel-defvar-permanent-local hel-scroll-count 0
   "Hold last used prefix for `hel-scroll-up' and `hel-scroll-down' commands.
@@ -616,6 +629,7 @@ Default value is 0 - scroll half the screen.")
     yank-undo-function
     temporary-goal-column
     hel-extending-selection
+    hel-selection-history
     ;; Dabbrev
     dabbrev--abbrev-char-regexp
     dabbrev--check-other-buffers

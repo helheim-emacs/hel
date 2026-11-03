@@ -31,11 +31,11 @@ In Emacs state Hel provide service keys to control Emacs itself.
 by default is bound to ~upcase-word~, for which Hel has itself version on =M-`= or =gU=.
 #+end_quote
 
-- =:= :: Emacs analoug of command pallete. (Native key is =M-x=)
+- =:= :: Emacs analogue of a command palette. (Native key is =M-x=)
 
 - =C-:= ::
-  Open command palette with only the commands that make sense in the current
-  buffer. (Native key is =M-X=)
+  Open the command palette with only the commands that make sense in the
+  current buffer. (Native key is =M-X=)
 
 - =SPC= :: Leader key (if ~hel-leader~ extension is installed)
 
@@ -67,6 +67,10 @@ by default is bound to ~upcase-word~, for which Hel has itself version on =M-`= 
 - =C-w n= :: Display the buffer of the next command in a new window.
 
 - =C-w r= :: Revert buffer.
+
+- =C-w := / =C-w C-:= ::
+  Run a command, and display its buffer in another window. =C-w C-:= offers
+  only the commands that make sense in the current buffer.
 
 All window commands also duplicated with =C-= prefix for convenience: =C-w C-s=,
 =C-w C-v=, etc.
@@ -143,18 +147,36 @@ All keys available in Emacs state are also work in Normal state.
   - With a numeric argument, go to line N.
   - With multiple cursors make the last selection (cursor) the main one.
 
-- ={= / =}= or =[p= / =]p= :: Move over paragraphs.
+- =]= and =[= keys :: Every =]= key selects from point to the end of the
+  object under the cursor, and every =[= key selects from point to its start.
+  When point is already there, the key selects the whole next or previous
+  object. So the first =]f= finishes the current function, and every next
+  =]f= selects one whole function. A count goes on over that many objects.
+
+  - =[f= / =]f= :: Function, with its decorators.
+  - =[t= / =]t= :: Class or type.
+  - =[a= / =]a= :: Argument or parameter, without the comma.
+  - =[e= / =]e= :: Entry of a data structure, without the comma.
+  - =[c= / =]c= :: Block of comment lines.
+  - =[s= / =]s= :: Sentence.
+  - =[p= / =]p= :: Paragraph. These keys differ from the others: they work the
+    same as ={= / =}=.
+
+- ={= / =}= :: Select from point to the start of the current paragraph, or to
+  the start of the next one. When point is already at the start of the
+  current paragraph, ={= goes to the start of the previous one. With no
+  paragraph left, the keys select to the edge of the buffer.
 
 - =(= / =)= ::
-  When there is only one cursor in the buffer, moves over sentences in major
-  modes derived from ~text-mode~, or over functions in major modes derived from
-  ~prog-mode~.
-
-- =[f= / =]f= :: Move over functions.
-
-- =[s= / =]s= :: Move over sentences.
+  When there is only one cursor in the buffer, these keys work as =[s= / =]s=
+  in major modes derived from ~text-mode~, and as =[f= / =]f= in major modes
+  derived from ~prog-mode~.
 
 - =[l= / =]l= :: Move over pages (=^L= sign in the buffer).
+
+- =[d= / =]d= :: Go to the previous / next error or diagnostic, or to the
+  previous / next match of a grep or compilation buffer (~previous-error~ /
+  ~next-error~).
 
 *** Easymotion
 
@@ -218,7 +240,8 @@ All keys available in Emacs state are also work in Normal state.
 
 ** Multiple cursors
 
-- =M-right mouse= :: Create secondary cursor on click.
+- =M-right mouse= ::
+  Add a secondary cursor at the click, or remove the cursor that is there.
 
 - =C= / =M-c= :: Copy selection (cursor) *down* / *up*.
 
@@ -276,21 +299,57 @@ Here the word "mark" is used as synonym to "select", to form the mnemonic
 rule for =m= prefix. Also, this is in line with Emacs tradition which has
 commands like ~mark-word~ which use the word "mark" in this particular sense.
 
-- =mw=, =mW= or =miw=, =miW= :: Mark inner word/WORD.
+- =mw=, =mW= or =miw=, =miW= :: Mark the word/WORD.
 
-- =maw=, =maW= :: Mark around word/WORD.
+- =maw=, =maW= :: Mark the word/WORD with the spaces after it, or before it
+  when no spaces follow. The spaces stay on the line of the word.
 
-- =m.= or =mis= :: Mark inner sentence.
+- =m.= or =mis= :: Mark the sentence. A count selects several sentences of
+  the same paragraph.
 
-- =mas= :: Mark around sentence.
+- =mas= :: Mark the sentence with the whitespace after it, or before it when
+  it is the last sentence of the paragraph.
 
-- =mp= or =mip= :: Mark inner paragraph.
+- =mp= or =mip= :: Mark the paragraph as whole lines.
 
-- =map= :: Mark around paragraph.
+- =map= :: Mark the paragraph with the blank lines after it, or before it
+  when it is the last paragraph.
 
-- =mf= or =mif= :: Mark inner function.
+- =mf= or =mif= :: Mark the function with its signature, on whole lines when
+  no other code shares them.
 
-- =maf= :: Mark around funciton.
+- =maf= :: Mark the function with its header comment and the blank lines
+  after it.
+
+- =mt= or =mit= :: Mark the class or type.
+
+- =mat= :: Mark the class or type with its header comment and the blank
+  lines after it.
+
+- =mA= or =mia= :: Mark the argument or parameter.
+
+- =maa= :: Mark the argument with the comma and the space after it, or
+  before it on the last argument.
+
+- =mie= :: Mark the entry of a data structure: an element of a list or an
+  array, a key with its value in a dictionary, or a field of a struct.
+
+- =mae= :: Mark the entry with the comma and the space after it, or before
+  it on the last entry.
+
+- =mc= or =mic= :: Mark the block of comment lines: whole lines, with their comment
+  markers.
+
+- =mac= :: Mark the block of comment lines with the blank lines after it, as
+  =map= does for a paragraph. A comment after code takes only the spaces on
+  its line.
+
+The function, class, argument, entry and comment objects use tree-sitter
+queries on Emacs 31 and later, in a buffer with a tree-sitter parser. In
+other buffers, the function and comment objects work through the syntax
+table, and the class, argument and entry objects show a message. With a
+count, these keys mark several objects. When you press the same key again,
+it adds the next object, and =M-i= removes it.
 
 - =m"=, =m'=, =m`= or =mi"=, =mi'=, =mi`= ::
   Mark inside ="= / ='= / =`= quotes.
@@ -373,7 +432,7 @@ commands like ~mark-word~ which use the word "mark" in this particular sense.
   Go-to previous/next position in the mark-ring. Read help for
   ~hel-backward-mark-ring~ command.
 
-- =C-O= / =C-I= ::
+- =C-S-o= / =C-S-i= ::
   Go-to previous/next position in the ~global-mark-ring~ (read about
   it in Emacs manual).
 
@@ -381,7 +440,6 @@ commands like ~mark-word~ which use the word "mark" in this particular sense.
 
 - =zx= :: save buffer
 
-- =.=  :: repeat last command
 - =gc= :: comment selection
 
 - =go= :: ~imenu~
