@@ -403,6 +403,14 @@ it adds the next object, and =M-i= removes it.
 - =ma= + =!=, =@=, =#=, =$=, =%=, =^=, =&=, =*=, =~=, ~=~, =_= ::
   Mark the whole region enclosed in this characters.
 
+- =mb= or =mim= :: Mark inside the closest brackets: =( )=, =[ ]= or ={ }=,
+  whichever lie closest.
+- =mam= :: Mark around the closest brackets.
+
+A repeated bracket key selects the next brackets outward, and a count goes
+that many brackets outward: =2mi(= selects inside the second parentheses
+around the cursor. =M-i= returns to the selection before.
+
 ** Surround
 
 - =mm= :: Go to matching bracket.
@@ -416,9 +424,13 @@ it adds the next object, and =M-i= removes it.
   - Right brackets — =)=, =]=, =}= — do the opposite: they remove all spaces or
     newlines from the selection and are inserted tightly.
 
-- =md= :: Delete surround.
+- =md= :: Delete surround. Left brackets — =(=, =[=, ={= — also delete the
+  spaces inside the brackets, right brackets delete only the brackets.
+  A delimiter alone on its line goes with its line. =mdm= deletes the
+  closest brackets.
 
-- =mr= :: Change (replace) surround.
+- =mr= :: Change (replace) surround. Only the delimiters change: the spaces
+  and the line breaks inside the pair stay.
 
 *** Surround with HTML/XML tag
 

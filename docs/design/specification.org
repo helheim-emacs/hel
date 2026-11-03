@@ -943,6 +943,153 @@ A function passed as an argument, as in =foo(() => 1)=, stays an object
 without the call. C#, Java, PHP, Go, Lua and Bash need no shadowing: their
 definitions already hold their attributes.
 
+* Pairs
+
+| Keys        | Pair                                 | Count and repeat |
+|-------------+--------------------------------------+------------------|
+| =mi(= =ma(=, =m(= | parentheses; also =[ { <=              | go outward       |
+| =mim= =mam=, =mb= | the closest of =( [ {=                 | go outward       |
+| =mi"= =ma"=, =m"= | double quotes; also ='= and =`=          | none             |
+| =mi*= =ma*=, =m*= | any other character, with itself     | when they nest   |
+| =md= =mr= + key | delete or replace the two delimiters |                  |
+| =ms= + key    | insert two delimiters                |                  |
+
+A /pair/ is two delimiters around a text, and the commands see it as four
+positions: the start and the end of each delimiter. =mi= selects the text
+between the delimiters, =ma= the text with them, =md= deletes the delimiters,
+and =mr= replaces them. A pair is not a text object: it is a level of nesting,
+not one of a sequence, so a count and a repeated key go outward and never to
+a neighbour.
+
+** Finding a pair
+
+~hel-pair-sources~ maps a key character to its sources, as ~hel-thing-sources~
+does for a thing: functions that return a /pair producer/ at the cursor, or
+nil. A producer answers two questions: the pair at a position, and the pair
+around a pair. A character without sources pairs with itself, as the stars
+of =*bold*=. The variable is buffer-local: Emacs Lisp maps =`= and ='= to the
+legacy quotes =`like this'=, and Org maps =*=, =/=, =_= and =+= to its emphasis.
+
+The pair at a position follows the rule of every Hel object: a pair that
+starts at the cursor wins, then a pair that ends at the cursor, then the
+innermost pair around it. So in =(foo)|(bar)= the pair is =(bar)=, and in
+=(a (b)| c)= it is =(b)=.
+
+- *Strings* come from the query of the language when the buffer has
+  a parser, and from the syntax table otherwise ([[*Quotes][Quotes]]).
+- *Brackets* come from the syntax table, so a bracket in a string or
+  a comment does not pair with one outside. The text of the comment or the
+  string at the cursor is searched first, and then the code around it: on
+  =(foo "(|" 1)=, =ma(= selects the whole list. =<= and =>= become brackets
+  through a copy of the syntax table.
+- *Two strings*, such as =<<= and =>>=, pair up by a search of the text. With
+  =:balanced=, the nested pairs on the way are skipped. A cursor inside
+  a delimiter counts as a cursor at that delimiter. In a programming mode
+  the search stays in the defun.
+- *When both delimiters are the same text*, as the stars of =*bold*=, nothing
+  tells an opening delimiter from a closing one. The pair is the nearest
+  delimiter on each side, and a cursor on a delimiter may find nothing.
+- *HTML tags* =mdt= and =mrt= read a tag name; an empty name finds the
+  nearest tags of any name. A cursor inside a tag belongs to that tag.
+- *A function* that returns the four positions around point is the quickest
+  new producer, as for Org emphasis. Hel cannot tell how such pairs nest,
+  so they have no pair around them.
+
+** Going outward
+
+Without a selection, =mi(= takes the pair at the cursor. With a selection, it
+takes the smallest pair whose inner text holds the selection and is larger,
+so a repeated =mi(= grows outward one pair per press, and =ma(= then =mi(= selects
+inside the next pair outward. A count goes that many pairs outward, and
+stops at the outermost one. =M-i= returns to the selection before, as
+after =M-o=.
+
+When no pair holds the selection, the pair at the cursor counts. Quotes do
+not nest, so this is the rule for them: =ma"= then =mi"= selects the inside of
+the same string, as in Helix.
+
+=mi= of brackets leaves out the whitespace at the edges of the text, as =mi(=
+on =( foo )= selects =foo=; =mi= of other pairs keeps it, because the spaces
+inside a string belong to its text.
+
+** The closest brackets
+
+=mim= takes the closest pair of parentheses, square brackets and curly
+brackets: the smallest of the pairs that the three producers find, with
+the same rule at the edges. This works because brackets of the syntax table
+always nest properly. A quote of plain text and a bracket can overlap in
+part, as in =(a "b) c"=, so the closest pair leaves out quotes. =mb= is the
+short form, as =b= is in Vim's =dib=. =mdm= and =mrm= change the closest
+brackets.
+
+** Surround
+
+=ms= wraps the selection in the delimiters of a key, =md= deletes the
+delimiters of a pair, and =mr= replaces them with those of another key.
+~hel-surround-delimiters~ maps a key character to its two strings and its
+/padding/, the whitespace between a delimiter and the text. A character
+without an element has itself on both sides.
+
+| =:padding= | =ms= on an inline selection | =ms= on a linewise selection | Keys        |
+|------------+-----------------------------+------------------------------+-------------|
+| nil        | =(foo)=                     | =(foo)=                      | =)=, quotes |
+| =t=        | =( foo )=                   | each delimiter on its line   | =( [ { <=   |
+| =linewise= | =<a>foo</a>=                | each delimiter on its line   | =t=         |
+
+The padding is the rule of vim-surround: an opening bracket means the
+brackets with the whitespace inside them, and a closing bracket the bare
+brackets. So =ms(= inserts =( foo )= and =ms)= =(foo)=, and =md(= turns
+=( foo )= into =foo=, and =md)= into = foo =. The pair itself always holds
+the bare brackets, so one producer serves both keys.
+
+- *=md= deletes what goes with a delimiter.* A delimiter alone on its line
+  goes with its whole line, for every key: =md{= and =md}= on braces on
+  lines of their own leave no empty lines. Otherwise, with =:padding t=,
+  the delimiter takes the blanks next to it inside the pair. No blanks stay
+  at the end of a line, as after =if (x) {= loses its brace. So =ms= then
+  =md= with the same key gives back the text.
+- *=mr= changes only the delimiters.* The layout of the pair already exists,
+  so =mr([= turns =(foo)= into =[foo]= and =( foo )= into =[ foo ]=, and
+  brackets on lines of their own stay there. Here Hel departs from
+  vim-surround, whose =cs([= adds spaces.
+- *Indentation follows the mode.* After a linewise =ms=, and after =md=
+  removes the line of a delimiter, a mode derived from ~prog-mode~ indents
+  the text again: the text moved one level, and the mode knows by how much.
+  Any other mode keeps the indentation of the text exactly, as of a code
+  block pasted into Markdown, and a linewise =ms= puts each delimiter line
+  at the least indentation of the text.
+
+~hel-surround-alist~ is the obsolete form of both tables. For one release
+Hel still reads it, and an element there wins: Hel builds a producer from
+its =:remove= strings or function, and the delimiters from its =:insert=,
+where a newline in the strings stands for the padding =linewise=.
+
+** Quotes
+
+=mi"= and =ma"= select the text between two quotes and the text with them;
+=mi'=, =ma'=, =mi`= and =ma`= do the same for their marks. They start from
+the cursor, so =ma"= then =mi"= selects the inside of the same string.
+
+A string of the major mode counts when the cursor is inside it, on a quote,
+or right after the closing quote. Where the mark is not a string quote, as
+="= in ~text-mode~, the quotes pair up from the start of the defun, with the
+same three places for the cursor. Inside
+a comment, an Org table or a string of another mark, the search takes the
+nearest quote on each side, and a cursor on the opening quote or right
+after the closing one finds nothing.
+
+With a parser, the query of the language finds the strings first
+(=@string=). The first child of a string node is its opening delimiter and
+the last child its closing one, so Python's ="""text"""= is one pair with
+three quotes on each side, and the prefix of =f"text"= belongs to the
+opening delimiter. A string counts for a key when its opening delimiter
+holds the mark of the key. Where the query finds no string of that mark,
+as in a comment, the syntax table finds the pair. Without a parser,
+Python's ="""text"""= is three strings for the syntax table: =ma"= in the
+text selects it with one quote on each side, and on the first quote it
+selects the empty string =""=. Hel adds no rules of its own for that case,
+because the parser knows the answer.
+
 * The protocol of structural selection
 
 Every command runs one algorithm over one kind of /thing/. The word comes
