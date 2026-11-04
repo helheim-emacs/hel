@@ -143,16 +143,27 @@ All keys available in Emacs state are also work in Normal state.
   - With a numeric argument, go to line N.
   - With multiple cursors make the last selection (cursor) the main one.
 
-- ={= / =}= or =[p= / =]p= :: Move over paragraphs.
+- =]= and =[= keys :: Every =]= key selects from point to the end of the
+  object under the cursor, and every =[= key selects from point to its start.
+  When point is already there, the key selects the whole next or previous
+  object. So the first =]f= finishes the current function, and every next
+  =]f= selects one whole function. A count goes on over that many objects.
+
+  - =[f= / =]f= :: Function, with its decorators.
+  - =[t= / =]t= :: Class or type.
+  - =[a= / =]a= :: Argument or parameter, without the comma.
+  - =[c= / =]c= :: Run of comment lines.
+  - =[s= / =]s= :: Sentence.
+  - =[p= / =]p= :: Paragraph.
+
+- ={= / =}= :: Select from point to the start of the current paragraph, or to
+  the start of the next one. When point is already at the start of the
+  current paragraph, ={= goes to the start of the previous one.
 
 - =(= / =)= ::
-  When there is only one cursor in the buffer, moves over sentences in major
-  modes derived from ~text-mode~, or over functions in major modes derived from
-  ~prog-mode~.
-
-- =[f= / =]f= :: Move over functions.
-
-- =[s= / =]s= :: Move over sentences.
+  When there is only one cursor in the buffer, these keys work as =[s= / =]s=
+  in major modes derived from ~text-mode~, and as =[f= / =]f= in major modes
+  derived from ~prog-mode~.
 
 - =[l= / =]l= :: Move over pages (=^L= sign in the buffer).
 
@@ -270,27 +281,84 @@ All keys available in Emacs state are also work in Normal state.
 
 - =J= :: Join lines inside selection.
 
+*** Structural selection
+
+These keys select the nodes of the syntax tree in a buffer with
+a tree-sitter parser. In other buffers, a sexp takes the place of a node,
+and the enclosing bracket pair takes the place of the parent node.
+
+- =M-o= or =C-k= :: Expand the selection to the enclosing node. In a buffer
+  without a parser, the steps are the word, the string, the comment, the
+  brackets, the sentence and the paragraph.
+
+- =M-i= or =C-j= :: Shrink the selection back along the path of =M-o=, or to
+  the first child.
+
+- =M-n= or =C-l= :: Select the next sibling node.
+
+- =M-p= or =C-h= :: Select the previous sibling node.
+
+- =M-b= or =H= :: Select to the start of the parent node.
+
+- =M-e= or =L= :: Select to the end of the parent node.
+
+- =M-a= :: Select all sibling nodes, a cursor on each.
+
+- =M-I= or =M-j= :: Select all child nodes, a cursor on each.
+
+The =C-h=, =C-j=, =C-k= and =C-l= keys are bound only when
+~hel-want-C-hjkl-keys~ is non-nil.
+
 *** Mark
 
 Here the word "mark" is used as synonym to "select", to form the mnemonic
 rule for =m= prefix. Also, this is in line with Emacs tradition which has
 commands like ~mark-word~ which use the word "mark" in this particular sense.
 
-- =mw=, =mW= or =miw=, =miW= :: Mark inner word/WORD.
+- =mw=, =mW= or =miw=, =miW= :: Mark the word/WORD.
 
-- =maw=, =maW= :: Mark around word/WORD.
+- =maw=, =maW= :: Mark the word/WORD with the spaces after it, or before it
+  when no spaces follow. The spaces stay on the line of the word.
 
-- =m.= or =mis= :: Mark inner sentence.
+- =m.= or =mis= :: Mark the sentence. A count selects several sentences of
+  the same paragraph.
 
-- =mas= :: Mark around sentence.
+- =mas= :: Mark the sentence with the whitespace after it, or before it when
+  it is the last sentence of the paragraph.
 
-- =mp= or =mip= :: Mark inner paragraph.
+- =mp= or =mip= :: Mark the paragraph as whole lines.
 
-- =map= :: Mark around paragraph.
+- =map= :: Mark the paragraph with the blank lines after it, or before it
+  when it is the last paragraph.
 
-- =mf= or =mif= :: Mark inner function.
+- =mf= or =mif= :: Mark the function with its signature.
 
-- =maf= :: Mark around funciton.
+- =maf= :: Mark the function with its header comment and the blank lines
+  after it.
+
+- =mit= :: Mark the class or type.
+
+- =mat= :: Mark the class or type with its header comment and the blank
+  lines after it.
+
+- =mia= :: Mark the argument or parameter.
+
+- =maa= :: Mark the argument with the comma and the space after it, or
+  before it on the last argument.
+
+- =mic= :: Mark the run of comment lines: whole lines, with their comment
+  markers.
+
+- =mac= :: Mark the run of comment lines with the blank lines after it, as
+  =map= does for a paragraph. A comment after code takes only the spaces on
+  its line.
+
+The function, class, argument and comment objects use the tree-sitter
+queries of Helix on Emacs 31 and later, in a buffer with a tree-sitter
+parser. In other buffers, the function and comment objects work through
+the syntax table, and the class and argument objects show a message. With a
+count, these keys mark several objects. When you press the same key again,
+it adds the next object, and =M-i= removes it.
 
 - =m"=, =m'=, =m`= or =mi"=, =mi'=, =mi`= ::
   Mark inside ="= / ='= / =`= quotes.

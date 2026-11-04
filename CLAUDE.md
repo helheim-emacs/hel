@@ -14,18 +14,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 hel-vars.el              → settings, customization groups, faces
-hel-lib.el            → utilities, hel-motion-loop, highlight system
+hel-lib.el               → utilities, hel-motion-loop, highlight system
 hel-macros.el            → hel-define-command, hel-define-advice, hel-advice-add
 hel-multiple-cursors-core.el → fake cursor engine, undo/redo integration
 hel-core.el              → state machine, hel-define-state, hel-keymap-set, pre/post-command hooks, hel-mode
-hel-commands.el          → interactive editing commands
-hel-structural-editing.el → expand/shrink (M-o / M-i), tree-sitter nodes, text objects
+hel-structural-editing.el → the thing protocol: producers, algorithms, drivers, thing definitions
+hel-commands.el          → all interactive editing commands: motions, selections, node commands, text objects
 hel-search.el            → search, replace, highlighting
-hel-smooth-scroll.el     → smooth (animated) scrolling
-hel-jump-scroll.el       → jump (instant) scrolling
+hel-scroll.el            → smooth and jump scrolling
 hel-integration.el       → integration with other Emacs packages
 hel-keybindings.el       → default key bindings
 ```
+
+`hel-structural-editing.el` reads the tree-sitter queries of its text
+objects from `queries/<language>/textobjects.scm`. These files are copies
+of the Helix files under MPL-2.0; `queries/update.sh` refreshes them, and
+nobody edits them by hand. Hel's own patterns live in
+`queries/<language>/hel-textobjects.scm` under GPL-3.0-or-later. See
+`queries/README.org`.
 
 Extensions are independent and not loaded by default. Each lives in its own repo: `helheim-emacs/hel-leader`, `hel-org`, `hel-paredit`, `hel-vterm`, `hel-agent-shell`.
 
@@ -71,6 +77,10 @@ To reload after edits (without restarting Emacs):
 ```
 
 ## Testing
+
+The tests live in `test/`. Load a test file with `load-file` and run it
+with `(ert "^hel-")`; the tree-sitter tests skip themselves when a grammar
+is missing.
 
 Unit-test pure logic (overlay painting, match ranges, fold protocol) with
 `with-temp-buffer` via the Emacs MCP. Do NOT drive interactive minibuffer

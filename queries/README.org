@@ -1,0 +1,52 @@
+#+title: Text object queries
+
+This directory holds the tree-sitter queries of the text objects of Hel:
+function, class, argument and comment. ~hel-structural-editing.el~ reads
+them on Emacs 31 and later.
+
+* The Helix files
+
+The files =<language>/textobjects.scm= are copies of the files
+=runtime/queries/<language>/textobjects.scm= from the [[https://github.com/helix-editor/helix][Helix]] editor. Helix
+licenses them under the Mozilla Public License 2.0, and the copies stay
+under that license. The file =LICENSE= holds its text. The file
+=HELIX-REVISION= names the Helix commit that the copies come from.
+
+MPL-2.0 is a per-file license. Section 3.3 of MPL-2.0 allows these files
+to be distributed together with Hel, which is licensed under
+GPL-3.0-or-later, because none of them is marked "Incompatible With
+Secondary Licenses".
+
+Hel copies the files for the languages that have a tree-sitter major mode
+built into Emacs, and the files that they inherit from: =ecma=,
+=_typescript= and =_jsx= for JavaScript, TypeScript and TSX, and =c= for
+C++. The directory of a language has the name of the language of its
+tree-sitter parser, such as =c-sharp= or =tsx=.
+
+The script =update.sh= updates the copies. Run it by hand from any
+directory:
+
+#+begin_src sh
+queries/update.sh          # the master branch of Helix
+queries/update.sh <ref>    # a tag or a branch of Helix
+#+end_src
+
+It makes a shallow, sparse clone of Helix and copies the files as they are.
+It stops with an error when a file is missing or carries the "Incompatible
+With Secondary Licenses" mark.
+
+* Hel's own files
+
+The files =<language>/hel-textobjects.scm= belong to Hel and are licensed
+under GPL-3.0-or-later, as the comment at the top of each says. They hold
+patterns that give an object a larger range than the Helix patterns, such
+as a Python function with its decorators. A Hel pattern names the node
+that it extends with the capture =@_extends=. ~update.sh~ copies only the
+files named =textobjects.scm=, so it never touches these files.
+
+* Packaging
+
+A package recipe must include this directory, for example
+=:files (:defaults "queries")= for elpaca or MELPA. Without it, no language
+has a query, and the text objects use the things ~hel-function~ and
+~hel-comment~, as on Emacs 29 and 30.

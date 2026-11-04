@@ -25,8 +25,11 @@
 ;;
 ;;; Commentary:
 ;;
-;; Interactive editing commands: motions, changes, selections, surround.
-;; Window navigation commands.
+;; Interactive editing commands: motions, changes, selections, text objects,
+;; surround. Window navigation commands.
+;;
+;; The word motions, the node commands and the text objects choose the thing
+;; and the parameters of an algorithm in `hel-structural-editing.el'.
 ;;
 ;;; Code:
 
@@ -41,6 +44,7 @@
 (require 'hel-multiple-cursors-core)
 (require 'hel-core)
 (require 'hel-search)
+(require 'hel-structural-editing)
 (require 'avy)
 
 ;; ESC in normal state
@@ -113,7 +117,7 @@ are active — works like `hel-expand-line-selection-backward'."
   :multiple-cursors t
   :merge-selections hel--extend-selection
   (interactive "p")
-  (hel--forward-word-start 'hel-word count))
+  (hel--mark-to-thing-edge 'word count :begin nil))
 
 ;; W
 (hel-define-command hel-forward-WORD-start (count)
@@ -121,7 +125,7 @@ are active — works like `hel-expand-line-selection-backward'."
   :multiple-cursors t
   :merge-selections hel--extend-selection
   (interactive "p")
-  (hel--forward-word-start 'hel-WORD count))
+  (hel--mark-to-thing-edge 'WORD count :begin nil))
 
 ;; b
 (hel-define-command hel-backward-word-start (count)
@@ -129,7 +133,7 @@ are active — works like `hel-expand-line-selection-backward'."
   :multiple-cursors t
   :merge-selections hel--extend-selection
   (interactive "p")
-  (hel--backward-word-start 'hel-word count))
+  (hel--mark-to-thing-edge 'word (- count) :begin nil))
 
 ;; B
 (hel-define-command hel-backward-WORD-start (count)
@@ -137,7 +141,7 @@ are active — works like `hel-expand-line-selection-backward'."
   :multiple-cursors t
   :merge-selections hel--extend-selection
   (interactive "p")
-  (hel--backward-word-start 'hel-WORD count))
+  (hel--mark-to-thing-edge 'WORD (- count) :begin nil))
 
 ;; e
 (hel-define-command hel-forward-word-end (count)
@@ -145,7 +149,7 @@ are active — works like `hel-expand-line-selection-backward'."
   :multiple-cursors t
   :merge-selections hel--extend-selection
   (interactive "p")
-  (hel--forward-word-end 'hel-word count))
+  (hel--mark-to-thing-edge 'word count :end nil))
 
 ;; E
 (hel-define-command hel-forward-WORD-end (count)
@@ -153,7 +157,23 @@ are active — works like `hel-expand-line-selection-backward'."
   :multiple-cursors t
   :merge-selections hel--extend-selection
   (interactive "p")
-  (hel--forward-word-end 'hel-WORD count))
+  (hel--mark-to-thing-edge 'WORD count :end nil))
+
+;; no key in Helix, "ge" in Vim
+(hel-define-command hel-backward-word-end (count)
+  "Move to the COUNT-th previous word end."
+  :multiple-cursors t
+  :merge-selections hel--extend-selection
+  (interactive "p")
+  (hel--mark-to-thing-edge 'word (- count) :end nil))
+
+;; no key in Helix, "gE" in Vim
+(hel-define-command hel-backward-WORD-end (count)
+  "Select from point back to the end of the COUNT-th previous WORD."
+  :multiple-cursors t
+  :merge-selections hel--extend-selection
+  (interactive "p")
+  (hel--mark-to-thing-edge 'WORD (- count) :end nil))
 
 ;; gg
 (hel-define-command hel-beginning-of-buffer (num)
@@ -231,91 +251,6 @@ Use visual line when `visual-line-mode' is active."
              (eolp))
     (setq temporary-goal-column most-positive-fixnum
           this-command 'next-line)))
-
-;; }
-(hel-define-command hel-forward-paragraph (count &optional move-to-bound?)
-  "Select to the beginning of the COUNT-th next paragraph."
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (let ((thing 'hel-paragraph)
-        (dir (hel-sign count)))
-    (hel-restore-region-on-error
-      (if (< dir 0)
-          (when (bobp) (user-error "Beginning of buffer"))
-        (when (eobp) (user-error "End of buffer")))
-      (hel-push-point (point))
-      (hel-set-region (if hel--extend-selection (mark) (point))
-                      (progn
-                        (cond ((and (< dir 0) move-to-bound?)
-                               (hel-forward-end-of-thing thing count))
-                              ((and (< 0 dir) (not move-to-bound?))
-                               (hel-forward-beginning-of-thing thing count))
-                              (t
-                               (forward-thing thing count)))
-                        (point))
-                      (unless hel--extend-selection dir))
-      (hel-reveal-point-when-on-top))))
-
-;; {
-(hel-define-command hel-backward-paragraph (count)
-  "Select to the beginning of the COUNT-th previous paragraph."
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-forward-paragraph (- count)))
-
-;; ]p
-(hel-define-command hel-forward-paragraph-end (count)
-  "Select to the end of the COUNT-th next paragraph."
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-forward-paragraph count t))
-
-;; [p
-(hel-define-command hel-backward-paragraph-end (count)
-  "Select to the end of the COUNT-th previous paragraph."
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-forward-paragraph (- count) t))
-
-;; ]f (alternative version)
-(hel-define-command hel-mark-function-forward (count)
-  "Select from point to the end of the function (or COUNT-th next functions).
-If no function at point select COUNT next functions."
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-mark-thing-forward 'hel-function count))
-
-;; [f (alternative version)
-(hel-define-command hel-mark-function-backward (count)
-  "Select from point to the end of the function (or COUNT-th next functions).
-If no function at point select COUNT previous functions."
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-mark-thing-forward 'hel-function (- count)))
-
-;; ]s
-(hel-define-command hel-mark-sentence-forward (count)
-  "Select from point to the end of the sentence (or COUNT-th next sentences).
-If no sentence at point select COUNT next sentences."
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-mark-thing-forward 'hel-sentence count))
-
-;; [s
-(hel-define-command hel-mark-sentence-backward (count)
-  "Select from point to the start of the sentence (or COUNT-th next sentences).
-If no sentence at point select COUNT previous sentences."
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-mark-thing-forward 'hel-sentence (- count)))
 
 ;; mm
 ;; TODO: The most bare-boned version. Need upgrade.
@@ -407,7 +342,7 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (hel-set-region (if hel--extend-selection (mark) (point))
-                      (progn (forward-thing 'hel-word)
+                      (progn (hel--forward-word 1)
                              (point))))))
 
 ;; gb
@@ -426,7 +361,7 @@ backward and jump to new top location."
       (if hel--extend-selection
           (hel-set-region (mark) (point))
         (hel-set-region (point)
-                        (progn (forward-thing 'hel-word)
+                        (progn (hel--forward-word 1)
                                (point)))))))
 
 ;; gW
@@ -441,7 +376,7 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (hel-set-region (if hel--extend-selection (mark) (point))
-                      (progn (forward-thing 'hel-WORD)
+                      (progn (hel--forward-WORD 1)
                              (point))))))
 
 ;; gB
@@ -459,7 +394,7 @@ backward and jump to new top location."
       (if hel--extend-selection
           (hel-set-region (mark) (point))
         (hel-set-region (point)
-                        (progn (forward-thing 'hel-WORD)
+                        (progn (hel--forward-WORD 1)
                                (point)))))))
 
 ;; gj
@@ -1304,6 +1239,122 @@ already there."
           (hel-delete-fake-cursor cursor)
         (hel-create-fake-cursor pos)))))
 
+;;;; Expand and shrink
+
+;; M-o or C-k
+(hel-define-command hel-expand-selection (count)
+  "Select the smallest syntax region that encloses the selection.
+Put point at its start. Without an active region, start from the node at
+point. Repeat COUNT times. A negative COUNT shrinks the selection.
+
+In a buffer with a tree-sitter parser, the regions are the syntax nodes.
+In a Lisp buffer they are the sexps. In other buffers they come from the
+syntax table: the word and the symbol at the selection start, the inside
+and the whole of each enclosing string, comment and bracket pair, the
+sentence in `text-mode' and the paragraph."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--expand 'node count))
+
+;; M-i or C-j
+(hel-define-command hel-shrink-selection (count)
+  "Restore the selection that preceded the last expand or text object.
+Repeat COUNT times. A negative COUNT expands the selection. When the
+selection differs from the last entry of the history, select the first
+child of its node."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--expand 'node (- count)))
+
+;;;; Node commands
+
+;; M-n or C-l
+(hel-define-command hel-select-next-sibling (count)
+  "Select the next sibling of the node under the selection.
+At the last sibling, keep the selection. Repeat COUNT times. A negative
+COUNT selects the previous siblings. Without a selection, first select
+the node after point."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--select-sibling 'node count))
+
+;; M-p or C-h
+(hel-define-command hel-select-previous-sibling (count)
+  "Select the previous sibling of the node under the selection.
+At the first sibling, keep the selection. Repeat COUNT times. Without
+a selection, first select the node before point."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--select-sibling 'node (- count)))
+
+;; M-e or L
+(hel-define-command hel-parent-node-end (count)
+  "Select from point to the end of the node under the selection.
+When point is already there, select to the end of the parent node.
+Repeat COUNT times. A negative COUNT moves to the starts."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--select-to-parent-edge 'node count))
+
+;; M-b or H
+(hel-define-command hel-parent-node-start (count)
+  "Select from point to the start of the node under the selection.
+When point is already there, select to the start of the parent node.
+Repeat COUNT times."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--select-to-parent-edge 'node (- count)))
+
+;; H
+(hel-define-command hel-select-node-start (count)
+  "Select toward the start of the node under the selection.
+In Lisp, select the enclosing sexp with point at its start. Elsewhere,
+select to the start of the node, or of its parent when point is there.
+Repeat COUNT times."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (when-let* ((producer (hel--producer 'node)))
+    (hel-node-select-side 'node producer (- count))))
+
+;; L
+(hel-define-command hel-select-node-end (count)
+  "Select toward the end of the node under the selection.
+In Lisp, select the enclosing sexp with point at its end. Elsewhere,
+select to the end of the node, or of its parent when point is there.
+Repeat COUNT times."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (when-let* ((producer (hel--producer 'node)))
+    (hel-node-select-side 'node producer count)))
+
+;; M-a
+(hel-define-command hel-select-all-siblings ()
+  "Select the node under the selection and all its siblings.
+Put a cursor on each of them. When the node is an only child, use the
+nearest parent with more than one child."
+  :multiple-cursors nil
+  :merge-selections t
+  (interactive)
+  (hel--select-all-siblings 'node))
+
+;; M-I or M-j
+(hel-define-command hel-select-all-children ()
+  "Select all children of the node under the selection.
+Put a cursor on each of them. When the node has no children, keep the
+selection."
+  :multiple-cursors nil
+  :merge-selections t
+  (interactive)
+  (hel--select-all-children 'node))
+
 ;;;; Mark
 
 (hel-define-command hel-m-digit-argument (arg)
@@ -1347,127 +1398,6 @@ already there."
   (interactive "P")
   (negative-argument arg)
   (set-transient-map (keymap-lookup nil "m a")))
-
-;; miw
-(hel-define-command hel-mark-inner-word (count)
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-mark-inner-thing 'hel-word count))
-
-;; miW
-(hel-define-command hel-mark-inner-WORD (count)
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-mark-inner-thing 'hel-WORD count))
-
-;; maw
-(hel-define-command hel-mark-a-word ()
-  :multiple-cursors t
-  :merge-selections t
-  (interactive)
-  (hel--mark-a-word 'hel-word))
-
-;; maW
-(hel-define-command hel-mark-a-WORD ()
-  :multiple-cursors t
-  :merge-selections t
-  (interactive)
-  (hel--mark-a-word 'hel-WORD))
-
-;; mis
-(hel-define-command hel-mark-inner-sentence (count)
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-mark-inner-thing 'hel-sentence count))
-
-;; mas
-(hel-define-command hel-mark-a-sentence (&optional thing)
-  :multiple-cursors t
-  :merge-selections t
-  (interactive)
-  (or thing (setq thing 'hel-sentence))
-  (-when-let ((thing-beg . thing-end) (bounds-of-thing-at-point thing))
-    (-let [(beg . end)
-           (or (progn
-                 (goto-char thing-end)
-                 (with-restriction (line-beginning-position) (line-end-position)
-                   (-if-let ((_ . space-end)
-                             (hel-bounds-of-complement-of-thing-at-point thing))
-                       (cons thing-beg space-end))))
-               (progn
-                 (goto-char thing-beg)
-                 (with-restriction (line-beginning-position) (line-end-position)
-                   (if-let* ((space-beg
-                              (car (hel-bounds-of-complement-of-thing-at-point thing))))
-                       (cons space-beg thing-end))))
-               (cons thing-beg thing-end))]
-      (hel-set-region beg end))))
-
-;; mip
-(hel-define-command hel-mark-inner-paragraph (count)
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-push-point)
-  (hel-mark-inner-thing 'hel-paragraph count)
-  (hel-reveal-point-when-on-top))
-
-;; map
-(hel-define-command hel-mark-a-paragraph (count)
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-push-point)
-  (hel-mark-a-thing 'hel-paragraph count)
-  (hel-reveal-point-when-on-top))
-
-;; mif
-(hel-define-command hel-mark-inner-function (count)
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-push-point)
-  (hel-mark-inner-thing 'hel-function count)
-  (hel-ensure-region-direction -1)
-  (hel-reveal-point-when-on-top))
-
-;; maf
-(hel-define-command hel-mark-a-function (count)
-  :multiple-cursors t
-  :merge-selections t
-  (interactive "p")
-  (hel-push-point)
-  (-let* ((thing 'hel-function)
-          ((thing-beg . thing-end) (hel-bounds-of-count-things-at-point thing count))
-          beg end)
-    (or (-if-let ((_ . space-end)
-                  (progn
-                    (goto-char thing-end)
-                    (hel-bounds-of-complement-of-thing-at-point thing)))
-            (setq beg (progn
-                        ;; Take comments that belongs to the current function.
-                        (goto-char thing-beg)
-                        (car (bounds-of-thing-at-point 'hel-paragraph)))
-                  end (progn
-                        ;; Exclude comments that belongs to the next function.
-                        (goto-char space-end)
-                        (car (bounds-of-thing-at-point 'hel-paragraph)))))
-        (if-let* ((space-beg
-                   (progn
-                     (goto-char thing-beg)
-                     (car (hel-bounds-of-complement-of-thing-at-point thing)))))
-            (setq beg space-beg
-                  end thing-end))
-        (setq beg (progn
-                    ;; Take comments that belongs to the current function.
-                    (goto-char thing-beg)
-                    (car (bounds-of-thing-at-point 'hel-paragraph)))
-              end thing-end))
-    (hel-set-region beg end (hel-sign count)))
-  (hel-reveal-point-when-on-top))
 
 ;; mi"
 (hel-define-command hel-mark-inner-double-quoted ()
@@ -1602,6 +1532,298 @@ already there."
               (bounds (hel-surround--remove char)))
     (-let [(beg _ _ end) bounds]
       (hel-set-region beg end))))
+
+;;; Text objects
+;;
+;; Each text object has four commands. `mi' selects COUNT things at the
+;; selection, and `ma' adds the header comment and the gap. `]' selects
+;; from point to the end of the thing under the cursor, or the whole
+;; next thing when point is already there, and `[' does the same
+;; backward.
+
+;; miw
+(hel-define-command hel-mark-inner-word (count)
+  "Select the word at the selection, or COUNT words.
+A repeated call adds COUNT more words."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'word :inner count))
+
+;; maw
+(hel-define-command hel-mark-a-word (count)
+  "Select the word at the selection with the blanks after it.
+On the last word of a line, take the blanks before it. With COUNT,
+select COUNT words."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'word :around count))
+
+;; miW
+(hel-define-command hel-mark-inner-WORD (count)
+  "Select the WORD at the selection, or COUNT WORDs.
+A repeated call adds COUNT more WORDs."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'WORD :inner count))
+
+;; maW
+(hel-define-command hel-mark-a-WORD (count)
+  "Select the WORD at the selection with the blanks after it.
+With COUNT, select COUNT WORDs."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'WORD :around count))
+
+;; mis
+(hel-define-command hel-mark-inner-sentence (count)
+  "Select the sentence at the selection, or COUNT sentences.
+The sentences stay inside the paragraph of the first one."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'sentence :inner count))
+
+;; mas
+(hel-define-command hel-mark-a-sentence (count)
+  "Select the sentence at the selection with the whitespace after it.
+On the last sentence of a paragraph, take the whitespace before it. With
+COUNT, select COUNT sentences."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'sentence :around count))
+
+;; ]s
+(hel-define-command hel-mark-sentence-forward (count)
+  "Select from point to the end of the sentence under the cursor.
+When point is already there, select the whole next sentence. With COUNT,
+go on to the end of the COUNT-th sentence."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'sentence count :end t))
+
+;; [s
+(hel-define-command hel-mark-sentence-backward (count)
+  "Select from point to the start of the sentence under the cursor.
+When point is already there, select the whole previous sentence. With
+COUNT, go on to the start of the COUNT-th sentence."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'sentence (- count) :begin t))
+
+;; mip
+(hel-define-command hel-mark-inner-paragraph (count)
+  "Select the paragraph at the selection, or COUNT paragraphs.
+A paragraph covers whole lines."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'paragraph :inner count))
+
+;; map
+(hel-define-command hel-mark-a-paragraph (count)
+  "Select the paragraph at the selection with the blank lines after it.
+On the last paragraph, take the blank lines before it. With COUNT,
+select COUNT paragraphs."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'paragraph :around count))
+
+;; }
+(hel-define-command hel-forward-paragraph (count)
+  "Select from point to the beginning of the COUNT-th next paragraph."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'paragraph count :begin nil))
+
+;; {
+(hel-define-command hel-backward-paragraph (count)
+  "Select to the beginning of the COUNT-th previous paragraph."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'paragraph (- count) :begin nil))
+
+;; ]p
+(hel-define-command hel-mark-paragraph-forward (count)
+  "Select from point to the end of the paragraph under the cursor.
+When point is already there, select the whole next paragraph. With
+COUNT, go on to the end of the COUNT-th paragraph."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'paragraph count :end t))
+
+;; [p
+(hel-define-command hel-mark-paragraph-backward (count)
+  "Select from point to the start of the paragraph under the cursor.
+When point is already there, select the whole previous paragraph. With
+COUNT, go on to the start of the COUNT-th paragraph."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'paragraph (- count) :begin t))
+
+;; mif
+(hel-define-command hel-mark-inner-function (count)
+  "Select the function at the selection, or COUNT functions.
+The functions stay inside the parent of the first one. A repeated call
+adds COUNT more functions."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'function :inner count))
+
+;; maf
+(hel-define-command hel-mark-a-function (count)
+  "Select the function at the selection with its header comment and gap.
+The gap is the text up to the next function, or from the previous one
+when no function follows. With COUNT, select COUNT functions."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'function :around count))
+
+;; ]f
+(hel-define-command hel-mark-function-forward (count)
+  "Select from point to the end of the function under the cursor.
+When point is already there, select the whole next function. With COUNT,
+go on to the end of the COUNT-th function."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'function count :end t))
+
+;; [f
+(hel-define-command hel-mark-function-backward (count)
+  "Select from point to the start of the function under the cursor.
+When point is already there, select the whole previous function. With
+COUNT, go on to the start of the COUNT-th function."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'function (- count) :begin t))
+
+;; mit
+(hel-define-command hel-mark-inner-class (count)
+  "Select the class or type at the selection, or COUNT of them."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'class :inner count))
+
+;; mat
+(hel-define-command hel-mark-a-class (count)
+  "Select the class at the selection with its header comment and gap.
+With COUNT, select COUNT classes."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'class :around count))
+
+;; ]t
+(hel-define-command hel-mark-class-forward (count)
+  "Select from point to the end of the class under the cursor.
+When point is already there, select the whole next class. With COUNT,
+go on to the end of the COUNT-th class."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'class count :end t))
+
+;; [t
+(hel-define-command hel-mark-class-backward (count)
+  "Select from point to the start of the class under the cursor.
+When point is already there, select the whole previous class. With
+COUNT, go on to the start of the COUNT-th class."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'class (- count) :begin t))
+
+;; mia
+(hel-define-command hel-mark-inner-argument (count)
+  "Select the argument or parameter at the selection, or COUNT of them."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'argument :inner count))
+
+;; maa
+(hel-define-command hel-mark-a-argument (count)
+  "Select the argument at the selection with the separator after it.
+On the last argument, take the separator before it. With COUNT, select
+COUNT arguments."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'argument :around count))
+
+;; ]a
+(hel-define-command hel-mark-argument-forward (count)
+  "Select from point to the end of the argument under the cursor.
+When point is already there, select the whole next argument. With COUNT,
+go on to the end of the COUNT-th argument."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'argument count :end t))
+
+;; [a
+(hel-define-command hel-mark-argument-backward (count)
+  "Select from point to the start of the argument under the cursor.
+When point is already there, select the whole previous argument. With
+COUNT, go on to the start of the COUNT-th argument."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'argument (- count) :begin t))
+
+;; mic
+(hel-define-command hel-mark-inner-comment (count)
+  "Select the run of comment lines at the selection, or COUNT runs."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'comment :inner count))
+
+;; mac
+(hel-define-command hel-mark-a-comment (count)
+  "Select the comment run at the selection with the blank lines after it.
+After code, the gap is the blanks on the line. With COUNT, select COUNT
+runs."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-text-object 'comment :around count))
+
+;; ]c
+(hel-define-command hel-mark-comment-forward (count)
+  "Select from point to the end of the comment run under the cursor.
+When point is already there, select the whole next run. With COUNT, go
+on to the end of the COUNT-th run."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'comment count :end t))
+
+;; [c
+(hel-define-command hel-mark-comment-backward (count)
+  "Select from point to the start of the comment run under the cursor.
+When point is already there, select the whole previous run. With COUNT,
+go on to the start of the COUNT-th run."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel--mark-to-thing-edge 'comment (- count) :begin t))
 
 ;;; Surround
 

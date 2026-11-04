@@ -106,6 +106,15 @@ This is the most minimal example of the =init.el= file:
 (hel-mode)
 #+end_src
 
+#+begin_quote
+[!NOTE]
+The function, class, argument and comment text objects of tree-sitter
+modes read the query files in the =queries= directory of this repository.
+A package recipe must include this directory, for example with
+=:files (:defaults "queries")=. Without it, the class and argument objects
+do not work, and the function and comment objects use the syntax table.
+#+end_quote
+
 ** Documentation
 
 - [[file:docs/keybindings.org][Keybindings]]

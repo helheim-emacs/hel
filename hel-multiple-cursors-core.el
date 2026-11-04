@@ -420,6 +420,16 @@ CURSORS-POSITIONS is an alist as returned by `hel-cursors-positions'."
                (hel--create-fake-cursor-1 id point mark)))))))
   (hel-auto-multiple-cursors-mode))
 
+(defun hel-select-regions (regions direction)
+  "Select the first of REGIONS with the real cursor, the others with fake ones.
+REGIONS is a list of (BEGIN . END) cons-cells. DIRECTION is 1 or -1."
+  (-let [(beg . end) (car regions)]
+    (hel-set-region beg end direction))
+  (-each (cdr regions)
+    (-lambda ((beg . end))
+      (if (< 0 direction) (cl-rotatef beg end))
+      (hel-create-fake-cursor beg end))))
+
 ;;; Executing commands for real and fake cursors
 
 (defmacro hel-save-window-scroll (&rest body)

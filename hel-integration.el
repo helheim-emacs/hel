@@ -35,6 +35,7 @@
 (require 'hel-multiple-cursors-core)
 (require 'hel-lib)
 (require 'hel-core)
+(require 'hel-structural-editing)
 (require 'hel-commands)
 
 ;;; Integration multiple cursors with Emacs functionality
@@ -194,6 +195,8 @@ in the command loop, and the fake cursors can pick up on those instead."
                      'hel-backward-WORD-start  ; B
                      'hel-forward-word-end     ; e
                      'hel-forward-WORD-end     ; E
+                     'hel-backward-word-end
+                     'hel-backward-WORD-end
                      'hel-first-non-blank      ; gh
                      'hel-end-of-line-command  ; gl
                      'hel-beginning-of-buffer  ; gg
@@ -205,7 +208,23 @@ in the command loop, and the fake cursors can pick up on those instead."
                      'hel-find-char-forward    ; f
                      'hel-find-char-backward   ; F
                      'hel-till-char-forward    ; t
-                     'hel-till-char-backward)) ; T
+                     'hel-till-char-backward   ; T
+                     'hel-expand-selection           ; M-o
+                     'hel-shrink-selection           ; M-i
+                     'hel-select-next-sibling        ; M-n
+                     'hel-select-previous-sibling    ; M-p
+                     'hel-parent-node-start          ; M-b
+                     'hel-parent-node-end            ; M-e
+                     'hel-select-node-start          ; H
+                     'hel-select-node-end            ; L
+                     'hel-mark-function-forward      ; ]f
+                     'hel-mark-function-backward     ; [f
+                     'hel-mark-class-forward         ; ]t
+                     'hel-mark-class-backward        ; [t
+                     'hel-mark-argument-forward      ; ]a
+                     'hel-mark-argument-backward     ; [a
+                     'hel-mark-comment-forward       ; ]c
+                     'hel-mark-comment-backward))    ; [c
 
 ;;;; Elisp (emacs-lisp-mode)
 

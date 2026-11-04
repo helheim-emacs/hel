@@ -311,11 +311,35 @@ The cursor is restored as soon as the scroll command finishes."
 To access help commands, use `F1' instead of `C-h'.
 AST stands for Abstract Syntax Tree.
 
-These commands are also bound to `M-i', `M-n', `M-p', `M-o' for compatibility
-with the Hel text editor.
+The keys select the previous sibling, shrink the selection, expand it, and
+select the next sibling. These commands are also bound to `M-p', `M-i',
+`M-o', `M-n', as in the Helix text editor.
 
 This variable must be set before Hel is loaded!"
   :type 'boolean
+  :group 'hel)
+
+(defcustom hel-lisp-modes
+  '(lisp-data-mode
+    scheme-mode
+    inferior-emacs-lisp-mode
+    inferior-lisp-mode
+    inferior-scheme-mode
+    clojure-mode
+    cider-repl-mode
+    fennel-mode
+    hy-mode
+    janet-mode
+    racket-mode
+    racket-repl-mode
+    geiser-repl-mode
+    sly-mrepl-mode
+    slime-repl-mode)
+  "The major modes where the code is its own syntax tree.
+In these modes and the modes derived from them, the node commands take
+sexps as nodes, as if a parser gave them. A buffer with a tree-sitter
+parser uses the parser instead."
+  :type '(repeat symbol)
   :group 'hel)
 
 (defcustom hel-reactivate-selection-after-insert-state t
@@ -569,7 +593,20 @@ use `hel-state-property' function.
   "When this flag is set motions will extend selection.")
 
 (hel-defvar-permanent-local hel-selection-history nil
-  "The history of selections.")
+  "The history of the selections that `hel-shrink-selection' returns to.
+The newest entry comes first. Each entry is a list (BEFORE AFTER RUN):
+the selection before a command, the region that the command selected,
+and the value of `hel--text-object-run' before the command. BEFORE and
+AFTER have the form (BEG END DIRECTION) that `hel-region' returns. When
+DIRECTION in BEFORE is nil, no region was active, and BEG and END both
+equal point.")
+
+(hel-defvar-permanent-local hel--text-object-run nil
+  "The text objects that the last text object command selected.
+The value is a list (KEY RANGE FIRST LAST). KEY is a list of the object
+name and the kind of range, `:inner' or `:around'. RANGE is the selected
+\(BEG . END) range. FIRST and LAST are the first and the last selected
+objects. A repeated text object command extends this run of objects.")
 
 (hel-defvar-permanent-local hel--region-was-active-on-insert nil
   "Whether region was active when we last time switched to Insert state.")
@@ -614,6 +651,8 @@ Default value is 0 - scroll half the screen.")
     yank-undo-function
     temporary-goal-column
     hel--extend-selection
+    hel-selection-history
+    hel--text-object-run
     ;; Dabbrev
     dabbrev--abbrev-char-regexp
     dabbrev--check-other-buffers

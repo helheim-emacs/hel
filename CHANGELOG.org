@@ -3,6 +3,62 @@
 
 - =mst=, =mdt=, =mrt= — surround functionality for XML/HTML tags.
 
+- Structural selection in every buffer, with the keys of ~hel-paredit~ and
+  Helix. In tree-sitter modes the commands walk the syntax tree. In other
+  buffers they use the syntax table: words, strings, comments, brackets,
+  sexps and paragraphs.
+  - =M-o= / =M-i= (=C-k= / =C-j=) — expand the selection to the enclosing node
+    and shrink it back along the same path. Each cursor has its own history.
+  - =M-n= / =M-p= (=C-l= / =C-h=) — select the next / previous sibling. They
+    keep the direction of the selection.
+  - =M-b= / =M-e= (=H= / =L=) — select to the start / end of the parent node.
+    In Lisp, =H= / =L= select the enclosing sexp, with point at its start / end.
+    ~hel-lisp-modes~ lists the Lisp modes.
+  - =M-a= — select all siblings, a cursor on each.
+  - =M-I= (=M-j=) — select all children, a cursor on each.
+
+  The =C-hjkl= keys are bound only when ~hel-want-C-hjkl-keys~ is non-nil.
+
+  =M-o= puts point at the start of the selection. After =v=, =M-n= / =M-p= extend
+  the selection, as other motions do.
+
+- ~hel-backward-word-end~ and ~hel-backward-WORD-end~ select back to the end
+  of the previous word or WORD, as =ge= and =gE= in Vim. No key is bound to
+  them.
+
+- Function, class, argument and comment text objects: =mif= / =maf=, =mit= / =mat=,
+  =mia= / =maa=, =mic= / =mac=, and the jumps =]f= / =[f=, =]t= / =[t=, =]a= / =[a=, =]c= / =[c=.
+  On Emacs 31 they use the tree-sitter queries of Helix, which Hel ships
+  in the =queries= directory. A package recipe must include this directory:
+  ~:files (:defaults "queries")~. Without a query, the function and comment
+  objects use the syntax table, as before.
+
+** Changed
+
+- =maf= takes the header comment above the function and the blank lines after
+  it, and =maa= takes the comma after the argument, or before the last one.
+  A count selects several objects, and a repeated =maf= adds the next function.
+   =M-i= returns to the selection before =mi= / =ma=.
+
+- =mif= selects the whole function with its signature, as before, also in
+  tree-sitter modes. Helix's =mif= selects only the body.
+
+- The word, WORD, sentence and paragraph objects (=miw= / =maw=, =miW= / =maW=, =mis=
+  / =mas=, =mip= / =map=) use the same rules as the function object. A count works
+  for all of them, and a repeated key adds the next object. =maw= takes the
+  spaces after the word, or before it when the word ends at punctuation or
+  at the end of the line. =mas= takes the whitespace after the sentence across
+  line ends, but not past the end of the paragraph, and a count stops at the
+  end of the paragraph as well.
+
+- ~hel-mark-a-sentence~ takes a count instead of a thing. The functions
+  ~hel-mark-inner-thing~, ~hel-mark-a-thing~, ~hel-bounds-of-count-things-at-point~
+  and ~hel-bounds-of-complement-of-thing-at-point~ are removed. A package defines
+  its own kind of object as a thing: a symbol whose property ~hel-thing-sources~
+  lists where its objects come from. Its commands call ~hel--mark-text-object~
+  and ~hel--mark-to-thing-edge~, and a rule that holds for one kind is a method
+  of a ~hel-thing-~ generic function.
+
 * [0.13.0]
 ** Added
 
