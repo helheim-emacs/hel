@@ -81,7 +81,7 @@ saved as markers and correctly handle case when text was inserted before region.
                (,dir (hel-region-direction)))
            (unwind-protect
                (save-excursion ,@body)
-             (hel-set-region ,beg ,end ,dir)
+             (hel-select (cons ,beg ,end) ,dir)
              (set-marker ,beg nil)
              (set-marker ,end nil)))
        ;; else
@@ -104,7 +104,7 @@ saved as markers and correctly handle case when text was inserted before region.
              (setq ,something-goes-wrong? nil))
          (when ,something-goes-wrong?
            (if ,region
-               (apply #'hel-set-region ,region)
+               (hel-restore-region ,region)
              (goto-char ,point)))))))
 
 ;;; Utils
@@ -264,6 +264,27 @@ that `match-beginning', `match-end' and `match-data' access."
         (and (consp cursor-type)
              (eq (car cursor-type) 'bar)))))
 
+(defun hel-range (a b)
+  "Return the range between positions A and B, which can come in any order."
+  (cons (min a b) (max a b)))
+
+(cl-defun hel-select ((begin . end) &optional (direction 1))
+  "Select the range BEGIN..END.
+The selection is forward, i.e. from BEGIN to END, when DIRECTION is 1, and
+backward when DIRECTION is -1."
+  (if (< direction 0)
+      (progn (set-mark end)
+             (goto-char begin))
+    ;; else
+    (set-mark begin)
+    (goto-char end)))
+
+(defun hel-select-motion (start end)
+  "Select from START to END, with point at END.
+When extending selection is active, keep the mark and only move point."
+  (set-mark (if hel--extend-selection (mark) start))
+  (goto-char end))
+
 (defun hel-set-region (start end &optional direction)
   "Set the active region between START and END positions.
 
@@ -273,6 +294,7 @@ DIRECTION of the region:
   -1       Force backward region (point < mark).
 
 When DIRECTION is specified, START and END can be provided in any order."
+  (declare (obsolete "use `hel-select' or `hel-select-motion'." "0.14.0"))
   (when (and (numberp direction)
              (xor (< 0 direction)
                   (<= start end)))
@@ -282,13 +304,17 @@ When DIRECTION is specified, START and END can be provided in any order."
 
 (defun hel-region ()
   "Return (BEG END DIRECTION) of the active region. If no region return nil.
-The returned list is suitable to restore region with `hel-set-region':
+The returned list is suitable to restore region with `hel-restore-region':
 
   (let ((region (hel-region)))
     ...
-    (apply #\='hel-set-region region))"
+    (hel-restore-region region))"
   (if (use-region-p)
       (list (region-beginning) (region-end) (hel-region-direction))))
+
+(cl-defun hel-restore-region ((begin end dir))
+  "Select the range BEGIN..END in direction DIR, as `hel-region' returns them."
+  (hel-select (cons begin end) dir))
 
 (defun hel-maybe-set-mark ()
   "Set mark at point unless extending selection is active."
@@ -775,14 +801,13 @@ line(s). With no region, select current line."
         (let ((beg (region-beginning))
               (end (region-end))
               (dir (or direction (hel-region-direction))))
-          (hel-set-region (progn (goto-char beg)
-                                 (car (bounds-of-thing-at-point 'hel-line)))
-                          (progn (goto-char end)
-                                 (cdr (bounds-of-thing-at-point 'hel-line)))
-                          dir))
+          (hel-select (cons (progn (goto-char beg)
+                                   (car (bounds-of-thing-at-point 'hel-line)))
+                            (progn (goto-char end)
+                                   (cdr (bounds-of-thing-at-point 'hel-line))))
+                      dir))
       ;; else no region
-      (-let [(beg . end) (bounds-of-thing-at-point 'hel-line)]
-        (hel-set-region beg end direction)))
+      (hel-select (bounds-of-thing-at-point 'hel-line) (or direction 1)))
     (hel--fix-newline-at-end-of-buffer)
     t))
 
@@ -1263,7 +1288,7 @@ YANK-FUNCTION should be a `yank' like function."
               ;; `hel-push-mark' is executed instead.
               ((symbol-function 'push-mark) #'hel-push-mark))
       (funcall yank-function))
-    (hel-set-region (mark t) (point) region-dir)
+    (hel-select (hel-range (mark t) (point)) region-dir)
     (hel-extend-selection -1)
     (when (and (derived-mode-p 'prog-mode)
                (use-region-p))

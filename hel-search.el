@@ -449,7 +449,7 @@ when the user enters a regexp, and nil when the user cancels."
                 (update regexp)))
             (when target
               (hel-recenter-point-on-jump
-                (hel-set-region (overlay-start target) (overlay-end target)))
+                (hel-select (cons (overlay-start target) (overlay-end target))))
               (delete-overlay target))
             (-let [(open close)
                    (->> opened-overlays
@@ -557,7 +557,7 @@ index in `hel-search-counter' depends on point.")
             (-let [(_ start end closed-overlays) match]
               (when (and hel--extend-selection (use-region-p))
                 (hel-create-fake-cursor-from-point))
-              (hel-set-region start end region-dir)
+              (hel-select (cons start end) region-dir)
               (-each closed-overlays #'hel-open-overlay))))))))
 
 ;; N
@@ -650,7 +650,7 @@ Do not auto-detect word boundaries in the search pattern."
           (hel-recenter-point-on-jump
             ;; Real cursor
             (-let [(start . end) (car regions)]
-              (hel-set-region start end)
+              (hel-select (cons start end))
               (-each (overlays-in start end) #'hel-open-overlay))
             ;; Fake cursors
             (save-excursion

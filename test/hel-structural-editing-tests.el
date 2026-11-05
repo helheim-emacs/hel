@@ -3189,7 +3189,7 @@ first sexp inside the region (rule 3: the region does not match the
 history)."
   (hel-spec--with #'c-mode "x = foo(a) + b|ar;\n"
     (hel-spec--run #'hel-expand-selection)
-    (hel-set-region 5 15)               ; "foo(a) + b"
+    (hel-select (cons 5 15))            ; "foo(a) + b"
     (setq last-command 'ignore)
     (hel-spec--run #'hel-shrink-selection)
     (should (equal (hel-spec--sel) "foo"))))
@@ -4301,6 +4301,71 @@ previous word."
   (hel-spec--with #'text-mode "foo bar b|az\n"
     (hel-spec--run #'hel-backward-word-end 2)
     (should (equal (hel-spec--render) "foo| bar b^az\n"))))
+
+;;; Setting the selection
+
+(defun hel-select-tests--state ()
+  "Return the mark and point, and whether the region is active."
+  (list (mark t) (point) (and (region-active-p) t)))
+
+(defmacro hel-select-tests--with-buffer (&rest body)
+  "Run BODY in a buffer of 20 characters with point at 10."
+  (declare (indent 0))
+  `(with-temp-buffer
+     (let ((transient-mark-mode t)
+           (hel--extend-selection nil))
+       (insert (make-string 20 ?x))
+       (goto-char 10)
+       ,@body)))
+
+(ert-deftest hel-select-direction ()
+  (hel-select-tests--with-buffer
+    (hel-select (cons 3 7))
+    (should (equal (hel-select-tests--state) '(3 7 t)))
+    (hel-select (cons 3 7) 1)
+    (should (equal (hel-select-tests--state) '(3 7 t)))
+    (hel-select (cons 3 7) -1)
+    (should (equal (hel-select-tests--state) '(7 3 t)))))
+
+(ert-deftest hel-select-ignores-extending ()
+  (hel-select-tests--with-buffer
+    (set-mark 15)
+    (let ((hel--extend-selection t))
+      (hel-select (cons 3 7))
+      (should (equal (hel-select-tests--state) '(3 7 t))))))
+
+(ert-deftest hel-select-motion-new-selection ()
+  (hel-select-tests--with-buffer
+    (hel-select-motion 10 15)
+    (should (equal (hel-select-tests--state) '(10 15 t)))
+    (hel-select-motion 15 10)
+    (should (equal (hel-select-tests--state) '(15 10 t)))))
+
+(ert-deftest hel-select-motion-keeps-mark-when-extending ()
+  (hel-select-tests--with-buffer
+    (hel-select (cons 5 10))
+    (let ((hel--extend-selection t))
+      (hel-select-motion 10 15)
+      (should (equal (hel-select-tests--state) '(5 15 t)))
+      (hel-select-motion 15 2)
+      (should (equal (hel-select-tests--state) '(5 2 t))))))
+
+(ert-deftest hel-range-any-order ()
+  (should (equal (hel-range 3 7) (hel-range 7 3)))
+  (should (= 3 (car (hel-range 7 3))))
+  (should (= 7 (cdr (hel-range 7 3))))
+  (should (= 3 (car (hel-range 3 3))))
+  (should (= 3 (cdr (hel-range 3 3)))))
+
+(ert-deftest hel-restore-region-round-trip ()
+  (hel-select-tests--with-buffer
+    (dolist (dir '(1 -1))
+      (hel-select (cons 3 7) dir)
+      (let ((region (hel-region))
+            (state (hel-select-tests--state)))
+        (hel-select (cons 11 13))
+        (hel-restore-region region)
+        (should (equal (hel-select-tests--state) state))))))
 
 (provide 'hel-structural-editing-tests)
 ;;; hel-structural-editing-tests.el ends here

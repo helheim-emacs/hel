@@ -284,14 +284,14 @@ in the command loop, and the fake cursors can pick up on those instead."
   :merge-selections t
   (interactive)
   (pcase (hel-surround-4-bounds-at-point "`" "'")
-    (`(,_ ,beg ,end ,_) (hel-set-region beg end))))
+    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
 
 (hel-define-command hel-mark-a-legacy-quoted ()
   :multiple-cursors t
   :merge-selections t
   (interactive)
   (-when-let ((beg _ _ end) (hel-surround-4-bounds-at-point "`" "'"))
-    (hel-set-region beg end)))
+    (hel-select (cons beg end))))
 
 ;;;; Help
 
@@ -712,8 +712,8 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (hel-set-region (if hel--extend-selection (mark) (point))
-                  (progn (widget-end-of-line) (point))))
+  (hel-select-motion (point)
+                     (progn (widget-end-of-line) (point))))
 
 ;;;; Xref
 

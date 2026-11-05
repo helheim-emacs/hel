@@ -413,7 +413,8 @@ CURSORS-POSITIONS is an alist as returned by `hel-cursors-positions'."
   (-each cursors-positions
     (-lambda ((id point mark))
       (pcase id
-        (0 (hel-set-region mark point))
+        (0 (set-mark mark)
+           (goto-char point))
         (_ (let ((mark-active (if mark t)))
              (if-let* ((cursor (gethash id hel--cursors-table)))
                  (hel-move-fake-cursor cursor point mark :update)
@@ -423,8 +424,7 @@ CURSORS-POSITIONS is an alist as returned by `hel-cursors-positions'."
 (defun hel-select-regions (regions direction)
   "Select the first of REGIONS with the real cursor, the others with fake ones.
 REGIONS is a list of (BEGIN . END) cons-cells. DIRECTION is 1 or -1."
-  (-let [(beg . end) (car regions)]
-    (hel-set-region beg end direction))
+  (hel-select (car regions) direction)
   (-each (cdr regions)
     (-lambda ((beg . end))
       (if (< 0 direction) (cl-rotatef beg end))
@@ -619,11 +619,11 @@ Restore it after BODY evaluation if it is still alive."
                        ((/= id i)
                         (push i for-deletion))))
         (pcase id
-          (0 (hel-set-region beg end dir))
+          (0 (hel-select (cons beg end) dir))
           (_ (when-let* ((cursor (gethash id hel--cursors-table)))
                (cond (real-cursor?
                       (hel-restore-point-from-fake-cursor cursor)
-                      (hel-set-region beg end dir))
+                      (hel-select (cons beg end) dir))
                      ((< dir 0)
                       (hel-move-fake-cursor cursor beg end))
                      (t

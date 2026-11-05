@@ -187,9 +187,9 @@ BEFORE is the selection before the command, see `hel-selection-history'."
 
 (defun hel--restore-selection (before)
   "Restore the selection BEFORE from `hel-selection-history'."
-  (-let [(begin end dir) before]
+  (-let [(begin _end dir) before]
     (if dir
-        (hel-set-region begin end dir)
+        (hel-restore-region before)
       (deactivate-mark)
       (goto-char begin))))
 
@@ -1857,7 +1857,7 @@ the previous call for THING and KIND selected, add COUNT more things."
           (when (and range
                      (not (equal range current)))
             (hel-push-point)
-            (hel-set-region (car range) (cdr range) -1)
+            (hel-select range -1)
             (hel--record-selection before)
             (setq hel--text-object-run (list key range first last))
             (hel-reveal-point-when-on-top))))
@@ -1874,7 +1874,7 @@ the selection stays as it is."
                                               edge whole))
         (when (hel-thing-jump-p thing)
           (hel-push-point))
-        (hel-set-region (if hel--extend-selection (mark) start) end)
+        (hel-select-motion start end)
         (hel-reveal-point-when-on-top))
     ;; else
     (hel--no-producer-message thing)))
@@ -1895,7 +1895,7 @@ if the selection changed."
                            (hel-node-range thing producer)))
                     (-> (hel-node-expand-steps thing producer begin end)
                         (hel--smallest-enclosing-region begin end))))
-      (hel-set-region new-begin new-end -1)
+      (hel-select (cons new-begin new-end) -1)
       (hel--record-selection before)
       t)))
 
@@ -1911,8 +1911,7 @@ selection changed."
                 (child (-first-item (hel--all-children thing producer node)))
                 ((not (and selected
                            (equal child (cons (region-beginning) (region-end)))))))
-      (hel-set-region (car child) (cdr child)
-                      (if selected (hel-region-direction) 1))
+      (hel-select child (if selected (hel-region-direction) 1))
       t)))
 
 (defun hel--shrink-1 (thing producer)
@@ -1994,8 +1993,10 @@ changed."
              (goto-char (if (< 0 dir) (car target) (cdr target))))
             ;; NODE is the last one: keep it, and go on past the other end.
             (t
-             (hel-set-region (if (< 0 dir) (car range) (cdr range))
-                             (if (< 0 dir) (cdr target) (car target)))))
+             (hel-select (if (< 0 dir)
+                             (cons (car range) (cdr target))
+                           (cons (car target) (cdr range)))
+                         dir)))
       t)))
 
 (defun hel--select-sibling (thing count)
@@ -2022,8 +2023,7 @@ With the selection extended, extend it."
            moved?)
       (when node
         (cl-flet ((select (node)
-                    (-let [(begin . end) (hel-node-range thing producer node)]
-                      (hel-set-region begin end direction))))
+                    (hel-select (hel-node-range thing producer node) direction)))
           (when no-selection?
             (select node)
             (setq moved? t)
@@ -2046,13 +2046,12 @@ starts. With the selection extended, extend it."
   (when-let* ((producer (hel--producer thing)))
     (let* ((dir (hel-sign count))
            (origin (point))
-           (start (if hel--extend-selection (mark) (point)))
            (targets (when-let* ((node (hel--start-node thing producer dir)))
                       (hel--parent-targets thing producer node dir)))
            (target (or (nth (1- (abs count)) targets)
                        (-last-item targets))))
       (when target
-        (hel-set-region start target (unless hel--extend-selection dir))
+        (hel-select-motion origin target)
         (hel-push-point origin)
         (hel-reveal-point-when-on-top)))))
 

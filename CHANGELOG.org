@@ -35,6 +35,9 @@
 
 ** Changed
 
+- ~hel-set-region~ is obsolete. Use ~hel-select~ with a range and a direction, or
+  ~hel-select-motion~ for a motion that keeps the mark after =v=.
+
 - =maf= takes the header comment above the function and the blank lines after
   it, and =maa= takes the comma after the argument, or before the last one.
   A count selects several objects, and a repeated =maf= adds the next function.

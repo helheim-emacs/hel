@@ -256,7 +256,7 @@ the nested keymap of ~tab-bar-mode-map~ hides the class motion.
    on Emacs 30 and later it prefers a local parser there.
 6. *Commands are written in the standard Hel way.* They are defined with
    ~hel-define-command~ and =:multiple-cursors t=, and they set the selection
-   with ~hel-set-region~. Motion commands are registered with
+   with ~hel-select~ or ~hel-select-motion~. Motion commands are registered with
    ~eldoc-add-command~.
 
    Select all siblings and select all children are the exception. They
