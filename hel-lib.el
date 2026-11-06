@@ -170,8 +170,8 @@ logical line on desired end of the region."
 
 (defconst hel-whitespace-chars "[:space:]\r\n"
   "The `skip-chars-forward' set of the blanks and the line ends.
-A blank is a character with whitespace syntax other than a line end. The
-syntax of a line end depends on the mode, so the set names them.")
+A blank is a character with whitespace syntax other than a line end.
+The syntax of a line end depends on the mode, so the set names them.")
 
 (defun hel-whitespace-p (char)
   "Non-nil when CHAR is a blank: it has whitespace syntax and ends no line."
@@ -589,13 +589,13 @@ Word is:
 
 ;;;; `hel--forward-WORD'
 
-(defun hel--forward-WORD (&optional count)
+(cl-defun hel--forward-WORD (&optional (count 1))
   "Move point COUNT WORDs forward (backward if COUNT is negative).
 Returns the count of WORD left to move, positive or negative depending
 on sign of COUNT.
 
 WORD is any space separated sequence of characters."
-  (hel-motion-loop (dir (or count 1))
+  (hel-motion-loop (dir count)
     (hel-skip-chars "\r\n" dir)
     (hel-skip-whitespaces dir)
     (unless (hel-line-boundary-p dir)
@@ -603,24 +603,24 @@ WORD is any space separated sequence of characters."
 
 ;;;; `hel--forward-sentence'
 
-(defun hel--forward-sentence (&optional count)
+(cl-defun hel--forward-sentence (&optional (count 1))
   "Move point COUNT sentences forward (backward if COUNT is negative).
 Returns then count of sentences left to move, positive of negative depending
 on sign of COUNT.
 
 What is sentence is defined by `forward-sentence-function'."
-  (hel-motion-loop (dir (or count 1))
+  (hel-motion-loop (dir count)
     (ignore-errors (forward-sentence dir))))
 
 ;;;; `hel--forward-paragraph'
 
-(defun hel--forward-paragraph (&optional count)
+(cl-defun hel--forward-paragraph (&optional (count 1))
   "Move point COUNT paragraphs forward (backward if COUNT is negative).
 Returns then count of paragraphs left to move, positive of negative depending
 on sign of COUNT."
   (let ((paragraph-start    (default-value 'paragraph-start))
         (paragraph-separate (default-value 'paragraph-separate)))
-    (hel-motion-loop (dir (or count 1))
+    (hel-motion-loop (dir count)
       (cond ((natnump dir) (forward-paragraph))
             ((not (bobp))
              (start-of-paragraph-text)
@@ -628,12 +628,14 @@ on sign of COUNT."
 
 ;;;; `hel--forward-function'
 
-(defun hel--forward-function (&optional count)
+(cl-defun hel--forward-function (&optional (count 1))
   "Move point COUNT functions forward (backward if COUNT is negative).
 Returns then count of functions left to move, positive of negative depending
 on sign of COUNT."
-  (hel-motion-loop (dir (or count 1))
-    (if (< dir 0) (beginning-of-defun) (end-of-defun))))
+  (hel-motion-loop (dir count)
+    (if (< dir 0)
+        (beginning-of-defun)
+      (end-of-defun))))
 
 ;;; Things
 ;;;; `hel-line'
