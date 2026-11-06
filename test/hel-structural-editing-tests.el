@@ -4302,6 +4302,56 @@ previous word."
     (hel-spec--run #'hel-backward-word-end 2)
     (should (equal (hel-spec--render) "foo| bar b^az\n"))))
 
+;;; Blanks
+
+(defun hel-blank-tests--stops (motion)
+  "Return the positions where MOTION stops from the start of the buffer."
+  (goto-char (point-min))
+  (let (stops)
+    (while (and (zerop (funcall motion 1))
+                (not (memql (point) stops)))
+      (push (point) stops))
+    (nreverse stops)))
+
+(ert-deftest hel-WORD-stops-at-every-blank ()
+  (dolist (blank (list ?\s ?\t ?\f #xA0 #x3000))
+    (with-temp-buffer
+      (text-mode)
+      (insert "foo" blank "bar")
+      (should (equal (hel-blank-tests--stops #'hel--forward-WORD) '(4 8))))))
+
+(ert-deftest hel-word-motions-cross-a-page-break ()
+  (dolist (motion '(hel--forward-word hel--forward-WORD))
+    (with-temp-buffer
+      (emacs-lisp-mode)
+      (insert "foo\n\f\nbar")
+      (should (= (-last-item (hel-blank-tests--stops motion)) (point-max))))))
+
+(ert-deftest hel-word-motion-stays-backward-symmetric ()
+  (with-temp-buffer
+    (text-mode)
+    (insert "foo" #x3000 "bar")
+    (goto-char (point-max))
+    (hel--forward-WORD -1)
+    (should (= (point) 5))
+    (hel--forward-WORD -1)
+    (should (= (point) 1))))
+
+(ert-deftest hel-trim-takes-every-blank ()
+  (with-temp-buffer
+    (emacs-lisp-mode)
+    (insert "\f\n \tab\n\f" (string #xA0))
+    (should (equal (hel-trim-whitespace-from-range (cons 1 (point-max)))
+                   (cons 5 7)))))
+
+(ert-deftest hel-blank-gap-stays-on-its-line ()
+  "In `text-mode' a line end has whitespace syntax, and a gap still stops there."
+  (with-temp-buffer
+    (text-mode)
+    (insert "a \f\nb")
+    (should (= (hel--skip-blanks 2 1) 4))
+    (should (= (hel--skip-blanks 4 -1) 2))))
+
 ;;; Line edges
 
 (ert-deftest hel-line-edges-leave-point-alone ()

@@ -123,28 +123,24 @@ end there, the larger one."
                   items))))
 
 (cl-defun hel--only-whitespace-p ((begin . end))
-  "Return non-nil if the text from BEGIN to END is only spaces and tabs."
+  "Return non-nil if the text from BEGIN to END is only blanks."
   (save-excursion
     (goto-char begin)
-    (skip-chars-forward " \t" end)
+    (skip-syntax-forward " " end)
     (<= end (point))))
 
 (defun hel--skip-whitespace (pos dir)
   "Return the end of the whitespace from POS in direction DIR."
   (save-excursion
     (goto-char pos)
-    (if (< 0 dir)
-        (skip-chars-forward " \t\r\n")
-      (skip-chars-backward " \t\r\n"))
+    (hel-skip-chars hel-whitespace-chars dir)
     (point)))
 
 (defun hel--skip-blanks (pos dir)
-  "Return the end of the spaces and tabs from POS in direction DIR."
+  "Return the end of the blanks on the line from POS in direction DIR."
   (save-excursion
     (goto-char pos)
-    (if (< 0 dir)
-        (skip-chars-forward " \t")
-      (skip-chars-backward " \t"))
+    (hel-skip-whitespaces dir)
     (point)))
 
 (cl-defun hel--line-range ((begin . end))
@@ -404,12 +400,12 @@ The gap separates two THING's that PRODUCER finds.")
     pos))
 
 (cl-defmethod hel-thing-skip-gap ((_thing (eql 'word)) _producer pos dir)
-  "Return the end of the spaces and tabs from POS in DIR.
+  "Return the end of the blanks from POS in DIR.
 A word gap stays on its line."
   (hel--skip-blanks pos dir))
 
 (cl-defmethod hel-thing-skip-gap ((_thing (eql 'WORD)) _producer pos dir)
-  "Return the end of the spaces and tabs from POS in DIR.
+  "Return the end of the blanks from POS in DIR.
 A WORD gap stays on its line."
   (hel--skip-blanks pos dir))
 
@@ -417,7 +413,7 @@ A WORD gap stays on its line."
   "Return the end of the gap of a comment run from POS in DIR.
 At the start of a line, the edge of a run of whole comment lines, the gap
 is the blank lines. Elsewhere, at the edge of a comment after code, the
-gap is the spaces and tabs on the line, so it never joins the line of
+gap is the blanks on the line, so it never joins the line of
 code to the next line."
   (if (save-excursion (goto-char pos) (bolp))
       (hel--skip-whitespace pos dir)
@@ -823,7 +819,7 @@ excludes the comment delimiters, and is nil when nothing remains."
   (save-excursion
     (let* ((end (progn
                   (goto-char end)
-                  (skip-chars-backward " \t\r\n" begin)
+                  (skip-chars-backward hel-whitespace-chars begin)
                   (point)))
            (inner-begin (progn
                           (goto-char begin)
@@ -1297,7 +1293,7 @@ that returns the comment there."
       (let ((pos (if (< 0 dir)
                      (point)
                    (end-of-line)
-                   (skip-chars-backward " \t")
+                   (hel-skip-whitespaces -1)
                    (1- (point)))))
         (when-let* ((other (funcall comment-at pos))
                     ((hel--fills-lines-p (hel--thing-range other)))
@@ -1472,7 +1468,7 @@ POS."
         (when (and (forward-comment 1)
                    (or (and (bolp) (< line-start (point)))
                        (progn
-                         (skip-chars-forward " \t")
+                         (hel-skip-whitespaces 1)
                          (eolp))))
           start)))))
 

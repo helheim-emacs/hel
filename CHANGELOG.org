@@ -41,6 +41,10 @@
 - The Hel API says "selection" for a selection as a value. ~hel-region~ and
   ~hel-save-region~ are renamed to ~hel-selection~ and ~hel-save-selection~.
 
+- Word motions, =_= and the text objects take every character with whitespace
+  syntax as a blank, such as a page break, a no-break space and an ideographic
+  space. =W= stops at them, and it no longer treats =foo　bar= as one WORD.
+
 - ~hel-line-begin~ and ~hel-line-end~ return the edges of the line at a position
   and leave point alone. They replace ~hel-beginning-of-line~ and
   ~hel-end-of-line~. ~hel-eolp~, ~hel-visual-bolp~ and ~hel-visual-eolp~ are

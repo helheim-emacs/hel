@@ -168,13 +168,15 @@ logical line on desired end of the region."
        (= (region-beginning) (hel-line-begin (region-beginning)))
        (= (region-end) (hel-line-begin (region-end)))))
 
+(defconst hel-whitespace-chars "[:space:]\r\n"
+  "The `skip-chars-forward' set of the blanks and the line ends.
+A blank is a character with whitespace syntax other than a line end. The
+syntax of a line end depends on the mode, so the set names them.")
+
 (defun hel-whitespace-p (char)
-  "Non-nil when CHAR belongs to whitespace syntax class."
+  "Non-nil when CHAR is a blank: it has whitespace syntax and ends no line."
   (and (eql (char-syntax char) ?\s)
-       (not (memq char '(?\r ?\n))))
-  ;; Alternative:
-  ;; (memq char '(?\s ?\t))
-  )
+       (not (memq char '(?\r ?\n)))))
 
 (cl-defun hel-trim-whitespace-from-range ((begin . end))
   "Return the range BEGIN..END without the whitespace at its edges.
@@ -182,11 +184,11 @@ Whitespace is spaces, tabs and line ends. Return nil if nothing remains."
   (save-excursion
     (setq begin (progn
                   (goto-char begin)
-                  (skip-chars-forward " \t\r\n" end)
+                  (skip-chars-forward hel-whitespace-chars end)
                   (point)))
     (setq end (progn
                 (goto-char end)
-                (skip-chars-backward " \t\r\n" begin)
+                (skip-chars-backward hel-whitespace-chars begin)
                 (point)))
     (if (< begin end)
         (cons begin end))))
@@ -533,7 +535,6 @@ Returns the distance traveled, positive or negative depending on DIRECTION."
   "Move point toward the DIRECTION across whitespace.
 Move backward when DIRECTION is negative number, forward — otherwise.
 Return the distance traveled positive or negative depending on DIRECTION."
-  ;; Alternative: (hel-skip-chars " \t" dir)
   (if (natnump direction)
       (skip-syntax-forward " " (line-end-position))
     (skip-syntax-backward " " (line-beginning-position))))
@@ -569,19 +570,19 @@ active, and otherwise the logical line."
 
 ;;;; `hel--forward-word'
 
-(defun hel--forward-word (&optional count)
+(cl-defun hel--forward-word (&optional (count 1))
   "Move point COUNT words forward (backward if COUNT is negative).
 Returns the count of word left to move, positive or negative depending
 on sign of COUNT.
 
 Word is:
 - sequence of characters matching `[[:word:]]'
-- sequence non-word non-whitespace characters matching `[^[:word:]\\n\\r\\t\\f ]'"
-  (hel-motion-loop (dir (or count 1))
+- sequence of characters that are neither word characters nor whitespace"
+  (hel-motion-loop (dir count)
     (hel-skip-chars "\r\n" dir)
     (hel-skip-whitespaces dir)
     (or (hel-line-boundary-p dir)
-        (/= 0 (hel-skip-chars "^[:word:]\n\r\t\f " dir))
+        (/= 0 (hel-skip-chars "^[:word:][:space:]\r\n" dir))
         (let ((word-separating-categories hel-cjk-word-separating-categories)
               (word-combining-categories  hel-cjk-word-combining-categories))
           (forward-word dir)))))
@@ -598,7 +599,7 @@ WORD is any space separated sequence of characters."
     (hel-skip-chars "\r\n" dir)
     (hel-skip-whitespaces dir)
     (unless (hel-line-boundary-p dir)
-      (hel-skip-chars "^\n\r\t\f " dir))))
+      (hel-skip-chars "^[:space:]\r\n" dir))))
 
 ;;;; `hel--forward-sentence'
 

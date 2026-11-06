@@ -103,17 +103,17 @@ and mark keeps "region", as Emacs does.
 - ~hel-line-boundary-p~ stays on ~bolp~ and ~eolp~: word motions stop at logical
   lines.
 
-** TODO 5. Word motions
+** DONE 5. Word motions
 
-- One skeleton serves ~word~, ~WORD~ and the WORD of ~hel-paredit~: skip the
-  line ends, skip a gap, stop at a line boundary, skip a run. They differ in
-  the gap and the run.
-- One predicate defines a blank. Four definitions exist today, in
-  ~hel-skip-whitespaces~, ~hel--skip-blanks~,
-  ~hel-trim-whitespace-from-range~ and the run patterns.
-- Try to keep line ends out of ~hel--word-edge~, so that only one layer knows
-  about them. The tests pin blank lines and indentation as steps of their own,
-  and this part may not simplify.
+- ~word~, ~WORD~ and the WORD of ~hel-paredit~ write out their steps: skip the
+  line ends, skip a gap, stop at a line boundary, skip a run. A macro over these
+  steps would save two lines each, and the reader would have to expand it to see
+  what a motion does.
+- A blank is a character with whitespace syntax other than a line end.
+  ~hel-whitespace-chars~ is the set with the line ends. The syntax of a line end
+  differs by mode, so the set names them.
+- ~hel--word-edge~ still skips line ends. The selection starts after the line
+  ends that a motion crosses first, so this edge has to know them.
 - ~forward-word~ stays: it handles CJK categories and word boundary functions.
 
 * Out of scope

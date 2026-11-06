@@ -949,10 +949,10 @@ When called interactively — toggle extending selection."
   (interactive)
   (when (use-region-p)
     (let* ((dir (hel-region-direction))
-           (point (progn (hel-skip-chars " \t\r\n" (- dir))
+           (point (progn (hel-skip-chars hel-whitespace-chars (- dir))
                          (point)))
            (mark  (progn (goto-char (mark-marker))
-                         (hel-skip-chars " \t\r\n" dir)
+                         (hel-skip-chars hel-whitespace-chars dir)
                          (point))))
       (hel-select (hel-range mark point) dir))))
 

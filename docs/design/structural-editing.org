@@ -762,8 +762,8 @@ drivers read them through the protocol:
 
 | Object    | The gap after the object         | The parent of a run          | Header comment |
 |-----------+----------------------------------+------------------------------+----------------|
-| word      | spaces and tabs on the same line | none                         | no             |
-| WORD      | spaces and tabs on the same line | none                         | no             |
+| word      | blanks on the same line          | none                         | no             |
+| WORD      | blanks on the same line          | none                         | no             |
 | sentence  | whitespace, across line ends     | the paragraph                | no             |
 | paragraph | blank lines                      | none                         | no             |
 | function  | whitespace and separators        | the parent node, or brackets | yes            |
@@ -772,7 +772,8 @@ drivers read them through the protocol:
 | comment   | blank lines                      | the parent node, or brackets | no             |
 
 - *A word's gap stays on its line.* =maw= on the last word of a line takes
-  the spaces before the word, not the line end.
+  the blanks before the word, not the line end. A blank is a character with
+  whitespace syntax other than a line end.
 - *A sentence's gap crosses line ends, but not the end of the paragraph*,
   because the paragraph is the parent of its sentences. =mas= on the last
   sentence of a paragraph takes the whitespace before it, so =mas= and =d=
@@ -821,7 +822,7 @@ the run, or before it when no run follows. =mac= and =d= remove a block of
 comments without a double blank line.
 
 A comment after code, as in =x = 1  # note=, covers only the comment. Its
-gap is the spaces and tabs on its line, so =mac= and =d= never join the line
+gap is the blanks on its line, so =mac= and =d= never join the line
 of code to the next line. When no comment follows on the same line, the
 gap is the blanks before the comment, so =mac= selects =  # note=, and =d=
 leaves no blanks at the end of the line of code. This is a rule of the
