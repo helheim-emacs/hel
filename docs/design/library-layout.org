@@ -103,7 +103,7 @@ readable in the later commits.
   a comment. It stays, and it is rebuilt on the new function if that makes it
   shorter.
 
-** TODO 5. Remove the remaining thingatpt names
+** DONE 5. Remove the remaining thingatpt names
 
 | Name            | Users                                      | Action                  |
 |-----------------+--------------------------------------------+-------------------------|

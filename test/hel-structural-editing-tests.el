@@ -974,6 +974,20 @@ object, also when the outer function is decorated."
     (hel-mark-comment-forward 1)
     (should (equal (hel-structural-tests--selection) "/* open"))))
 
+(ert-deftest hel-visible-line-range ()
+  "A visible line holds the invisible lines that follow it."
+  (with-temp-buffer
+    (insert "a\nb\nc\nd\n")
+    (should (equal (hel-visible-line-range 3) '(3 . 5)))
+    (should (equal (hel-visible-line-range 4) '(3 . 5)))
+    (let ((overlay (make-overlay 2 6)))
+      (overlay-put overlay 'invisible t)
+      (should (equal (hel-visible-line-range 1) '(1 . 7)))
+      (should (equal (hel-visible-line-range 7) '(7 . 9))))
+    (goto-char 7)
+    (should (equal (hel-visible-line-range) '(7 . 9)))
+    (should (= (point) 7))))
+
 (ert-deftest hel-function-jumps ()
   (hel-structural-tests--with-objects #'python-ts-mode
       hel-structural-tests--objects "class A"

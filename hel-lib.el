@@ -32,7 +32,6 @@
 (eval-when-compile (require 'cl-lib))
 (require 'dash)
 (require 'map)
-(require 'thingatpt)
 (require 'pcre2el)
 (require 'pulse)
 (require 'hel-vars)
@@ -535,30 +534,26 @@ active, and otherwise the logical line."
       (move-end-of-line 1))
     (point)))
 
-;;; Things
-;;;; `hel-line'
+;;; Lines
 
-;; The difference from built-in `line' thing is that `hel-line' ignores
-;; invisible parts of the buffer (lines folded by `outline-minor-mode' for
-;; example) and always denotes visible lines.
-;;
-;; The need for this thing arose from the requirement to select a folded section
-;; of the buffer (in Org-mode or Outline-mode) using the `x' key command.
-
-(put 'hel-line 'forward-op #'hel--forward-line)
-(put 'hel-line 'bounds-of-thing-at-point
-     (lambda ()
-       (cons (save-excursion
-               (hel--beginning-of-visible-line)
-               ;; `hel--beginning-of-visible-line' may leave point after invisible
-               ;; characters if line starts with such of these (e.g., with
-               ;; a link at column 0 in Org mode). Really move to the beginning
-               ;; of the current visible line.
-               (beginning-of-line)
-               (point))
-             (save-excursion
-               (hel--forward-line 1)
-               (point)))))
+(cl-defun hel-visible-line-range (&optional (pos (point)))
+  "Return the range of the visible logical line at POS, with its line end.
+The built-in `line' thing stops at lines that are invisible. This range
+holds them, such as the lines that `outline-minor-mode' folds, so the `x'
+key selects a folded section as one line."
+  (save-excursion
+    (goto-char pos)
+    (cons (save-excursion
+            (hel--beginning-of-visible-line)
+            ;; `hel--beginning-of-visible-line' may leave point after invisible
+            ;; characters if line starts with such of these (e.g., with
+            ;; a link at column 0 in Org mode). Really move to the beginning
+            ;; of the current visible line.
+            (beginning-of-line)
+            (point))
+          (progn
+            (hel--forward-line 1)
+            (point)))))
 
 ;; Adopted from `move-end-of-line'.
 (defun hel--forward-line (&optional count)
@@ -594,12 +589,6 @@ This is actually refactored `move-beginning-of-line' command."
     ;; Obey field constraints.
     (goto-char (constrain-to-field (point) init-point nil t nil))))
 
-;;;; `hel-visual-line'
-
-(put 'hel-visual-line 'forward-op #'vertical-motion)
-;; (put 'hel-visual-line 'beginning-op #'beginning-of-visual-line)
-;; (put 'hel-visual-line 'end-op       #'end-of-visual-line)
-
 ;;; Selection
 
 (defun hel-expand-selection-to-full-lines (&optional direction)
@@ -611,13 +600,11 @@ line(s). With no region, select current line."
         (let ((begin (region-beginning))
               (end (region-end))
               (dir (or direction (hel-region-direction))))
-          (hel-select (cons (progn (goto-char begin)
-                                   (car (bounds-of-thing-at-point 'hel-line)))
-                            (progn (goto-char end)
-                                   (cdr (bounds-of-thing-at-point 'hel-line))))
+          (hel-select (cons (car (hel-visible-line-range begin))
+                            (cdr (hel-visible-line-range end)))
                       dir))
       ;; else no region
-      (hel-select (bounds-of-thing-at-point 'hel-line) (or direction 1)))
+      (hel-select (hel-visible-line-range) (or direction 1)))
     (hel--fix-newline-at-end-of-buffer)
     t))
 
@@ -772,7 +759,7 @@ BEGIN, END position and done the indentation."
              (funcall indent-function (region-beginning) (region-end))))
          (hel-extend-selection -1))
         (t
-         (-let [(begin . end) (bounds-of-thing-at-point 'hel-line)]
+         (-let [(begin . end) (hel-visible-line-range)]
            (dotimes (_ count)
              (funcall indent-function begin end))))))
 

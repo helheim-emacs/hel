@@ -237,7 +237,7 @@ on sign of COUNT."
         (beginning-of-defun)
       (end-of-defun))))
 
-;;;; `hel-sexp'
+;;;; Sexps
 
 (defun hel--forward-sexp (&optional count)
   "Move point COUNT sexps forward (backward if COUNT is negative).
@@ -254,8 +254,6 @@ on sign of COUNT."
     (hel-motion-loop (dir (or count 1))
       (ignore-errors
         (forward-sexp dir)))))
-
-(put 'hel-sexp 'forward-op #'hel--forward-sexp)
 
 (defun hel-forward-sexp-only (&optional count)
   "Move forward across COUNT balanced expressions (sexps).
