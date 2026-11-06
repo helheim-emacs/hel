@@ -125,28 +125,8 @@ the selection."
 (defun hel-bolp ()
   "Like `bolp' but consider visual lines when `visual-line-mode' is enabled."
   (if visual-line-mode
-      (hel-visual-bolp)
+      (= (point) (hel-line-begin))
     (bolp)))
-
-(defun hel-visual-bolp ()
-  "Return t if point is at the beginning of visual line."
-  (save-excursion
-    (let ((p (point)))
-      (beginning-of-visual-line)
-      (= p (point)))))
-
-(defun hel-eolp ()
-  "Like `eolp' but consider visual lines when `visual-line-mode' is enabled."
-  (if visual-line-mode
-      (hel-visual-eolp)
-    (eolp)))
-
-(defun hel-visual-eolp ()
-  "Return t if point is at the end of visual line."
-  (save-excursion
-    (let ((p (point)))
-      (end-of-visual-line)
-      (= p (point)))))
 
 (defun hel-line-boundary-p (direction)
   "If DIRECTION is negative number, checks for beginning of line,
@@ -185,10 +165,8 @@ logical line on desired end of the region."
   "Return t if active region spawns visual lines."
   (and visual-line-mode
        (use-region-p)
-       (save-excursion (goto-char (region-beginning))
-                       (hel-visual-bolp))
-       (save-excursion (goto-char (region-end))
-                       (hel-visual-bolp))))
+       (= (region-beginning) (hel-line-begin (region-beginning)))
+       (= (region-end) (hel-line-begin (region-end)))))
 
 (defun hel-whitespace-p (char)
   "Non-nil when CHAR belongs to whitespace syntax class."
@@ -567,21 +545,27 @@ If DIRECTION is positive number — get following char, otherwise preceding char
       (following-char)
     (preceding-char)))
 
-(defun hel-beginning-of-line (&optional count)
-  "Move point to the beginning of current line.
-Move over visual line when `visual-line-mode' is active."
-  (if visual-line-mode
-      (beginning-of-visual-line count)
-    (hel--beginning-of-line count))
-  (point))
+(cl-defun hel-line-begin (&optional (pos (point)))
+  "Return the start of the line at POS.
+This is the visual line of the selected window when `visual-line-mode' is
+active, and otherwise the visible logical line."
+  (save-excursion
+    (goto-char pos)
+    (if visual-line-mode
+        (beginning-of-visual-line)
+      (hel--beginning-of-visible-line))
+    (point)))
 
-(defun hel-end-of-line (&optional count)
-  "Move point to the end of current line.
-Move over visual line when `visual-line-mode' is active."
-  (if visual-line-mode
-      (end-of-visual-line count)
-    (move-end-of-line count))
-  (point))
+(cl-defun hel-line-end (&optional (pos (point)))
+  "Return the end of the line at POS.
+This is the visual line of the selected window when `visual-line-mode' is
+active, and otherwise the logical line."
+  (save-excursion
+    (goto-char pos)
+    (if visual-line-mode
+        (end-of-visual-line)
+      (move-end-of-line 1))
+    (point)))
 
 ;;;; `hel--forward-word'
 
@@ -664,8 +648,8 @@ on sign of COUNT."
 (put 'hel-line 'bounds-of-thing-at-point
      (lambda ()
        (cons (save-excursion
-               (hel--beginning-of-line 1)
-               ;; `hel--beginning-of-line' may leave point after invisible
+               (hel--beginning-of-visible-line)
+               ;; `hel--beginning-of-visible-line' may leave point after invisible
                ;; characters if line starts with such of these (e.g., with
                ;; a link at column 0 in Org mode). Really move to the beginning
                ;; of the current visible line.
@@ -692,15 +676,10 @@ moves only over visible lines."
            (goto-char (previous-single-char-property-change
                        (point) 'invisible))))))
 
-(defun hel--beginning-of-line (&optional count)
+(defun hel--beginning-of-visible-line ()
   "Move point to the beginning of the current visible logical line.
 This is actually refactored `move-beginning-of-line' command."
-  (or count (setq count 1))
   (let ((init-point (point)))
-    ;; Move by lines, if COUNT is not 1 (the default).
-    (when (/= count 1)
-      (let ((line-move-visual nil))
-        (line-move (1- count) t)))
     ;; Move to beginning-of-line, ignoring fields and invisible text.
     (let ((inhibit-field-text-motion t))
       (beginning-of-line)
@@ -712,7 +691,7 @@ This is actually refactored `move-beginning-of-line' command."
                 (invisible-p (point)))
       (goto-char (next-char-property-change (point) init-point)))
     ;; Obey field constraints.
-    (goto-char (constrain-to-field (point) init-point (/= count 1) t nil))))
+    (goto-char (constrain-to-field (point) init-point nil t nil))))
 
 ;;;; `hel-visual-line'
 

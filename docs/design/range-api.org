@@ -91,15 +91,17 @@ and mark keeps "region", as Emacs does.
 - Hel has no general loop function. Only ~hel--extend-things~ and
   ~hel-thing-edge~ could use one, and each of them is a few clear lines.
 
-** TODO 4. Line functions
+** DONE 4. Line functions
 
-- ~hel-line-begin (pos)~ and ~hel-line-end (pos)~ hold the one check of
-  ~visual-line-mode~. A visual line depends on the window, and their
-  docstrings state this.
-- ~hel-bolp~, ~hel-eolp~, ~hel-visual-bolp~ and ~hel-visual-eolp~ follow from
-  them.
-- ~hel-beginning-of-line~ and ~hel--beginning-of-line~ do different jobs, so
-  one of them gets a new name.
+- ~hel-line-begin~ and ~hel-line-end~ take a position and leave point alone.
+  They hold the check of ~visual-line-mode~ for the motions. A visual line
+  depends on the selected window, and their docstrings state this.
+- ~hel-bolp~ keeps ~bolp~ without ~visual-line-mode~. The visible line of
+  ~hel-line-begin~ differs from ~bolp~ on fields and on invisible text at the
+  start of a line, and the =c= command relies on ~bolp~.
+- ~hel--beginning-of-visible-line~ is the motion under ~hel-line-begin~.
+- ~hel-line-boundary-p~ stays on ~bolp~ and ~eolp~: word motions stop at logical
+  lines.
 
 ** TODO 5. Word motions
 

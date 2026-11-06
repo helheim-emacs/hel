@@ -219,7 +219,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-beginning-of-line-command))
   (interactive)
-  (hel-select-motion (point) (hel-beginning-of-line)))
+  (hel-select-motion (point) (hel-line-begin)))
 
 ;; gs
 (hel-define-command hel-first-non-blank ()
@@ -229,7 +229,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (interactive)
   (hel-select-motion (point)
-                     (progn (hel-beginning-of-line)
+                     (progn (goto-char (hel-line-begin))
                             (skip-syntax-forward " " (line-end-position))
                             (backward-prefix-chars)
                             (point))))
@@ -242,7 +242,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-end-of-line-command))
   (interactive)
-  (hel-select-motion (point) (hel-end-of-line))
+  (hel-select-motion (point) (hel-line-end))
   ;; "Stick" cursor to the end of line after moving to it. Vertical
   ;; motions right after "gl" will place point at the end of each line.
   (when (and (not visual-line-mode)
@@ -490,7 +490,7 @@ depending on DIRECTION."
   (hel-with-each-cursor
     (if (< direction 0)
         (hel-first-non-blank)
-      (hel-end-of-line))
+      (goto-char (hel-line-end)))
     (set-marker (mark-marker) (point)))
   (hel-insert-state 1))
 
@@ -542,7 +542,7 @@ depending on DIRECTION."
   (hel-save-selection
     (when (use-region-p)
       (hel-ensure-region-direction -1))
-    (hel--beginning-of-line)
+    (hel--beginning-of-visible-line)
     (newline count)))
 
 ;; c
@@ -930,7 +930,7 @@ When called interactively — toggle extending selection."
         (catch 'done
           (let (border)
             (while t
-              (hel-end-of-line)
+              (goto-char (hel-line-end))
               (when (<= end (point))
                 (goto-char end)
                 (throw 'done nil))

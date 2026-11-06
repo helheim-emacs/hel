@@ -41,6 +41,11 @@
 - The Hel API says "selection" for a selection as a value. ~hel-region~ and
   ~hel-save-region~ are renamed to ~hel-selection~ and ~hel-save-selection~.
 
+- ~hel-line-begin~ and ~hel-line-end~ return the edges of the line at a position
+  and leave point alone. They replace ~hel-beginning-of-line~ and
+  ~hel-end-of-line~. ~hel-eolp~, ~hel-visual-bolp~ and ~hel-visual-eolp~ are
+  removed.
+
 - ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~.
   ~hel-trim-whitespace-from-range~, ~hel-invert-case-in-range~,
   ~hel-replace-chars~, ~hel-read-char-and-replace~ and ~hel-range-visible?~

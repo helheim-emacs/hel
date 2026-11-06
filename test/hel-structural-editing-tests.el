@@ -4302,6 +4302,64 @@ previous word."
     (hel-spec--run #'hel-backward-word-end 2)
     (should (equal (hel-spec--render) "foo| bar b^az\n"))))
 
+;;; Line edges
+
+(ert-deftest hel-line-edges-leave-point-alone ()
+  (with-temp-buffer
+    (insert "one\ntwo words\nthree")
+    (goto-char 7)
+    (should (= (hel-line-begin) 5))
+    (should (= (hel-line-end) 14))
+    (should (= (hel-line-begin 16) 15))
+    (should (= (hel-line-end 16) 20))
+    (should (= (point) 7))))
+
+(ert-deftest hel-line-begin-skips-invisible-start ()
+  (with-temp-buffer
+    (insert "one\ntwo words")
+    (put-text-property 5 9 'invisible t)
+    (should (= (hel-line-begin 12) 9))))
+
+(ert-deftest hel-line-edges-use-visual-lines ()
+  (with-temp-buffer
+    (insert "one two three")
+    (goto-char 7)
+    (let ((visual-line-mode t))
+      (cl-letf (((symbol-function 'beginning-of-visual-line)
+                 (lambda (&rest _) (goto-char 5)))
+                ((symbol-function 'end-of-visual-line)
+                 (lambda (&rest _) (goto-char 9))))
+        (should (= (hel-line-begin) 5))
+        (should (= (hel-line-end) 9))
+        (should-not (hel-bolp))
+        (goto-char 5)
+        (should (hel-bolp))))))
+
+(ert-deftest hel-bolp-uses-bolp-on-logical-lines ()
+  (with-temp-buffer
+    (insert "one\ntwo words")
+    (put-text-property 5 9 'invisible t)
+    (let ((visual-line-mode nil))
+      (goto-char 5)
+      (should (hel-bolp))
+      (goto-char 9)
+      (should-not (hel-bolp)))))
+
+(ert-deftest hel-visual-lines-p-checks-both-edges ()
+  (with-temp-buffer
+    (insert "one two three four")
+    (let ((transient-mark-mode t)
+          (visual-line-mode t))
+      (cl-letf (((symbol-function 'beginning-of-visual-line)
+                 (lambda (&rest _)
+                   (goto-char (if (< (point) 9) 1 9)))))
+        (hel-select (cons 1 9))
+        (should (hel-visual-lines-p))
+        (hel-select (cons 2 9))
+        (should-not (hel-visual-lines-p))
+        (hel-select (cons 1 12))
+        (should-not (hel-visual-lines-p))))))
+
 ;;; The range of `hel-thing-edge'
 
 (ert-deftest hel-thing-edge-returns-a-range ()
