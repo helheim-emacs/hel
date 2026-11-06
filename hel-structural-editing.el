@@ -1344,7 +1344,8 @@ a direction that returns the start of the next comment, or nil."))
 
 (cl-defmethod hel-things-at (_thing (producer hel-comment-producer) range)
   "Return the comment run of PRODUCER at the start of RANGE, as a list."
-  (-non-nil (list (hel--comment-run-from producer (car range)))))
+  (-some-> (hel--comment-run-from producer (car range))
+    (list)))
 
 (cl-defmethod hel-thing-next (_thing (producer hel-comment-producer) pos dir)
   "Return the next comment run of PRODUCER from POS in direction DIR."
