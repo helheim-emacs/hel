@@ -274,6 +274,36 @@ arguments follow the format used by `forward-sexp'."
                             (list "No previous sexp" (point-min) (point))
                           (list "No next sexp" (point) (point-max))))))
 
+;;; Comments
+
+(defun hel-comment-range-at (pos)
+  "Return the range of the comment that holds POS, or nil.
+A comment holds its delimiters and the line end that closes it. The end
+of the buffer closes a comment that has no end of its own."
+  (save-excursion
+    (cl-loop for start in (list (let ((ppss (syntax-ppss pos)))
+                                  (and (nth 4 ppss) (nth 8 ppss)))
+                                pos
+                                (1- pos))
+             thereis
+             (when-let* ((start)
+                         ((<= (point-min) start))
+                         ((not (memq (char-after start) '(nil ?\s ?\t ?\n ?\r))))
+                         ((not (nth 3 (syntax-ppss start))))
+                         ;; A comment that the buffer end closes moves point
+                         ;; to the end, but `forward-comment' returns nil.
+                         ((progn (goto-char start)
+                                 (or (forward-comment 1)
+                                     (eobp))))
+                         ((<= start pos))
+                         ((or (< pos (point))
+                              (= pos (point-max)))))
+               (cons start (point))))))
+
+(defun hel-comment-at-pos-p (pos)
+  "Return non-nil if POS is in a comment or on one of its delimiters."
+  (and (hel-comment-range-at pos) t))
+
 ;;; Selection history
 
 (defun hel--sync-selection-history ()
@@ -648,9 +678,7 @@ the sexp after it starts before it, as in a symbol or after the quote of
                          ((< start pos end)))
                (cons start end)))
             ((nth 4 ppss)
-             (goto-char pos)
-             (when-let* ((comment (hel-bounds-of-comment-at-point-ppss))
-                         ((cdr comment))
+             (when-let* ((comment (hel-comment-range-at pos))
                          ((< (car comment) pos)))
                (hel-trim-whitespace-from-range comment)))
             (t
@@ -913,10 +941,8 @@ Each of them gives two (BEGIN . END) pairs: its inside and its whole."
           (when-let* ((end (ignore-errors (scan-sexps start 1))))
             (push (cons start end) regions)
             (push (cons (1+ start) (1- end)) regions))
-        (when-let* ((end (cdr (save-excursion
-                                (goto-char pos)
-                                (hel-bounds-of-comment-at-point-ppss)))))
-          (setq regions (append (hel--comment-ranges (cons start end)) regions)))))
+        (when-let* ((comment (hel-comment-range-at pos)))
+          (setq regions (append (hel--comment-ranges comment) regions)))))
     (delq nil regions)))
 
 (cl-defun hel--comment-ranges ((begin . end))
@@ -1547,28 +1573,14 @@ The source applies where `hel-treesit-text-objects-p' returns non-nil."
 
 (defun hel--syntax-comment-at (pos)
   "Return the comment that holds the character at POS, from the syntax table."
-  (save-excursion
-    (cl-loop for start in (list (let ((ppss (syntax-ppss pos)))
-                                  (and (nth 4 ppss) (nth 8 ppss)))
-                                pos
-                                (1- pos))
-             thereis
-             (when-let* ((start)
-                         ((<= (point-min) start))
-                         ((not (memq (char-after start) '(nil ?\s ?\t ?\n ?\r))))
-                         ((not (nth 3 (syntax-ppss start))))
-                         ;; A comment that the buffer end closes moves point
-                         ;; to the end, but `forward-comment' returns nil.
-                         ((progn (goto-char start)
-                                 (or (forward-comment 1)
-                                     (eobp))))
-                         (range (hel-trim-whitespace-from-range (cons start (point))))
-                         ((= start (car range)))
-                         ((<= start pos))
-                         ((< pos (cdr range))))
-               (list :begin start
-                     :end (cdr range)
-                     :parent (nth 1 (syntax-ppss start)))))))
+  (when-let* ((comment (hel-comment-range-at pos))
+              (range (hel-trim-whitespace-from-range comment))
+              ((< pos (cdr range))))
+    (list :begin (car range)
+          :end (cdr range)
+          ;; `syntax-ppss' leaves point at the position that it gets.
+          :parent (save-excursion
+                    (nth 1 (syntax-ppss (car range)))))))
 
 (defun hel--syntax-next-comment (pos dir)
   "Return the start of the next comment from POS in direction DIR, or nil.
@@ -1594,16 +1606,13 @@ POS."
   "Return the comment start if the line at point holds only a comment."
   (save-excursion
     (back-to-indentation)
-    (unless (eolp)
-      (let* ((line-start (line-beginning-position))
-             (ppss (syntax-ppss))
-             (start (if (nth 4 ppss) (nth 8 ppss) (point))))
-        (goto-char start)
-        (when (and (forward-comment 1)
-                   (or (and (bolp) (< line-start (point)))
-                       (progn
-                         (hel-skip-whitespaces 1)
-                         (eolp))))
+    (let ((line-start (line-beginning-position)))
+      (-when-let ((start . end) (hel-comment-range-at (point)))
+        (goto-char end)
+        (when (or (and (bolp) (< line-start (point)))
+                  (progn
+                    (hel-skip-whitespaces 1)
+                    (eolp)))
           start)))))
 
 (defun hel--header-start (pos)

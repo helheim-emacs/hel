@@ -371,39 +371,6 @@ FUN on each invocation should move point."
         (eval-when-compile
           (-map #'char-to-string (number-sequence ?a ?z)))))
 
-(defun hel-comment-at-pos-p (pos)
-  "Return non-nil if position POS is inside a comment, or comment starts
-right after the point."
-  (ignore-errors
-    ;; We cannot be in a comment if we are inside a string
-    (unless (nth 3 (syntax-ppss pos))
-      (or (nth 4 (syntax-ppss pos))
-          ;; This test opening and closing comment delimiters... We need
-          ;; to check that it is not newline, which is in "comment ender"
-          ;; class in elisp-mode, but we just want it to be treated as
-          ;; whitespace.
-          (and (< pos (point-max))
-               (memq (char-syntax (char-after pos)) '(?< ?>))
-               (not (eq (char-after pos) ?\n)))
-          ;; We also need to test the special syntax flag for comment
-          ;; starters and enders, because `syntax-ppss' does not yet know if
-          ;; we are inside a comment or not (e.g. / can be a division or
-          ;; comment starter...).
-          (when-let* ((s (car (syntax-after pos))))
-            (or
-             ;; First char of 2 chars comment opener
-             (and (/= 0 (logand (ash 1 16) s))
-                  (nth 4 (syntax-ppss (+ pos 2))))
-             ;; Second char of 2 chars comment opener
-             (and (/= 0 (logand (ash 1 17) s))
-                  (nth 4 (syntax-ppss (+ pos 1))))
-             ;; First char of 2 chars comment closer
-             (and (/= 0 (logand (ash 1 18) s))
-                  (nth 4 (syntax-ppss (- pos 1))))
-             ;; Second char of 2 chars comment closer
-             (and (/= 0 (logand (ash 1 19) s))
-                  (nth 4 (syntax-ppss (- pos 2))))))))))
-
 (defun hel-string-at-pos-p (position)
   "Return non-nil if POSITION is inside string.
 This function actually returns the 3rd element of `syntax-ppss' which
@@ -632,18 +599,6 @@ This is actually refactored `move-beginning-of-line' command."
 (put 'hel-visual-line 'forward-op #'vertical-motion)
 ;; (put 'hel-visual-line 'beginning-op #'beginning-of-visual-line)
 ;; (put 'hel-visual-line 'end-op       #'end-of-visual-line)
-
-;;;; Comments
-
-(defun hel-bounds-of-comment-at-point-ppss ()
-  "Return the bounds of a comment at point using Parse-Partial-Sexp Scanner."
-  (save-excursion
-    (let ((state (syntax-ppss)))
-      (when (nth 4 state)
-        (cons (nth 8 state)
-              (when (parse-partial-sexp
-                     (point) (point-max) nil nil state 'syntax-table)
-                (point)))))))
 
 ;;; Selection
 

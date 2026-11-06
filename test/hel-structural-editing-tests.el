@@ -949,6 +949,25 @@ object, also when the outer function is decorated."
     (hel-mark-comment-forward 1)
     (should (equal (hel-structural-tests--selection) "\n;; b\n"))))
 
+(ert-deftest hel-comment-range-at ()
+  "One comment holds its delimiters and the line end that closes it."
+  (pcase-dolist (`(,mode ,text ,cases)
+                 '((emacs-lisp-mode "(a) ;; b\n;; c\n"
+                                    ((3 nil) (4 nil) (5 (5 . 10)) (6 (5 . 10))
+                                     (9 (5 . 10)) (10 (10 . 15))))
+                   (emacs-lisp-mode "(s \"; no\")\n" ((5 nil)))
+                   (python-mode "# b  \n" ((1 (1 . 7)) (4 (1 . 7)) (6 (1 . 7))))
+                   (c-mode "int x; /* a */ y;\n"
+                           ((7 nil) (8 (8 . 15)) (9 (8 . 15)) (14 (8 . 15))
+                            (15 nil)))
+                   (c-mode "/* open" ((1 (1 . 8)) (4 (1 . 8)) (8 (1 . 8))))
+                   (emacs-lisp-mode ";; a" ((1 (1 . 5)) (5 (1 . 5))))))
+    (hel-structural-tests--with-buffer mode text ""
+      (pcase-dolist (`(,position ,range) cases)
+        (ert-info ((format "%S at %d" text position))
+          (should (equal (hel-comment-range-at position) range))
+          (should (eq (hel-comment-at-pos-p position) (and range t))))))))
+
 (ert-deftest hel-comment-motion-to-unterminated ()
   "`]c' selects an unterminated comment."
   (hel-structural-tests--with-buffer #'c-mode "int x;\n/* open" "int"

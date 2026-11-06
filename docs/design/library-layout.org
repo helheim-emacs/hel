@@ -88,7 +88,7 @@ readable in the later commits.
   over a kind of thing. ~hel-vterm~, ~hel-ghostel~ and ~hel-paredit~ use some of
   them.
 
-** TODO 4. One function for a single comment
+** DONE 4. One function for a single comment
 
 - ~hel-comment-range-at~ takes a position and returns the range of the single
   comment there, with its line end. It lives in ~hel-structural-editing.el~,
