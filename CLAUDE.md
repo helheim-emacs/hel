@@ -14,11 +14,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 hel-vars.el              → settings, customization groups, faces
-hel-lib.el               → utilities, hel-motion-loop, highlight system
+hel-lib.el               → utilities, hel-motion-loop, highlight system, lines, mark ring
 hel-macros.el            → hel-define-command, hel-define-advice, hel-advice-add
 hel-multiple-cursors-core.el → fake cursor engine, undo/redo integration
 hel-core.el              → state machine, hel-define-state, hel-keymap-set, pre/post-command hooks, hel-mode
-hel-structural-editing.el → the thing protocol: producers, algorithms, drivers, thing definitions
+hel-structural-editing.el → the thing protocol: producers, algorithms, drivers, thing definitions, the motions over things
+hel-surround.el          → the text between delimiters: quotes, brackets, HTML tags
 hel-commands.el          → all interactive editing commands: motions, selections, node commands, text objects
 hel-search.el            → search, replace, highlighting
 hel-scroll.el            → smooth and jump scrolling

@@ -505,7 +505,7 @@ The producer returns these regions:
   step would only get in the way;
 - *the inside and the whole of the enclosing string or comment.* The string
   starts at element 8, and ~scan-sexps~ finds its end. Comments come from
-  ~hel-bounds-of-comment-at-point-ppss~. The whole comment excludes the
+  ~hel-comment-range-at~. The whole comment excludes the
   trailing newline, and the inside also excludes the comment delimiters;
 - *the inside and the whole of each enclosing bracket pair.* The inside
   excludes the whitespace that follows the opening bracket and the whitespace
@@ -834,6 +834,27 @@ A comment has no range inside its markers. In the most common style, a
 marker is not a unit that anyone edits. A comment has no header comment
 either.
 
+Hel works with two sizes of comment. A /single comment/ is what the syntax
+table or a parser calls one comment, and ~hel-comment-range-at~ gives its
+range in a buffer without a parser. A /comment run/ is the ~comment~ thing.
+These rules hold for both:
+
+- A cursor on any delimiter character is on the comment, because the cursor
+  block shows it there.
+- A line end belongs to a comment line, and so do the blanks before it. So
+  =mic= finds the run with point at the end of any of its lines.
+- An unterminated =/* open= is a comment up to the end of the buffer, and so
+  is =;; a= on a last line with no line end.
+- A cursor on a blank line directly after a run finds the run, because point
+  touches its end. A cursor on a blank line between two runs finds the run
+  before it, through the gap. Other blank lines belong to no run.
+
+The comment run is also the limit of the search of =mi"= and =mi(= inside
+a comment (~hel-surround.el~). So a pair can span two lines of a run, and the
+selection then holds the marker of the second line. The search uses a run only
+when the run itself holds point, and not when it finds the run through its
+gap. Otherwise a cursor in the code below a comment would search in the comment.
+
 *** The around range
 
 The around range adds two parts to the object: the header comment, for the
@@ -962,9 +983,6 @@ the object is the one that owns the text under the cursor:
 - *When a bare point touches two objects, the object after point wins*, as
   for =M-o= (rule 9). In =foo|.=, =miw= selects the period, and in
   =foo| bar=, it selects =foo=, because nothing else touches point.
-
-A cursor on a blank line after a comment run finds the run through its
-gap, as it finds a paragraph.
 
 Then the driver applies the same rules to every producer:
 
@@ -1495,9 +1513,10 @@ whose producer leaves out brackets, and it has no WORD commands of its own.
   selections: the node commands, the four commands of each text object, the
   paragraph motions ={= and =}=, and the word motions =w=, =b=, =e=, =ge= and
   their WORD forms. Each one is a thin function over a driver.
-- *The motions live in ~hel-lib.el~*: ~hel--forward-word~,
-  ~hel--forward-WORD~, ~hel--forward-sentence~, ~hel--forward-paragraph~ and
-  ~hel--forward-function~. The text objects register nothing with thingatpt. A
+- *The motions live in ~hel-structural-editing.el~*: ~hel--forward-word~,
+  ~hel--forward-WORD~, ~hel--forward-sentence~, ~hel--forward-paragraph~,
+  ~hel--forward-function~ and ~hel--forward-sexp~. Hel registers nothing with
+  thingatpt. A
   motion source calls its motion directly, so Hel needs no second name, such
   as ~hel-word~, next to the thing ~word~ of Emacs. The property
   ~hel-thing-sources~ carries the =hel-= prefix, so putting it on ~word~ or
@@ -1509,8 +1528,13 @@ whose producer leaves out brackets, and it has no WORD commands of its own.
   ~hel-mark-a-argument~. The producers that need a parser and their helpers
   use ~hel-treesit-~, for example ~hel-treesit-node-source~ and
   ~hel-treesit--thing-matches~.
-- *~hel.el~ loads ~hel-structural-editing.el~ before ~hel-commands.el~*,
-  which requires it, and ~hel-keybindings.el~ holds the bindings.
+- *~hel-surround.el~ finds the text between delimiters*: quotes, brackets and
+  HTML tags. It stays outside the protocol and uses the comment run as
+  a limit, so it loads after ~hel-structural-editing.el~.
+- *~hel.el~ loads ~hel-structural-editing.el~ and ~hel-surround.el~ before
+  ~hel-commands.el~*, which requires them, and ~hel-keybindings.el~ holds the
+  bindings. ~hel-lib.el~ loads below all of them, so it cannot load them for
+  its users. ~hel.el~ is the one file that loads everything.
 - *The query files live in =queries/<language>/textobjects.scm=*, next to the
   update script =update.sh=, the license =LICENSE=, the notice =README.org=
   and the Helix commit in =HELIX-REVISION=. Hel's own patterns live in
@@ -1556,7 +1580,10 @@ The parts form three layers, and each layer uses only the layers above it:
 
 * Tests
 
-The tests live in ~test/hel-structural-editing-tests.el~. The tests with the
+The tests of surround live in ~test/hel-surround-tests.el~. They check =mi"=,
+=ma"=, =mi(= and =ma(= in code, in a string and in a comment, and the comment
+run as the limit. The other tests live in
+~test/hel-structural-editing-tests.el~. The tests with the
 prefix =hel-spec-= come from this document alone, written without the code,
 so a test that fails shows either a bug or a gap in this document. All the
 tests check pure logic in ~with-temp-buffer~, in the style of
@@ -1626,6 +1653,9 @@ tests are skipped where an object has no source. They check that:
   and =mac= adds the blank lines up to the next comment run;
 - =mac= on a comment after code selects only the comment, and its gap stays
   on the line;
+- =mic= and =mac= find a run from each line end of the run, from a blank line
+  after it, and on a comment that the end of the buffer closes;
+- ~hel-comment-range-at~ holds the delimiters and the closing line end;
 - =2 mif= on the first method selects both methods, and =2 maf= on the
   last method selects only that method;
 - on =a= in =f(a, b, c)=, =2 mia= selects =a, b= and =2 maa= selects =a, b=
