@@ -99,6 +99,18 @@ This is the last character of a forward selection, and point otherwise."
       (1- (point))
     (point)))
 
+(defun hel--trimmed-cursor-range ()
+  "Return the range that a text object is found from.
+With a selection, this is the character under the cursor once the whitespace
+at the edges of the selection is left out. Without a selection, this is the
+empty range at point."
+  (if-let* ((selection (hel--trimmed-selection)))
+      (-let [(begin . end) selection]
+        (if (< 0 (hel-region-direction))
+            (cons (1- end) end)
+          (cons begin (1+ begin))))
+    (cons (point) (point))))
+
 (cl-defun hel--nearest (items dir &optional (key #'identity))
   "Return the first of ITEMS in direction DIR, 1 or -1, or nil.
 KEY maps an item to its (BEGIN . END) range; without KEY the items are
@@ -1956,8 +1968,8 @@ child."
 
 ;;; Drivers
 
-(defun hel--mark-text-object (thing kind count)
-  "Select COUNT THINGs at the selection, the range of KIND.
+(defun hel--mark-text-object (thing kind count direction)
+  "Select COUNT THINGs at the cursor, the range of KIND, in DIRECTION.
 KIND is `:inner' for the things alone, and `:around' for the things
 with their header comment and gap. When the selection is the range that
 the previous call for THING and KIND selected, add COUNT more things."
@@ -1975,9 +1987,8 @@ the previous call for THING and KIND selected, add COUNT more things."
                           (equal key (car hel--text-object-run))
                           (equal run-range current))
                      (hel--extend-things thing producer run-first run-last count)
-                   (-when-let* ((selection (or (hel--trimmed-selection)
-                                               (cons (point) (point))))
-                                (instance (hel-thing-at thing producer selection)))
+                   (-when-let (instance (hel-thing-at thing producer
+                                                      (hel--trimmed-cursor-range)))
                      (hel--extend-things thing producer instance instance
                                          (- count (hel-sign count))))))
                 (range (when first
@@ -1988,7 +1999,7 @@ the previous call for THING and KIND selected, add COUNT more things."
           (when (and range
                      (not (equal range current)))
             (hel-push-point)
-            (hel-select range -1)
+            (hel-select range direction)
             (hel--record-selection before)
             (setq hel--text-object-run (list key range first last))
             (hel-reveal-point-when-on-top))))
@@ -2014,8 +2025,7 @@ the selection stays as it is."
 
 (defun hel--expand-1 (thing producer)
   "Expand the selection one step over the nodes of THING.
-Point goes to the start: when the selection outgrows the window, the start
-shows what the selection is. Without a selection, the first step selects
+Point goes to the end. Without a selection, the first step selects
 the node that touches point, when point lies inside no token. Return non-nil
 if the selection changed."
   (hel--sync-selection-history)
@@ -2028,7 +2038,7 @@ if the selection changed."
                             (hel-node-range thing producer)))
                      (-> (hel-node-expand-steps thing producer range)
                          (hel--smallest-enclosing-range range)))))
-      (hel-select new-range -1)
+      (hel-select new-range 1)
       (hel--record-selection before)
       t)))
 

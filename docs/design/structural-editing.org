@@ -275,17 +275,24 @@ the nested keymap of ~tab-bar-mode-map~ hides the class motion.
    the start of a series of expands and shrinks, so that a series leaves one
    entry. Shrink, select all siblings and select all children do not push
    it.
-7. *The command decides the direction of the new selection.* Expand, =mi=
-   and =ma= put point at the start, whatever the direction was before. On
-   consecutive presses a selection can outgrow the window, and its start
-   shows what it is: the header of a function or the first words of a
-   paragraph. ~mark-paragraph~ in Emacs works the same way. Shrink, select
-   all siblings and select all children keep the direction. =M-n= and =M-p=
-   keep it too: after =mif= point is at the header of the function, and =M-n=
-   shows the header of the next function. From a bare point there is no
-   direction to keep, so =M-n= gives a forward selection and =M-p= a backward
-   one. The other commands that move put point on the side of the motion: =M-e=
-   and =]f= put point at the end, and =M-b= and =[f= put point at the start.
+7. *The command decides the direction of the new selection.* No general rule
+   decides it. Each choice comes from experience of use, because one rigorous
+   rule would fit some objects badly:
+
+   | Commands                                   | Point after the command |
+   |--------------------------------------------+-------------------------|
+   | =M-o=                                        | at the end              |
+   | =miw= =maw= =miW= =maW= =mis= =mas= =mia= =maa=  | at the end              |
+   | =mif= =maf= =mit= =mat= =mip= =map= =mic= =mac=  | at the start            |
+
+   Each =mi= and =ma= command passes its direction to ~hel--mark-text-object~.
+   Shrink, select all siblings and select all children keep the direction.
+   =M-n= and =M-p= keep it too: after =mif= point is at the header of the
+   function, and =M-n= shows the header of the next function.
+   From a bare point there is no direction to keep, so =M-n= gives a forward
+   selection and =M-p= a backward one. The other commands that move put point
+   on the side of the motion: =M-e= and =]f= put point at the end, and =M-b=
+   and =[f= put point at the start.
 
    *=v= works with motions*: =w=, =b=, =e=, ={=, =}=, =]f=, =[f=, =M-n=,
    =M-p=, =M-b=, =M-e= and the others. A motion keeps the mark and moves
@@ -922,11 +929,19 @@ object follows the last.
 
 ** Selecting an object
 
-=mi= and =ma= select the object at the selection, or its around range. They
-start from the selection without the whitespace at its edges (rule 10
-above). Without a region, they start from the empty range at point, and
-an object contains that range when point lies inside the object or on
-its edge.
+=mi= and =ma= select the object at the cursor, or its around range. They leave
+out the whitespace at the edges of the selection, and then they take the
+character under the cursor: the last character of a forward selection, and the
+first character of a backward one. So =miw= on the selection =two three=
+selects =three=, and =mif= on a selection that spans two functions selects the
+function that holds the cursor. Helix also starts every text object from the
+cursor, with ~range.cursor~. It keeps the whitespace, and Hel leaves it out so
+that =w= and =miw= select the word and not the space after it. Without a region,
+the commands start from the empty range at point, and an object contains that
+range when point lies inside the object or on its edge.
+
+Only =M-o= looks at the whole selection, so =M-o= reaches the object that
+encloses a selection.
 
 Finding the object has two parts: the producer gives the candidates, and
 the driver chooses one of them.
@@ -1015,8 +1030,8 @@ Then the driver applies the same rules to every producer:
 - *Selections of several cursors merge.* Two cursors in one function select
   the same range, and runs of objects can overlap. The commands set
   =:merge-selections t=, so Hel merges such selections into one.
-- *Point goes to the start of the range.* The driver pushes the old point to
-  the mark ring and writes the old selection to the history of =M-i=.
+- *The command decides the side of point* (rule 7). The driver pushes the old
+  point to the mark ring and writes the old selection to the history of =M-i=.
 - *When no object is found, the selection stays as it is*, and the mark ring
   does not change.
 
@@ -1429,7 +1444,7 @@ each and calls the algorithm. Each command is written out, with no macro:
   :multiple-cursors t
   :merge-selections t
   (interactive "p")
-  (hel--mark-text-object 'function :inner count))
+  (hel--mark-text-object 'function :inner count -1))
 #+end_src
 
 A command takes six lines where a macro call would take one, but nothing
@@ -1629,6 +1644,9 @@ tests are skipped where an object has no source. They check that:
 
 - =mif= selects the whole method with its =def= line, and =maf= selects the
   method and the blank lines after it, with point at the start;
+- =miw= and =mis= put point at the end, and =mif=, =mip= and =mic= at the start;
+- with a selection that no object holds, =mi= selects the object at the cursor,
+  and =M-i= returns to that selection;
 - =maf= on a function with a comment directly above it takes that header
   comment, and leaves out the header comment of the next function;
 - =maf= on a decorated function selects its header comment, its decorators
@@ -1752,7 +1770,7 @@ The tests of the syntax producer and the driver check that:
   without its newline;
 - expand from a selection that spans two brackets reaches the smallest
   bracket pair that contains both;
-- expand puts point at the start of the selection;
+- expand puts point at the end of the selection;
 - =3 M-o= followed by =3 M-i= returns to the empty selection at the
   starting point, and repeated =M-i= retraces the path of the expands;
 - =-3 M-i= expands three times, and =-3 M-o= shrinks back;

@@ -183,12 +183,12 @@ The window commands that need a displayed buffer do nothing."
 
 ;;; Expand and shrink: driver
 
-(ert-deftest hel-expand-keeps-direction ()
+(ert-deftest hel-expand-selects-forward ()
   (hel-structural-tests--with-buffer #'c-mode "(foo bar)" "foo"
     (set-mark 5)
     (hel-expand-selection 1)
     (should (equal (hel-structural-tests--selection) "foo bar"))
-    (should (= (point) 2))))
+    (should (= (point) 9))))
 
 (ert-deftest hel-expand-count-and-shrink ()
   (hel-structural-tests--with-buffer #'c-mode "(a (b (c d)))" " d"
@@ -973,6 +973,55 @@ object, also when the outer function is decorated."
   (hel-structural-tests--with-buffer #'c-mode "int x;\n/* open" "int"
     (hel-mark-comment-forward 1)
     (should (equal (hel-structural-tests--selection) "/* open"))))
+
+(ert-deftest hel-text-object-direction ()
+  "Each kind of thing has its own direction of selection."
+  (pcase-dolist (`(,dir ,mode ,text ,start ,commands)
+                 `((1 text-mode "foo bar baz\n" "bar"
+                      (hel-mark-inner-word hel-mark-a-word
+                       hel-mark-inner-WORD hel-mark-a-WORD))
+                   (1 text-mode "One two.  Three four.\n" "two"
+                      (hel-mark-inner-sentence hel-mark-a-sentence))
+                   (-1 text-mode "aaa\nbbb\n\nccc\n" "bbb"
+                       (hel-mark-inner-paragraph hel-mark-a-paragraph))
+                   (-1 emacs-lisp-mode "(defun a ()\n  1)\n\n(defun b ()\n  2)\n" "1"
+                       (hel-mark-inner-function hel-mark-a-function))
+                   (-1 emacs-lisp-mode ";; a\n;; b\n\n;; c\n" "b"
+                       (hel-mark-inner-comment hel-mark-a-comment))))
+    (dolist (command commands)
+      (ert-info ((symbol-name command))
+        (hel-structural-tests--with-buffer mode text start
+          (funcall command 1)
+          (should (use-region-p))
+          (should (= dir (hel-region-direction))))))))
+
+(ert-deftest hel-text-object-from-cursor ()
+  "`mi' and `ma' find the object at the cursor, not around the selection."
+  (let ((sentence-end-double-space nil))
+    (pcase-dolist (`(,mode ,text ,mark ,point ,command ,expected)
+                   '(;; Forward: the cursor is the last character.
+                     (text-mode "one two three four\n" 5 14 hel-mark-inner-word "three")
+                     ;; Backward: the cursor is the first character.
+                     (text-mode "one two three four\n" 14 5 hel-mark-inner-word "two")
+                     ;; The whitespace at the edges does not count.
+                     (text-mode "one two three\n" 1 5 hel-mark-inner-word "one")
+                     (text-mode "One two. Three four.\n" 1 15 hel-mark-inner-sentence
+                                "Three four.")
+                     (text-mode "aaa bbb\nccc\n\nddd eee\n\nfff\n" 5 18
+                                hel-mark-inner-paragraph "ddd eee\n")
+                     (emacs-lisp-mode "(defun a ()\n  1)\n\n(defun b ()\n  2)\n" 3 30
+                                      hel-mark-inner-function "(defun b ()\n  2)")))
+      (ert-info ((format "%S on %d..%d" command mark point))
+        (hel-structural-tests--with-buffer mode text ""
+          (set-mark mark)
+          (goto-char point)
+          (activate-mark)
+          (funcall command 1)
+          (should (equal (hel-structural-tests--selection) expected))
+          ;; `M-i' returns to the selection before the command.
+          (hel-shrink-selection 1)
+          (should (= (point) point))
+          (should (= (mark) mark)))))))
 
 (ert-deftest hel-visible-line-range ()
   "A visible line holds the invisible lines that follow it."
@@ -1959,7 +2008,7 @@ Return the objects that the check used."
   (hel-to--with-prose hel-to--sentences "One"
     (hel-mark-a-sentence 1)
     (should (equal (hel-structural-tests--selection) "One two. "))
-    (should (= (point) (region-beginning)))
+    (should (= (point) (region-end)))
     (hel-structural-tests--goto "Three")
     (hel-mark-a-sentence 1)
     (should (equal (hel-structural-tests--selection) "Three four.\n"))
@@ -2216,7 +2265,7 @@ Return the objects that the check used."
         (put 'hel-to-probe 'hel-thing-sources
              (list (hel-motion-source #'hel--forward-sentence)))
         (hel-to--with-prose hel-to--sentences "Three"
-          (hel--mark-text-object 'hel-to-probe :inner 1)
+          (hel--mark-text-object 'hel-to-probe :inner 1 -1)
           (should (equal (hel-structural-tests--selection) "Three four."))
           (hel-structural-tests--goto "four")
           (hel--mark-to-thing-edge 'hel-to-probe 1 :end t)
@@ -2596,12 +2645,12 @@ return statement (The core picture; Selection rule 1)."
 
 (ert-deftest hel-spec-expand-from-partial-region ()
   "Tests: expand from the region `abc, [1' reaches `(abc, [1, 2])'.
-Rule 1 and rule 7: expand keeps a forward selection forward."
+Rule 1 and rule 7: expand selects forward."
   (hel-spec--need 'python)
   (hel-spec--with #'python-ts-mode (hel-spec--py "return g(^abc, [1|, 2])")
     (hel-spec--run #'hel-expand-selection)
     (should (equal (hel-spec--render)
-                   (hel-spec--py "return g|(abc, [1, 2])^")))))
+                   (hel-spec--py "return g^(abc, [1, 2])|")))))
 
 (ert-deftest hel-spec-expand-on-bracket ()
   "Tests: with the cursor on `[', the first expand selects `[1, 2]'.
@@ -2973,31 +3022,31 @@ a node with a dot in it moves as one node."
 (ert-deftest hel-spec-v-object-keys-create-selections ()
   "Rule 7: `v' works with motions.  `mi' and `ma' create a selection, so they
 replace the selection, as without `v'."
-  (hel-spec--with-v #'text-mode "foo^ bar| baz\n"
+  (hel-spec--with-v #'text-mode "foo| bar^ baz\n"
     (hel-spec--run #'hel-mark-inner-word)
-    (should (equal (hel-spec--render) "foo |bar^ baz\n")))
-  (hel-spec--with-v #'emacs-lisp-mode "^(a b| c)\n"
+    (should (equal (hel-spec--render) "foo ^bar| baz\n")))
+  (hel-spec--with-v #'emacs-lisp-mode "|(a b^ c)\n"
     (hel-spec--run #'hel-mark-inner-paren)
     (should (equal (hel-spec--render) "(^a b c|)\n"))))
 
-(ert-deftest hel-spec-expand-point-at-start ()
-  "Rule 7: expand puts point at the start of the selection, from a bare point
+(ert-deftest hel-spec-expand-point-at-end ()
+  "Rule 7: expand puts point at the end of the selection, from a bare point
 and from a selection in either direction."
   (hel-spec--with #'emacs-lisp-mode "(foo (bar| baz) qux)\n"
     (hel-spec--run #'hel-expand-selection)
-    (should (equal (hel-spec--render) "(foo (|bar^ baz) qux)\n"))
+    (should (equal (hel-spec--render) "(foo (^bar| baz) qux)\n"))
     (hel-spec--run #'hel-expand-selection)
-    (should (equal (hel-spec--render) "(foo |(bar baz)^ qux)\n")))
+    (should (equal (hel-spec--render) "(foo ^(bar baz)| qux)\n")))
   (hel-spec--with #'emacs-lisp-mode "(foo (^bar| baz) qux)\n"
     (hel-spec--run #'hel-expand-selection)
-    (should (equal (hel-spec--render) "(foo |(bar baz)^ qux)\n")))
+    (should (equal (hel-spec--render) "(foo ^(bar baz)| qux)\n")))
   (hel-spec--with #'c-mode "f(^ab|c);\n"
     (hel-spec--run #'hel-expand-selection)
-    (should (equal (hel-spec--render) "f(|abc^);\n")))
+    (should (equal (hel-spec--render) "f(^abc|);\n")))
   (hel-spec--need 'python)
   (hel-spec--with #'python-ts-mode "g(^a|, b)\n"
     (hel-spec--run #'hel-expand-selection)
-    (should (equal (hel-spec--render) "g|(a, b)^\n"))))
+    (should (equal (hel-spec--render) "g^(a, b)|\n"))))
 
 (ert-deftest hel-spec-sibling-keeps-direction ()
   "Rule 7: M-n and M-p keep the direction of the selection, in both
@@ -3249,11 +3298,11 @@ smallest bracket pair that contains both (its inside, by rule 1)."
     (hel-spec--run #'hel-expand-selection)
     (should (equal (hel-spec--sel) "(b), (c)"))))
 
-(ert-deftest hel-spec-syntax-expand-keeps-direction ()
-  "Rule 7: expand puts point at the start of a backward selection too."
+(ert-deftest hel-spec-syntax-expand-from-backward ()
+  "Rule 7: expand puts point at the end from a backward selection too."
   (hel-spec--with #'c-mode "f(|ab^c);\n"
     (hel-spec--run #'hel-expand-selection)
-    (should (equal (hel-spec--render) "f(|abc^);\n"))))
+    (should (equal (hel-spec--render) "f(^abc|);\n"))))
 
 (ert-deftest hel-spec-syntax-expand-shrink-roundtrip ()
   "Tests: `3 M-o' followed by `3 M-i' returns to the empty selection at the
@@ -3758,7 +3807,7 @@ the object that the gap belongs to)."
   (hel-spec--need-queries 'python)
   (hel-spec--with #'python-ts-mode "f(a|, b)\n"
     (hel-spec--run #'hel-mark-inner-argument)
-    (should (equal (hel-spec--render) "f(|a^, b)\n"))))
+    (should (equal (hel-spec--render) "f(^a|, b)\n"))))
 
 (ert-deftest hel-spec-mia-on-comma-after-b ()
   "Tests: on the comma after b in f(a, b, c), mia selects b (when two
@@ -3766,7 +3815,7 @@ around ranges contain the cursor, the object before it wins)."
   (hel-spec--need-queries 'python)
   (hel-spec--with #'python-ts-mode "f(a, b|, c)\n"
     (hel-spec--run #'hel-mark-inner-argument)
-    (should (equal (hel-spec--render) "f(a, |b^, c)\n"))))
+    (should (equal (hel-spec--render) "f(a, ^b|, c)\n"))))
 
 (ert-deftest hel-spec-mia-nothing-here ()
   "Tests: mia with no argument around the cursor leaves the selection and
@@ -3780,7 +3829,7 @@ the mark ring as they are."
   (hel-spec--need-queries 'python)
   (hel-spec--with #'python-ts-mode "def m(se|lf, a):\n    pass\n"
     (hel-spec--run #'hel-mark-a-argument)
-    (should (equal (hel-spec--render) "def m(|self, ^a):\n    pass\n"))
+    (should (equal (hel-spec--render) "def m(^self, |a):\n    pass\n"))
     (should (= 1 (length mark-ring)))))
 
 (ert-deftest hel-spec-maa-first ()
@@ -3789,7 +3838,7 @@ the mark ring as they are."
   (hel-spec--need-queries 'python)
   (hel-spec--with #'python-ts-mode "f(|a, b, c)\n"
     (hel-spec--run #'hel-mark-a-argument)
-    (should (equal (hel-spec--render) "f(|a, ^b, c)\n"))))
+    (should (equal (hel-spec--render) "f(^a, |b, c)\n"))))
 
 (ert-deftest hel-spec-maa-last ()
   "Tests: maa on the last argument selects the gap before it and the
@@ -3797,14 +3846,14 @@ argument."
   (hel-spec--need-queries 'python)
   (hel-spec--with #'python-ts-mode "f(a, b, |c)\n"
     (hel-spec--run #'hel-mark-a-argument)
-    (should (equal (hel-spec--render) "f(a, b|, c^)\n"))))
+    (should (equal (hel-spec--render) "f(a, b^, c|)\n"))))
 
 (ert-deftest hel-spec-mia-each-argument ()
   "Tests: mia on any argument selects the argument alone."
   (hel-spec--need-queries 'python)
-  (dolist (case '(("f(|a, b, c)\n" . "f(|a^, b, c)\n")
-                  ("f(a, |b, c)\n" . "f(a, |b^, c)\n")
-                  ("f(a, b, |c)\n" . "f(a, b, |c^)\n")))
+  (dolist (case '(("f(|a, b, c)\n" . "f(^a|, b, c)\n")
+                  ("f(a, |b, c)\n" . "f(a, ^b|, c)\n")
+                  ("f(a, b, |c)\n" . "f(a, b, ^c|)\n")))
     (hel-spec--with #'python-ts-mode (car case)
       (hel-spec--run #'hel-mark-inner-argument)
       (should (equal (hel-spec--render) (cdr case))))))
@@ -3825,21 +3874,21 @@ without a stray comma."
   (hel-spec--need-queries 'python)
   (hel-spec--with #'python-ts-mode "f(|a, b, c)\n"
     (hel-spec--run #'hel-mark-inner-argument 2)
-    (should (equal (hel-spec--render) "f(|a, b^, c)\n"))))
+    (should (equal (hel-spec--render) "f(^a, b|, c)\n"))))
 
 (ert-deftest hel-spec-2maa ()
   "Tests: on a in f(a, b, c), `2 maa' selects `a, b' and the gap after b."
   (hel-spec--need-queries 'python)
   (hel-spec--with #'python-ts-mode "f(|a, b, c)\n"
     (hel-spec--run #'hel-mark-a-argument 2)
-    (should (equal (hel-spec--render) "f(|a, b, ^c)\n"))))
+    (should (equal (hel-spec--render) "f(^a, b, |c)\n"))))
 
 (ert-deftest hel-spec-negative-2mia ()
   "Tests: on b in f(a, b, c), `-2 mia' selects `a, b'."
   (hel-spec--need-queries 'python)
   (hel-spec--with #'python-ts-mode "f(a, |b, c)\n"
     (hel-spec--run #'hel-mark-inner-argument -2)
-    (should (equal (hel-spec--render) "f(|a, b^, c)\n"))))
+    (should (equal (hel-spec--render) "f(^a, b|, c)\n"))))
 
 (ert-deftest hel-spec-count-more-than-exist ()
   "Section Selecting an object: when fewer objects exist, the driver
@@ -3847,7 +3896,7 @@ selects the ones that exist."
   (hel-spec--need-queries 'python)
   (hel-spec--with #'python-ts-mode "f(a, |b, c)\n"
     (hel-spec--run #'hel-mark-inner-argument 5)
-    (should (equal (hel-spec--render) "f(a, |b, c^)\n"))))
+    (should (equal (hel-spec--render) "f(a, ^b, c|)\n"))))
 
 ;;; Comments
 
@@ -4095,69 +4144,69 @@ to the start of the previous paragraph."
   "Tests: maw selects a word with the spaces after it."
   (hel-spec--with #'text-mode "foo |bar  baz\n"
     (hel-spec--run #'hel-mark-a-word)
-    (should (equal (hel-spec--render) "foo |bar  ^baz\n"))))
+    (should (equal (hel-spec--render) "foo ^bar  |baz\n"))))
 
 (ert-deftest hel-spec-maw-last-word-of-line ()
   "Tests: maw on the last word of a line takes the spaces before it, not
 the line end."
   (hel-spec--with #'text-mode "foo  b|ar\nbaz\n"
     (hel-spec--run #'hel-mark-a-word)
-    (should (equal (hel-spec--render) "foo|  bar^\nbaz\n"))))
+    (should (equal (hel-spec--render) "foo^  bar|\nbaz\n"))))
 
 (ert-deftest hel-spec-maw-before-period ()
   "Tests: maw on a word before a period takes the spaces before it."
   (hel-spec--with #'text-mode "foo b|ar.\n"
     (hel-spec--run #'hel-mark-a-word)
-    (should (equal (hel-spec--render) "foo| bar^.\n"))))
+    (should (equal (hel-spec--render) "foo^ bar|.\n"))))
 
 (ert-deftest hel-spec-miw-in-gap ()
   "Section Selecting an object: on the space between two words, miw
 selects the word before it."
   (hel-spec--with #'text-mode "foo | bar\n"
     (hel-spec--run #'hel-mark-inner-word)
-    (should (equal (hel-spec--render) "|foo^  bar\n"))))
+    (should (equal (hel-spec--render) "^foo|  bar\n"))))
 
 (ert-deftest hel-spec-miw-bare-point-touches-two ()
   "Section Selecting an object: when a bare point touches two objects, the
 object after point wins.  In `foo|.' miw selects the period."
   (hel-spec--with #'text-mode "foo|.\n"
     (hel-spec--run #'hel-mark-inner-word)
-    (should (equal (hel-spec--render) "foo|.^\n"))))
+    (should (equal (hel-spec--render) "foo^.|\n"))))
 
 (ert-deftest hel-spec-miw-bare-point-before-space ()
   "Section Selecting an object: in `foo| bar' miw selects foo, because
 nothing else touches point."
   (hel-spec--with #'text-mode "foo| bar\n"
     (hel-spec--run #'hel-mark-inner-word)
-    (should (equal (hel-spec--render) "|foo^ bar\n"))))
+    (should (equal (hel-spec--render) "^foo| bar\n"))))
 
 (ert-deftest hel-spec-miw-repeated ()
   "Section Selecting an object: a repeated key adds the next objects."
   (hel-spec--with #'text-mode "|foo bar baz\n"
     (hel-spec--run #'hel-mark-inner-word)
-    (should (equal (hel-spec--render) "|foo^ bar baz\n"))
+    (should (equal (hel-spec--render) "^foo| bar baz\n"))
     (hel-spec--run #'hel-mark-inner-word)
-    (should (equal (hel-spec--render) "|foo bar^ baz\n"))))
+    (should (equal (hel-spec--render) "^foo bar| baz\n"))))
 
 (ert-deftest hel-spec-2miw ()
   "Rule 8: in mi, a count is the number of objects."
   (hel-spec--with #'text-mode "|foo bar baz\n"
     (hel-spec--run #'hel-mark-inner-word 2)
-    (should (equal (hel-spec--render) "|foo bar^ baz\n"))))
+    (should (equal (hel-spec--render) "^foo bar| baz\n"))))
 
 (ert-deftest hel-spec-mas-whitespace-after ()
   "Tests: mas selects a sentence with the whitespace after it."
   (let ((sentence-end-double-space nil))
     (hel-spec--with #'text-mode "One. Tw|o three. Four.\n"
       (hel-spec--run #'hel-mark-a-sentence)
-      (should (equal (hel-spec--render) "One. |Two three. ^Four.\n")))))
+      (should (equal (hel-spec--render) "One. ^Two three. |Four.\n")))))
 
 (ert-deftest hel-spec-mas-across-line-end ()
   "Tests: the gap of a sentence crosses a line end."
   (let ((sentence-end-double-space nil))
     (hel-spec--with #'text-mode "One. Tw|o three.\nFour five.\n"
       (hel-spec--run #'hel-mark-a-sentence)
-      (should (equal (hel-spec--render) "One. |Two three.\n^Four five.\n")))))
+      (should (equal (hel-spec--render) "One. ^Two three.\n|Four five.\n")))))
 
 (ert-deftest hel-spec-mas-last-sentence ()
   "Tests: mas on the last sentence of a paragraph takes the whitespace
@@ -4165,7 +4214,7 @@ before it, so it never joins two paragraphs."
   (let ((sentence-end-double-space nil))
     (hel-spec--with #'text-mode "One. Tw|o.\n\nThree.\n"
       (hel-spec--run #'hel-mark-a-sentence)
-      (should (equal (hel-spec--render) "One.| Two.^\n\nThree.\n")))))
+      (should (equal (hel-spec--render) "One.^ Two.|\n\nThree.\n")))))
 
 (ert-deftest hel-spec-3mis-last-sentence ()
   "Tests: `3 mis' on the last sentence of a paragraph selects only that
@@ -4173,7 +4222,7 @@ sentence (the paragraph is the parent of its sentences)."
   (let ((sentence-end-double-space nil))
     (hel-spec--with #'text-mode "One. Tw|o.\n\nThree. Four.\n"
       (hel-spec--run #'hel-mark-inner-sentence 3)
-      (should (equal (hel-spec--render) "One. |Two.^\n\nThree. Four.\n")))))
+      (should (equal (hel-spec--render) "One. ^Two.|\n\nThree. Four.\n")))))
 
 (ert-deftest hel-spec-mip ()
   "Tests: mip selects whole lines with the indentation of the first line
@@ -4199,7 +4248,7 @@ and the last line end."
 word."
   (hel-spec--with #'emacs-lisp-mode ";; comment\n|foo\n"
     (hel-spec--run #'hel-mark-a-word)
-    (should (equal (hel-spec--render) ";; comment\n|foo^\n"))))
+    (should (equal (hel-spec--render) ";; comment\n^foo|\n"))))
 
 ;;; Emacs Lisp: functions and comments without a parser
 
@@ -4330,7 +4379,7 @@ its other pattern (section Query files and grammar versions)."
               " @parameter.around)\n")
     (hel-spec--with #'python-ts-mode "f(|a, b)\n"
       (hel-spec--run #'hel-mark-inner-argument)
-      (should (equal (hel-spec--render) "f(|a^, b)\n")))))
+      (should (equal (hel-spec--render) "f(^a|, b)\n")))))
 
 (ert-deftest hel-spec-query-unbalanced ()
   "Tests: a query file with unbalanced brackets gives no query and signals
