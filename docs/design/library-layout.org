@@ -62,7 +62,7 @@ readable in the later commits.
 - New tests cover point at each line end of a run, a blank line after a run,
   and an unterminated comment, with =mic= and =mac=.
 
-** TODO 2. Create ~hel-surround.el~
+** DONE 2. Create ~hel-surround.el~
 
 - Tests come first, because no test covers surround yet. They record the
   behaviour of =mi"=, =ma"=, =mi(= and =ma(= in code, in a string and in
@@ -105,11 +105,11 @@ readable in the later commits.
 
 ** TODO 5. Remove the remaining thingatpt names
 
-| Name              | Users                                        | Action                   |
-|-------------------+----------------------------------------------+--------------------------|
-| ~hel-visual-line~ | none                                         | remove                   |
-| ~hel-sexp~        | none, ~hel--forward-sexp~ is called directly | remove the registration  |
-| ~hel-line~        | ~hel-lib.el~ and ~hel-commands.el~           | replace with a function  |
+| Name            | Users                                      | Action                  |
+|-----------------+--------------------------------------------+-------------------------|
+| ~hel-visual-line~ | none                                       | remove                  |
+| ~hel-sexp~        | none, ~hel--forward-sexp~ is called directly | remove the registration |
+| ~hel-line~        | ~hel-lib.el~ and ~hel-commands.el~             | replace with a function |
 
 The function that replaces ~hel-line~ returns the range of the visible line at
 a position. ~forward-thing~ in ~hel-commands.el~ becomes a direct call of

@@ -1357,6 +1357,11 @@ The blanks and the line end after a comment belong to its run."
                             (not (bolp)))))
           (hel--comment-run-from producer (1- text-end))))))
 
+(defun hel-comment-run-range-at (pos)
+  "Return the range of the comment run that holds POS, or nil."
+  (-some-> (hel--comment-run-at (hel--producer 'comment) pos)
+    (hel--thing-range)))
+
 (cl-defmethod hel-things-at (thing (producer hel-comment-producer) range)
   "Return the comment run of PRODUCER that holds RANGE, and its neighbours."
   (-let [(begin . end) range]

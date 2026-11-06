@@ -39,6 +39,7 @@
 (require 'hel-multiple-cursors-core)
 (require 'hel-core)
 (require 'hel-structural-editing)
+(require 'hel-surround)
 (require 'hel-commands)
 (require 'hel-search)
 (require 'hel-scroll)

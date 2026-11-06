@@ -45,6 +45,7 @@
 (require 'hel-core)
 (require 'hel-search)
 (require 'hel-structural-editing)
+(require 'hel-surround)
 (require 'avy)
 
 ;; ESC in normal state
