@@ -1621,20 +1621,18 @@ character before it."
 
 (cl-defgeneric hel-thing-edge (thing producer pos dir count edge whole)
   "Return the range from POS to the EDGE of the COUNT-th THING in DIR.
-PRODUCER finds the things. EDGE is
-`:begin' or `:end'. With WHOLE non-nil, a range that does not start
-inside its first thing holds that whole thing.
-
-Return (START END REST), where REST is the part of COUNT that found no
-thing, or nil when no thing exists in DIR.")
+PRODUCER finds the things. EDGE is `:begin' or `:end'. With WHOLE non-nil,
+a range that does not start inside its first thing holds that whole thing.
+With fewer than COUNT things, the range goes to the last of them. Return nil
+when no thing exists in DIR.")
 
 (cl-defmethod hel-thing-edge (thing producer pos dir count edge whole)
   "Return the range from POS to the EDGE of the COUNT-th THING in DIR.
 The first thing is the innermost one under the cursor at POS when its
 EDGE lies ahead of POS in DIR, and the next thing in DIR otherwise.
 Each next thing comes from the far edge of the one before it. The range
-starts at POS, or at the near edge of the first thing when WHOLE is
-non-nil and POS lies outside that thing."
+starts on the side of POS at POS, or at the near edge of the first thing
+when WHOLE is non-nil and POS lies outside that thing."
   (let* ((forward (< 0 dir))
          (ahead-p (lambda (instance)
                     (let ((target (plist-get instance edge)))
@@ -1656,23 +1654,20 @@ non-nil and POS lies outside that thing."
                       (if (funcall ahead-p instance)
                           instance
                         (funcall next instance)))))
-         (last first)
-         (rest (1- count)))
+         (last first))
     (when first
-      (while-let (((< 0 rest))
-                  (instance (funcall next last)))
-        (setq last instance)
-        (cl-decf rest))
-      (list (if (and whole (not here))
-                (plist-get first (if forward :begin :end))
-              pos)
-            (plist-get last edge)
-            rest))))
+      (cl-loop repeat (1- count)
+               for instance = (funcall next last)
+               while instance
+               do (setq last instance))
+      (hel-range (if (and whole (not here))
+                     (plist-get first (if forward :begin :end))
+                   pos)
+                 (plist-get last edge)))))
 
 (defun hel--backward-word-end (motion count)
   "Move point back to the end of the COUNT-th previous word of MOTION.
-Return the part of COUNT that found no word end. A line start and the
-blanks before a word are steps of their own."
+A line start and the blanks before a word are steps of their own."
   (while (and (< 0 count)
               (let ((old (point)))
                 (cond ((and (bolp) (not (bobp)))
@@ -1683,8 +1678,7 @@ blanks before a word are steps of their own."
                        (funcall motion -1)
                        (hel-skip-whitespaces -1)))
                 (/= old (point))))
-    (cl-decf count))
-  count)
+    (cl-decf count)))
 
 (cl-defmethod hel-thing-edge ((_thing (eql 'word)) (producer hel-motion-producer)
                               pos dir count edge _whole)
@@ -1707,25 +1701,25 @@ See the method of `hel-thing-edge' for words."
   (save-excursion
     (goto-char pos)
     (if (and (< dir 0) (eq edge :end))
-        (let ((rest (hel--backward-word-end motion count)))
-          (list pos (point) rest))
+        (progn
+          (hel--backward-word-end motion count)
+          (hel-range pos (point)))
       (if (< 0 dir)
           (skip-chars-forward "\r\n")
         (skip-chars-backward "\r\n"))
-      (let ((start (point))
-            rest)
+      (let ((start (point)))
         (pcase (list dir edge)
           ('(1 :begin)
            ;; The blanks before the next word are the first step.
            (when (hel-whitespace-p (following-char))
              (cl-decf count))
-           (setq rest (funcall motion count))
+           (funcall motion count)
            (hel-skip-whitespaces 1))
           ('(1 :end)
-           (setq rest (funcall motion count)))
+           (funcall motion count))
           (_
-           (setq rest (funcall motion (- count)))))
-        (list start (point) (abs rest))))))
+           (funcall motion (- count))))
+        (hel-range start (point))))))
 
 ;;; Algorithms over trees
 
@@ -1869,13 +1863,15 @@ A negative COUNT goes backward. EDGE and WHOLE are as in `hel-thing-edge'.
 With the selection extended, extend it. When no thing exists in the direction,
 the selection stays as it is."
   (if-let* ((producer (hel--producer thing)))
-      (-when-let ((start end) (hel-thing-edge thing producer (point)
-                                              (hel-sign count) (abs count)
-                                              edge whole))
-        (when (hel-thing-jump-p thing)
-          (hel-push-point))
-        (hel-select-motion start end)
-        (hel-reveal-point-when-on-top))
+      (let ((dir (hel-sign count)))
+        (-when-let ((begin . end) (hel-thing-edge thing producer (point)
+                                                  dir (abs count) edge whole))
+          (when (hel-thing-jump-p thing)
+            (hel-push-point))
+          (if (< 0 dir)
+              (hel-select-motion begin end)
+            (hel-select-motion end begin))
+          (hel-reveal-point-when-on-top)))
     ;; else
     (hel--no-producer-message thing)))
 

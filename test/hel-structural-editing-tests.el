@@ -4302,6 +4302,27 @@ previous word."
     (hel-spec--run #'hel-backward-word-end 2)
     (should (equal (hel-spec--render) "foo| bar b^az\n"))))
 
+;;; The range of `hel-thing-edge'
+
+(ert-deftest hel-thing-edge-returns-a-range ()
+  "A backward edge gives a range with its begin before its end."
+  (with-temp-buffer
+    (insert "one two three")
+    (let ((word (hel--producer 'word)))
+      (should (equal (hel-thing-edge 'word word 9 1 1 :begin nil) (cons 9 14)))
+      (should (equal (hel-thing-edge 'word word 9 -1 1 :begin nil) (cons 5 9)))
+      (should (equal (hel-thing-edge 'word word 9 -1 1 :end nil) (cons 8 9))))))
+
+(ert-deftest hel-thing-edge-default-method-returns-a-range ()
+  (with-temp-buffer
+    (insert "One. Two. Three.")
+    (let ((sentence-end-double-space nil)
+          (sentence (hel--producer 'sentence)))
+      (should (equal (hel-thing-edge 'sentence sentence 7 1 1 :end nil)
+                     (cons 7 10)))
+      (should (equal (hel-thing-edge 'sentence sentence 7 -1 1 :begin nil)
+                     (cons 6 7))))))
+
 ;;; Setting the selection
 
 (defun hel-select-tests--state ()

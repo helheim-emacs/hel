@@ -43,7 +43,8 @@
   "Loop a certain number of times.
 Evaluate BODY repeatedly COUNT times with DIR bound to 1 or -1, depending on
 the sign of COUNT. Each iteration must move point; if point does not change,
-the loop immediately quits.
+the loop immediately quits. Emacs motions return different values or nothing,
+so point is the one reliable sign that a step worked.
 
 Returns the count of steps left to move.  If moving forward, that is
 COUNT minus number of steps moved; if backward, COUNT plus number moved."

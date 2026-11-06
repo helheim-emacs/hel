@@ -82,26 +82,16 @@ and mark keeps "region", as Emacs does.
 - Docstrings and comments still say "region" in many places. They change when
   the code around them changes.
 
-** TODO 3. One loop: ~hel-iterate~
+** DONE 3. Motion loops and ~hel-thing-edge~
 
-#+begin_src emacs-lisp
-(defun hel-iterate (step value count)
-  "Apply STEP to VALUE up to COUNT times; STEP returns nil when it can't.
-Return (LAST-VALUE . REST)."
-  (while-let (((< 0 count))
-              (next (funcall step value)))
-    (setq value next
-          count (1- count)))
-  (cons value count))
-#+end_src
-
-- It replaces the loops in ~hel--extend-things~ and ~hel-thing-edge~, and
-  ~hel-motion-loop~ in ~hel--select-sibling~, the search and the cursor copy.
-- ~hel-motion-loop~ stays for leaf motions only, because a leaf Emacs motion
-  signals failure by not moving. Its return value, the steps that remain, also
-  stays: it answers both "did it finish" and "did it move".
-- Direction and count become separate arguments above the leaf motions.
-- ~hel-thing-edge~ returns a range. No caller uses its third element, ~rest~.
+- ~hel-thing-edge~ returns a range. The caller already knows the direction.
+- ~hel-motion-loop~ stays for every loop that moves point. It is a macro, so it
+  adds no ~funcall~ on each step. It checks point because Emacs motions return
+  different values or nothing, so point is the one reliable sign that a step
+  worked. Its return value, the steps that remain, answers both "did it finish"
+  and "did it move".
+- Hel has no general loop function. Only ~hel--extend-things~ and
+  ~hel-thing-edge~ could use one, and each of them is a few clear lines.
 
 ** TODO 4. Line functions
 
