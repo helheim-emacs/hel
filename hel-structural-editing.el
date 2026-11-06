@@ -166,6 +166,114 @@ of END, with its line end."
                                        (progn (goto-char end)
                                               (line-end-position)))))))
 
+;;; Motions
+
+;;;; `hel--forward-word'
+
+(cl-defun hel--forward-word (&optional (count 1))
+  "Move point COUNT words forward (backward if COUNT is negative).
+Returns the count of word left to move, positive or negative depending
+on sign of COUNT.
+
+Word is:
+- sequence of characters matching `[[:word:]]'
+- sequence of characters that are neither word characters nor whitespace"
+  (hel-motion-loop (dir count)
+    (hel-skip-chars "\r\n" dir)
+    (hel-skip-whitespaces dir)
+    (or (hel-line-boundary-p dir)
+        (/= 0 (hel-skip-chars "^[:word:][:space:]\r\n" dir))
+        (let ((word-separating-categories hel-cjk-word-separating-categories)
+              (word-combining-categories  hel-cjk-word-combining-categories))
+          (forward-word dir)))))
+
+;;;; `hel--forward-WORD'
+
+(cl-defun hel--forward-WORD (&optional (count 1))
+  "Move point COUNT WORDs forward (backward if COUNT is negative).
+Returns the count of WORD left to move, positive or negative depending
+on sign of COUNT.
+
+WORD is any space separated sequence of characters."
+  (hel-motion-loop (dir count)
+    (hel-skip-chars "\r\n" dir)
+    (hel-skip-whitespaces dir)
+    (unless (hel-line-boundary-p dir)
+      (hel-skip-chars "^[:space:]\r\n" dir))))
+
+;;;; `hel--forward-sentence'
+
+(cl-defun hel--forward-sentence (&optional (count 1))
+  "Move point COUNT sentences forward (backward if COUNT is negative).
+Returns then count of sentences left to move, positive of negative depending
+on sign of COUNT.
+
+What is sentence is defined by `forward-sentence-function'."
+  (hel-motion-loop (dir count)
+    (ignore-errors (forward-sentence dir))))
+
+;;;; `hel--forward-paragraph'
+
+(cl-defun hel--forward-paragraph (&optional (count 1))
+  "Move point COUNT paragraphs forward (backward if COUNT is negative).
+Returns then count of paragraphs left to move, positive of negative depending
+on sign of COUNT."
+  (let ((paragraph-start    (default-value 'paragraph-start))
+        (paragraph-separate (default-value 'paragraph-separate)))
+    (hel-motion-loop (dir count)
+      (cond ((natnump dir) (forward-paragraph))
+            ((not (bobp))
+             (start-of-paragraph-text)
+             (beginning-of-line))))))
+
+;;;; `hel--forward-function'
+
+(cl-defun hel--forward-function (&optional (count 1))
+  "Move point COUNT functions forward (backward if COUNT is negative).
+Returns then count of functions left to move, positive of negative depending
+on sign of COUNT."
+  (hel-motion-loop (dir count)
+    (if (< dir 0)
+        (beginning-of-defun)
+      (end-of-defun))))
+
+;;;; `hel-sexp'
+
+(defun hel--forward-sexp (&optional count)
+  "Move point COUNT sexps forward (backward if COUNT is negative).
+Returns the count of sexps left to move, positive or negative depending
+on sign of COUNT."
+  ;; Make binding only during this motion instead of global one, because some
+  ;; major-modes rely on the jump to the buffer end.
+  (let ((forward-sexp-function
+         (if (memq forward-sexp-function '(forward-sexp-default-function nil))
+             #'hel-forward-sexp-only
+           ;; Do not rebind in modes that use their own version of
+           ;; `forward-sexp-function' (`c-mode', `python-mode').
+           forward-sexp-function)))
+    (hel-motion-loop (dir (or count 1))
+      (ignore-errors
+        (forward-sexp dir)))))
+
+(put 'hel-sexp 'forward-op #'hel--forward-sexp)
+
+(defun hel-forward-sexp-only (&optional count)
+  "Move forward across COUNT balanced expressions (sexps).
+Hel binds `forward-sexp-function' to this function during its own sexp
+motions.  Unlike the default `forward-sexp' behavior, it does not move to
+the end of the buffer when there is no sexp ahead.
+
+Signal `scan-error' when there is no sexp to move over. The error
+arguments follow the format used by `forward-sexp'."
+  (or count (setq count 1))
+  (if-let* ((pos (scan-sexps (point) count)))
+      (progn
+        (goto-char pos)
+        (if (< count 0) (backward-prefix-chars)))
+    (signal 'scan-error (if (< count 0)
+                            (list "No previous sexp" (point-min) (point))
+                          (list "No next sexp" (point) (point-max))))))
+
 ;;; Selection history
 
 (defun hel--sync-selection-history ()
