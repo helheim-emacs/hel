@@ -1,0 +1,137 @@
+#+title: Plan: library layers and the comment thing
+
+This plan gives Hel one definition of a comment and puts each part of
+~hel-lib.el~ into the layer that uses it. Each step is one commit, and each one
+leaves all the tests passing.
+
+* The layers
+
+Each layer uses only the layers above it.
+
+#+begin_example
+┌───────────────────────────────────────────┬──────────────────────────────────────────┐
+│ hel-vars                                  │                                          │
+├───────────────────────────────────────────┼──────────────────────────────────────────┤
+│ hel-lib                                   │ Utils, Selection, Mark ring, Copy/paste, │
+│                                           │ Changes, Fold opening, Advices, hel-line │
+├───────────────────────────────────────────┼──────────────────────────────────────────┤
+│ hel-macros, hel-multiple-cursors-core,    │ no change                                │
+│ hel-core                                  │                                          │
+├───────────────────────────────────────────┼──────────────────────────────────────────┤
+│ hel-structural-editing                    │ gains hel--forward-word .. -function,    │
+│                                           │ hel-sexp                                 │
+├───────────────────────────────────────────┼──────────────────────────────────────────┤
+│ hel-surround                              │ new file, finds a comment run through    │
+│                                           │ the `comment` thing                      │
+├───────────────────────────────────────────┼──────────────────────────────────────────┤
+│ hel-commands, hel-search, hel-scroll, ... │ no change                                │
+└───────────────────────────────────────────┴──────────────────────────────────────────┘
+#+end_example
+
+~hel.el~ stays the one file that loads everything. ~hel-lib~ cannot do this job,
+because every layer below it requires it.
+
+* The rules of a comment
+
+Hel has two sizes of comment:
+
+- A /single comment/ is what the syntax table or a parser calls one comment.
+- A /comment run/ is the ~comment~ thing: neighbouring comment lines.
+
+These rules hold for both:
+
+- A cursor on any delimiter character is on the comment, because the cursor
+  block shows it there.
+- A line end belongs to a comment line. So =mic= finds the run with point at
+  the end of any of its lines.
+- An unterminated =/* open= is a comment up to the end of the buffer.
+- A cursor on a blank line after a run finds the run through its gap, as
+  ~structural-editing.org~ says. This holds for =mic= and =mac= only.
+
+* Steps
+
+Before step 1, the uncommitted changes in ~hel-lib.el~ and
+~hel-structural-editing.el~ go into their own commit, so that moved code stays
+readable in the later commits.
+
+** TODO 1. Fix the ~comment~ thing
+
+- ~hel-things-at~ of ~hel-comment-producer~ also returns the run when point is
+  at a line end inside it, and the neighbouring run for a cursor in a gap.
+- ~hel--syntax-comment-at~ accepts an unterminated comment.
+- New tests cover point at each line end of a run, a blank line after a run,
+  and an unterminated comment, with =mic= and =mac=.
+
+** TODO 2. Create ~hel-surround.el~
+
+- Tests come first, because no test covers surround yet. They record the
+  behaviour of =mi"=, =ma"=, =mi(= and =ma(= in code, in a string and in
+  a comment.
+- The Surround section of ~hel-lib.el~ moves to ~hel-surround.el~ without
+  changes. ~hel-surround-alist~ stays in ~hel-vars.el~ with the other settings.
+- ~hel-commands.el~ and ~hel-integration.el~ require ~hel-surround~.
+- ~hel-bounds-of-quoted-at-point~ and ~hel-bounds-of-brackets-at-point~ take
+  their limit from the comment run. So =mi"= matches quotes across the lines
+  of a run, and the selection holds the =;;= of the lines inside it.
+- Surround accepts a run only when the run itself contains point. A run that
+  is found through its gap would limit the search in the code below a comment.
+- ~hel-comment~ and its thingatpt registration are removed.
+
+** TODO 3. Move the motions into structural editing
+
+- ~hel--forward-word~, ~hel--forward-WORD~, ~hel--forward-sentence~,
+  ~hel--forward-paragraph~ and ~hel--forward-function~ move to
+  ~hel-structural-editing.el~.
+- ~hel--forward-sexp~ and ~hel-forward-sexp-only~ move there too.
+- ~hel-line-begin~, ~hel-line-end~, ~hel-skip-chars~, ~hel-skip-whitespaces~ and
+  ~hel-next-char~ stay in ~hel-lib.el~. They are general helpers, not motions
+  over a kind of thing. ~hel-vterm~, ~hel-ghostel~ and ~hel-paredit~ use some of
+  them.
+
+** TODO 4. One function for a single comment
+
+- ~hel-comment-range-at~ takes a position and returns the range of the single
+  comment there, with its line end. It lives in ~hel-structural-editing.el~,
+  because no lower layer needs it.
+- ~hel--syntax-comment-at~ builds its thing from this function.
+- ~hel--sexp-token~ and the expand step of the syntax producer call it. They
+  keep their own checks: a token still needs point strictly inside it (rule 10).
+- ~hel-comment-at-pos-p~ becomes a test on its result and moves to
+  ~hel-structural-editing.el~. Only ~hel-commands.el~ calls it.
+- ~hel-bounds-of-comment-at-point-ppss~ is removed.
+- ~hel--comment-line-p~ answers a different question, whether a line holds only
+  a comment. It stays, and it is rebuilt on the new function if that makes it
+  shorter.
+
+** TODO 5. Remove the remaining thingatpt names
+
+| Name              | Users                                        | Action                   |
+|-------------------+----------------------------------------------+--------------------------|
+| ~hel-visual-line~ | none                                         | remove                   |
+| ~hel-sexp~        | none, ~hel--forward-sexp~ is called directly | remove the registration  |
+| ~hel-line~        | ~hel-lib.el~ and ~hel-commands.el~           | replace with a function  |
+
+The function that replaces ~hel-line~ returns the range of the visible line at
+a position. ~forward-thing~ in ~hel-commands.el~ becomes a direct call of
+~hel--forward-line~.
+
+** TODO 6. Update the documents
+
+- ~CLAUDE.md~ lists ~hel-surround.el~ in the load order.
+- ~structural-editing.org~ states the rules of a comment in one section, and
+  its "Package layout" says where the motions live. Its syntax producer section
+  names the new function.
+- The content of this plan moves into those sections, and this file is deleted.
+
+* How to check each step
+
+- All the tests pass: ~(ert "^hel-")~ after ~load-file~ of the changed modules.
+- Each changed file byte-compiles with ~byte-compile-warnings~ bound to t, and
+  the ~.elc~ files are deleted afterwards.
+- The extensions in ~~/code/helheim~ that use a moved name still load.
+
+* Out of scope
+
+- A split of ~hel-structural-editing.el~ into smaller files.
+- The migration of ~hel-org~ onto the thing protocol. ~hel-org~ calls
+  ~hel-surround--4-bounds-at-point-1~, which keeps its name in step 2.
