@@ -1,0 +1,139 @@
+#+title: Plan: ranges as values
+
+This plan moves Hel from point and mark side effects to a consistent API over
+ranges. Each step can be reviewed and tested alone, and each one leaves all
+the tests passing.
+
+* The design
+
+The buffer is a tape with one reading head (point) and one pin (mark). Many
+Emacs functions can read the tape only by moving the head, and modes plug into
+them, so point stays. ~save-excursion~ borrows the head and returns it, so
+point inside a computation is a local variable.
+
+| Layer        | What it does                                               |
+|--------------+------------------------------------------------------------|
+| Commands     | Read the selection once, compute, and commit it once.      |
+| Algorithms   | Take and return values: position, direction, count, range. |
+| Leaf motions | Move point. They adapt Emacs motions and stay imperative.  |
+
+Point and mark are an object with state. Fake cursors replay each command on
+the real point and mark, so commands keep working on them.
+
+* The values
+
+- A /range/ is a cons ~(begin . end)~. It is half-open, and ~begin <= end~.
+  ~equal~ is its equality. It needs no struct.
+- A /direction/ is 1 or -1, and it is a separate argument.
+- A /selection/ is a range and a direction. Hel does not store it as
+  ~(anchor . head)~: that cons has the same shape as a range, but no order
+  between its two parts.
+- A ~cl-defun~ takes ~((begin . end))~. A ~cl-defmethod~ cannot destructure
+  its arguments, so it takes ~range~ and uses ~-let~ in its body.
+- Plain positions stay positions. Emacs calls such as ~delete-region~ stay as
+  they are.
+
+* Steps
+
+** DONE 1. Split ~hel-set-region~
+
+~hel-set-region~ does two jobs. Without a direction, its arguments are the
+mark and point. With a direction, they are bounds in any order.
+
+#+begin_src emacs-lisp
+(cl-defun hel-select ((begin . end) &optional (dir 1)) ...) ; create a selection
+(defun hel-select-motion (start end) ...)                   ; keep the mark under v
+#+end_src
+
+- ~hel-select-motion~ absorbs ~(if hel--extend-selection (mark) ...)~, which
+  appears 8 times.
+- ~hel-range~ builds a range from two positions in any order.
+- ~hel-set-region~ stays as an obsolete function, and no local code calls it.
+  The builds of ~hel-org~, ~hel-vterm~ and ~hel-ghostel~ come from GitHub, so
+  remove it after those three repositories are pushed.
+
+** DONE 2. One shape and one name for ranges
+
+- These functions change to the range shape: ~hel-trim-whitespace-from-range~,
+  ~hel--line-range~, ~hel-things-at~, ~hel-thing-at~ and ~hel-node-at~.
+- ~hel-selection~ and the selection history use ~(RANGE DIRECTION)~, which are the
+  arguments of ~hel-select~.
+- The tree-sitter search functions keep two bounds, because they pass them
+  straight to the queries: ~hel-treesit--capture-things~,
+  ~hel-treesit--thing-matches~ and their search windows.
+- ~hel-lib.el~ uses only the name ~begin~, in place of ~beg~ and ~start~.
+- Other core files still use ~beg~.
+
+** DONE The name "selection"
+
+The Hel API says "selection" for a selection as a value, and "range" for
+a range that need not be selected. A function that only reads or swaps point
+and mark keeps "region", as Emacs does.
+
+- ~hel--selection~ is ~hel--trimmed-selection~, because it leaves out the
+  whitespace at the edges.
+- ~hel-region~ and ~hel-save-region~ stay as obsolete aliases, because the GitHub builds of the
+  extensions call them. Remove them with ~hel-set-region~.
+- ~hel-region-direction~ and ~hel-ensure-region-direction~ keep their names.
+  They sit next to the Emacs functions ~use-region-p~, ~region-beginning~ and
+  ~region-end~, and work on the same point and mark.
+- ~hel-narrow-to-region-indirectly~ keeps its name, after ~narrow-to-region~.
+- Emacs names such as ~region-beginning~ and ~use-region-p~ stay.
+- Docstrings and comments still say "region" in many places. They change when
+  the code around them changes.
+
+** TODO 3. One loop: ~hel-iterate~
+
+#+begin_src emacs-lisp
+(defun hel-iterate (step value count)
+  "Apply STEP to VALUE up to COUNT times; STEP returns nil when it can't.
+Return (LAST-VALUE . REST)."
+  (while-let (((< 0 count))
+              (next (funcall step value)))
+    (setq value next
+          count (1- count)))
+  (cons value count))
+#+end_src
+
+- It replaces the loops in ~hel--extend-things~ and ~hel-thing-edge~, and
+  ~hel-motion-loop~ in ~hel--select-sibling~, the search and the cursor copy.
+- ~hel-motion-loop~ stays for leaf motions only, because a leaf Emacs motion
+  signals failure by not moving. Its return value, the steps that remain, also
+  stays: it answers both "did it finish" and "did it move".
+- Direction and count become separate arguments above the leaf motions.
+- ~hel-thing-edge~ returns a range. No caller uses its third element, ~rest~.
+
+** TODO 4. Line functions
+
+- ~hel-line-begin (pos)~ and ~hel-line-end (pos)~ hold the one check of
+  ~visual-line-mode~. A visual line depends on the window, and their
+  docstrings state this.
+- ~hel-bolp~, ~hel-eolp~, ~hel-visual-bolp~ and ~hel-visual-eolp~ follow from
+  them.
+- ~hel-beginning-of-line~ and ~hel--beginning-of-line~ do different jobs, so
+  one of them gets a new name.
+
+** TODO 5. Word motions
+
+- One skeleton serves ~word~, ~WORD~ and the WORD of ~hel-paredit~: skip the
+  line ends, skip a gap, stop at a line boundary, skip a run. They differ in
+  the gap and the run.
+- One predicate defines a blank. Four definitions exist today, in
+  ~hel-skip-whitespaces~, ~hel--skip-blanks~,
+  ~hel-trim-whitespace-from-range~ and the run patterns.
+- Try to keep line ends out of ~hel--word-edge~, so that only one layer knows
+  about them. The tests pin blank lines and indentation as steps of their own,
+  and this part may not simplify.
+- ~forward-word~ stays: it handles CJK categories and word boundary functions.
+
+* Out of scope
+
+- The leaf motions stay imperative.
+- Older commands, such as surround, change only where the steps above
+  touch them.
+
+* Other pending work
+
+- ~hel-org~ moves onto the thing protocol. It is broken until then.
+- About 20 code lines in ~hel-structural-editing.el~ are longer than 80
+  columns, and ~object-begin~ and ~a-beg~ remain as old names there.

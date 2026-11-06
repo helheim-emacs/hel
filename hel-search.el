@@ -96,13 +96,13 @@ This function modifies the match data that `match-beginning',
             (forward-char direction))
         (-let* ((mdata (match-data t))
                 ((beg . end) (hel-match mdata)))
-          (when-let* ((visible (hel-range-visible? beg end)))
+          (when-let* ((visible (hel-range-visible? (cons beg end))))
             (setq found (list mdata (if (consp visible)
                                         visible)))))))
     found))
 
-(cl-defun hel-matches-in-region ( regexp from to
-                                  &optional (max-matches most-positive-fixnum))
+(cl-defun hel-matches-in-range ( regexp from to
+                                 &optional (max-matches most-positive-fixnum))
   "Find the visible matches of REGEXP in the current buffer from FROM to TO.
 MAX-MATCHES limits how many regexp matches, visible or not, will be
 examined. It is unlimited by default.
@@ -126,7 +126,7 @@ Return (RANGES . STOP) cons-cell, where:
             (unless (= (point) to)
               (forward-char 1))
           (-let [(beg . end) (hel-match)]
-            (when (hel-range-visible? beg end)
+            (when (hel-range-visible? (cons beg end))
               (push (cons beg end) ranges)))))
       (cons (nreverse ranges)
             (if (< n max-matches)
@@ -162,7 +162,7 @@ produce no part between them.
   (tick     nil :documentation "`buffer-chars-modified-tick'")
   (timer    nil :documentation "Active timer for the scanning pipeline.")
   (scan-pos nil :documentation "Where the buffer scan left off.")
-  (window-region   nil :documentation "(FROM . TO) positions that the window scan phase has searched.")
+  (window-range    nil :documentation "(FROM . TO) positions that the window scan phase has searched.")
   (window-matches  nil :documentation "Overlays from the window scan phase, in buffer order.")
   (scanned-matches nil :documentation "Overlays from the buffer scan phase, last first.")
   (matches  nil :documentation "Sorted vector of all match overlays.
@@ -190,7 +190,7 @@ Run search session if REGEXP is provided."
   (setf (hel-search-session-tick self)            nil
         (hel-search-session-timer self)           nil
         (hel-search-session-scan-pos self)        nil
-        (hel-search-session-window-region self)   nil
+        (hel-search-session-window-range self)   nil
         (hel-search-session-window-matches self)  nil
         (hel-search-session-scanned-matches self) nil
         (hel-search-session-matches self)         nil))
@@ -217,12 +217,12 @@ Run search session if REGEXP is provided."
            (with-current-buffer buffer
              (-let* ((start (window-group-start window))
                      (end   (min (window-group-end window t) (point-max)))
-                     ((matches . _) (hel-matches-in-region
+                     ((matches . _) (hel-matches-in-range
                                      (hel-search-session-regexp self)
                                      start end)))
                (setf (hel-search-session-tick self)
                      (buffer-chars-modified-tick))
-               (setf (hel-search-session-window-region self)
+               (setf (hel-search-session-window-range self)
                      (cons start end))
                (setf (hel-search-session-window-matches self)
                      (-map #'hel-search-session--highlight matches))
@@ -243,10 +243,10 @@ Run search session if REGEXP is provided."
         (-let* ((start (or (hel-search-session-scan-pos self)
                            (point-min)))
                 (end   (point-max))
-                ((win-start . win-end) (hel-search-session-window-region self))
+                ((win-start . win-end) (hel-search-session-window-range self))
                 ;; Search only up to the region that the window scan
                 ;; has searched.
-                ((ranges . stop) (hel-matches-in-region
+                ((ranges . stop) (hel-matches-in-range
                                   (hel-search-session-regexp self)
                                   start
                                   (or win-start end)
@@ -260,7 +260,7 @@ Run search session if REGEXP is provided."
             (setf (hel-search-session-scanned-matches self)
                   (nconc (nreverse (hel-search-session-window-matches self))
                          (hel-search-session-scanned-matches self)))
-            (setf (hel-search-session-window-region self)  nil)
+            (setf (hel-search-session-window-range self)  nil)
             (setf (hel-search-session-window-matches self) nil)
             (setq stop win-end))
           (setf (hel-search-session-scan-pos self) stop)
@@ -646,7 +646,7 @@ Do not auto-detect word boundaries in the search pattern."
       (deactivate-mark)
       (-each (hel-all-fake-cursors) #'hel--delete-fake-cursor)
       (setq hel--extend-selection nil)
-      (if (setq regions (hel-select-interactively-in-regions regions invert))
+      (if (setq regions (hel-select-interactively-in-ranges regions invert))
           (hel-recenter-point-on-jump
             ;; Real cursor
             (-let [(start . end) (car regions)]
@@ -670,7 +670,7 @@ the regexp."
   (interactive)
   (hel-select-in-selections t))
 
-(defun hel-select-interactively-in-regions (regions &optional invert)
+(defun hel-select-interactively-in-ranges (regions &optional invert)
   "Return ranges matching an interactively entered regexp within REGIONS.
 REGIONS is a list of cons cells (START . END) that defines the limits within
 which search is performed. With INVERT non-nil, return the complement ranges.
@@ -691,7 +691,7 @@ Shows a live preview, a match count, and scrolls the first match into view."
     (cl-flet*
         ((ranges-for (regexp)
            (let ((matches (-map (-lambda ((from . to))
-                                  (car (hel-matches-in-region regexp from to)))
+                                  (car (hel-matches-in-range regexp from to)))
                                 regions)))
              ;; Return nil when REGEXP matches in no region. The complement is
              ;; never empty, so test the matches before taking it.
@@ -775,7 +775,7 @@ If INVERT is non-nil — remove selections that match regexp."
   (hel-with-real-cursor-as-fake
     (let* ((cursors (hel-all-fake-cursors))
            (regions-overlays (-map (lambda (cursor)
-                                     (overlay-get cursor 'fake-region))
+                                     (overlay-get cursor 'fake-selection))
                                    cursors))
            (regions-content (-map (lambda (cursor)
                                     (buffer-substring-no-properties
@@ -834,12 +834,12 @@ If INVERT is non-nil — remove selections that match regexp."
                 (if (not flag)
                     (hel--delete-fake-cursor cursor)
                   (hel--set-cursor-overlay cursor (overlay-get cursor 'point))
-                  (-> (overlay-get cursor 'fake-region)
+                  (-> (overlay-get cursor 'fake-selection)
                       (overlay-put 'face 'region)))))
           ;; Else restore all cursors
           (dolist (cursor cursors)
             (hel--set-cursor-overlay cursor (overlay-get cursor 'point))
-            (-> (overlay-get cursor 'fake-region)
+            (-> (overlay-get cursor 'fake-selection)
                 (overlay-put 'face 'region))))))))
 
 ;;; Find char: f F t T
@@ -947,7 +947,7 @@ keys to repeat motion forward/backward."
         (found nil))
     (while (and (not found)
                 (re-search-forward regexp limit t dir))
-      (if (hel-range-visible? (match-beginning 0) (match-end 0))
+      (if (hel-range-visible? (cons (match-beginning 0) (match-end 0)))
           (setq found t)))
     found))
 

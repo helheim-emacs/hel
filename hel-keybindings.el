@@ -155,7 +155,7 @@ use it."
   "M-c" #'hel-copy-selection-up
   "s"   #'hel-select-in-selections
   "S"   #'hel-split-selections
-  "M-s" #'hel-split-region-on-newline
+  "M-s" #'hel-split-selection-on-newline
   ";"   #'hel-collapse-selection
   "C-;" #'hel-exchange-point-and-mark
   "M-;" #'hel-exchange-point-and-mark

@@ -38,6 +38,15 @@
 - ~hel-set-region~ is obsolete. Use ~hel-select~ with a range and a direction, or
   ~hel-select-motion~ for a motion that keeps the mark after =v=.
 
+- The Hel API says "selection" for a selection as a value. ~hel-region~ and
+  ~hel-save-region~ are obsolete aliases of ~hel-selection~ and
+  ~hel-save-selection~.
+
+- ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~.
+  ~hel-trim-whitespace-from-range~, ~hel-invert-case-in-range~,
+  ~hel-replace-chars~, ~hel-read-char-and-replace~ and ~hel-range-visible?~
+  take a range ~(BEGIN . END)~.
+
 - =maf= takes the header comment above the function and the blank lines after
   it, and =maa= takes the comma after the argument, or before the last one.
   A count selects several objects, and a repeated =maf= adds the next function.

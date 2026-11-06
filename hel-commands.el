@@ -527,7 +527,7 @@ depending on DIRECTION."
   "Add COUNT blank lines below selection."
   :multiple-cursors t
   (interactive "p")
-  (hel-save-region
+  (hel-save-selection
     (when (use-region-p)
       (hel-ensure-region-direction 1))
     (unless (hel-linewise-selection-p 1)
@@ -539,7 +539,7 @@ depending on DIRECTION."
   "Add COUNT blank lines above selection."
   :multiple-cursors t
   (interactive "p")
-  (hel-save-region
+  (hel-save-selection
     (when (use-region-p)
       (hel-ensure-region-direction -1))
     (hel--beginning-of-line)
@@ -657,7 +657,7 @@ in the kill ring."
       (message "Copied into kill-ring"))
     (hel-maybe-set-killed-rectangle)
     (when (called-interactively-p 'interactive)
-      (hel-pulse-main-region))))
+      (hel-pulse-main-selection))))
 
 (defun hel-maybe-set-killed-rectangle ()
   "Add the latest `kill-ring' entry of each cursor to `killed-rectangle',
@@ -725,9 +725,9 @@ one. With no selection — replace COUNT characters before point."
   (if (use-region-p)
       (let ((char (read-char "Replace with: " t))
             (deactivate-mark nil))
-        (hel-replace-chars (region-beginning) (region-end) char))
-    (hel-read-char-and-replace (max (point-min) (- (point) count))
-                               (point))))
+        (hel-replace-chars (cons (region-beginning) (region-end)) char))
+    (hel-read-char-and-replace (cons (max (point-min) (- (point) count))
+                                     (point)))))
 
 ;; R
 (hel-define-command hel-replace-with-kill-ring (count)
@@ -752,15 +752,15 @@ forward)."
         (when (and (derived-mode-p 'prog-mode)
                    (use-region-p))
           (indent-region (region-beginning) (region-end))))
-    (hel-read-char-and-replace (point)
-                               (min (point-max) (+ (point) count)))))
+    (hel-read-char-and-replace (cons (point)
+                                     (min (point-max) (+ (point) count))))))
 
 ;; J
 (hel-define-command hel-join-line ()
   "Join the selected lines."
   :multiple-cursors t
   (interactive "*")
-  (hel-save-region
+  (hel-save-selection
     (let* ((deactivate-mark nil)
            (region? (use-region-p))
            (count (let ((n (if region?
@@ -802,13 +802,12 @@ forward)."
   "Invert case of characters."
   :multiple-cursors t
   (interactive "*")
-  (if-let* ((region (hel-region)))
-      (-let (((beg end) region)
-             (deactivate-mark nil))
-        (hel-invert-case-in-region beg end)
-        (hel-restore-region region))
+  (if-let* ((region (hel-selection)))
+      (let ((deactivate-mark nil))
+        (hel-invert-case-in-range (car region))
+        (apply #'hel-select region))
     ;; else
-    (hel-invert-case-in-region (point) (1+ (point)))))
+    (hel-invert-case-in-range (cons (point) (1+ (point))))))
 
 ;; ` or gu
 (hel-define-command hel-downcase (count)
@@ -918,7 +917,7 @@ When called interactively — toggle extending selection."
   (hel-select (cons (minibuffer-prompt-end) (point-max)) -1))
 
 ;; M-s
-(hel-define-command hel-split-region-on-newline ()
+(hel-define-command hel-split-selection-on-newline ()
   "Split selections on line boundaries."
   :multiple-cursors nil
   (interactive)
@@ -1001,7 +1000,7 @@ When called interactively — toggle extending selection."
   (hel-with-each-cursor
     (hel-motion-loop (dir count)
       (if (use-region-p)
-          (hel--copy-region dir)
+          (hel--copy-selection dir)
         (hel--copy-cursor dir)))))
 
 ;; M-c
@@ -1025,15 +1024,15 @@ When called interactively — toggle extending selection."
     (deactivate-mark)
     (goto-char pos)))
 
-(defun hel--copy-region (direction)
+(defun hel--copy-selection (direction)
   "Copy region toward the DIRECTION."
-  (-let* (((beg end region-dir) (hel-region))
+  (-let* ((((beg . end) region-dir) (hel-selection))
           (num-of-lines (count-lines beg end))
           (beg-column (save-excursion (goto-char beg) (current-column)))
           (end-column (save-excursion (goto-char end) (current-column))))
     (when-let* ((bounds (save-excursion
                           (goto-char (if (< direction 0) beg end))
-                          (hel--bounds-of-following-region
+                          (hel--bounds-of-following-range
                            beg-column end-column num-of-lines direction))))
       (let (point mark)
         (if (< region-dir 0)
@@ -1047,8 +1046,8 @@ When called interactively — toggle extending selection."
           (goto-char point)
           (set-marker (mark-marker) mark))))))
 
-(defun hel--bounds-of-following-region ( start-column end-column
-                                         number-of-lines direction)
+(defun hel--bounds-of-following-range ( start-column end-column
+                                        number-of-lines direction)
   "Return bounds of following region toward the DIRECTION that starts
 at START-COLUMN, ends at END-COLUMN and consists of NUMBER-OF-LINES."
   (when (< direction 0)
@@ -1203,10 +1202,10 @@ You may restore them with %s (`hel-restore-cursors')."
          (content (buffer-substring (overlay-get first-cursor 'point)
                                     (overlay-get first-cursor 'mark))))
     (dolist (cursor (cdr cursors))
-      (setq content (hel-exchange-fake-region-content cursor content)))
-    (hel-exchange-fake-region-content first-cursor content)))
+      (setq content (hel-exchange-fake-selection-content cursor content)))
+    (hel-exchange-fake-selection-content first-cursor content)))
 
-(defun hel-exchange-fake-region-content (cursor content)
+(defun hel-exchange-fake-selection-content (cursor content)
   "Exchange the CURSORs region content with CONTENT and return the old one."
   (hel-with-fake-cursor cursor
     (let ((deactivate-mark nil) ;; Do not deactivate mark after insertion.
@@ -1860,7 +1859,7 @@ With linewise selection (made with %s) tags are placed on separate lines."
         (hel-trim-whitespaces-from-selection))
       (let ((beg (copy-marker (region-beginning)))
             (end (copy-marker (region-end) t)))
-        (hel-save-region
+        (hel-save-selection
           (goto-char beg)
           (insert left)
           (when linewise? (newline))
@@ -1909,7 +1908,7 @@ the nearest enclosing tag."
                                            (hel-surround--insert))))))
     (-when-let ((left-beg left-end right-beg right-end) 4-bounds)
       (let ((deactivate-mark nil))
-        (hel-save-region
+        (hel-save-selection
           (delete-region right-beg right-end)
           (goto-char right-beg)
           (insert right)

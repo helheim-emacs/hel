@@ -81,16 +81,15 @@
        (treesit-parser-list)
        t))
 
-(defun hel--selection ()
+(defun hel--trimmed-selection ()
   "Return the selection that the structural commands start from, or nil.
-Return the (BEGIN . END) range of the region without the whitespace at its
-edges. Without a region, return nil: point is a position, and each command
+Return the (BEGIN . END) range of the selection without the whitespace at its
+edges. Without a selection, return nil: point is a position, and each command
 decides what a bare point means for it."
   (when (use-region-p)
-    (let ((begin (region-beginning))
-          (end   (region-end)))
-      (or (hel-trim-whitespace-from-range begin end)
-          (cons begin end)))))
+    (let ((range (cons (region-beginning) (region-end))))
+      (or (hel-trim-whitespace-from-range range)
+          range))))
 
 (defun hel--cursor-position ()
   "Return the position of the character under the cursor.
@@ -123,7 +122,7 @@ end there, the larger one."
                           (and (= a-end b-end) (< a-beg b-beg)))))
                   items))))
 
-(defun hel--only-whitespace-p (begin end)
+(cl-defun hel--only-whitespace-p ((begin . end))
   "Return non-nil if the text from BEGIN to END is only spaces and tabs."
   (save-excursion
     (goto-char begin)
@@ -148,7 +147,7 @@ end there, the larger one."
       (skip-chars-backward " \t"))
     (point)))
 
-(defun hel--line-range (begin end)
+(cl-defun hel--line-range ((begin . end))
   "Return the range of the whole lines from BEGIN to END.
 The range runs from the start of the line of BEGIN to the end of the line
 of END, with its line end."
@@ -161,43 +160,43 @@ of END, with its line end."
             (min (1+ (line-end-position))
                  (point-max))))))
 
-(defun hel--fills-lines-p (begin end)
+(cl-defun hel--fills-lines-p ((begin . end))
   "Return non-nil if BEGIN..END is the only text on its lines."
   (save-excursion
-    (and (hel--only-whitespace-p (progn (goto-char begin)
-                                        (line-beginning-position))
-                                 begin)
-         (hel--only-whitespace-p end
-                                 (progn (goto-char end)
-                                        (line-end-position))))))
+    (and (hel--only-whitespace-p (cons (progn (goto-char begin)
+                                              (line-beginning-position))
+                                       begin))
+         (hel--only-whitespace-p (cons end
+                                       (progn (goto-char end)
+                                              (line-end-position)))))))
 
 ;;; Selection history
 
 (defun hel--sync-selection-history ()
   "Clear `hel-selection-history' if the region is not its last selection."
   (unless (equal (nth 1 (car hel-selection-history))
-                 (hel-region))
+                 (hel-selection))
     (setq hel-selection-history nil)))
 
 (defun hel--record-selection (before)
   "Push BEFORE and the active region to `hel-selection-history'.
 BEFORE is the selection before the command, see `hel-selection-history'."
-  (push (list before (hel-region) hel--text-object-run)
+  (push (list before (hel-selection) hel--text-object-run)
         hel-selection-history))
 
 (defun hel--restore-selection (before)
   "Restore the selection BEFORE from `hel-selection-history'."
-  (-let [(begin _end dir) before]
+  (-let [(range dir) before]
     (if dir
-        (hel-restore-region before)
+        (hel-select range dir)
       (deactivate-mark)
-      (goto-char begin))))
+      (goto-char (car range)))))
 
 (defun hel--selection-before ()
-  "Return the selection before a command, in the form of `hel-region'.
-Without a region, return (POINT POINT nil)."
-  (or (hel-region)
-      (list (point) (point) nil)))
+  "Return the selection before a command, in the form of `hel-selection'.
+Without a region, return an empty range at point and nil."
+  (or (hel-selection)
+      (list (cons (point) (point)) nil)))
 
 ;;; The protocol
 ;;;; Things and sources
@@ -222,10 +221,10 @@ The producer comes from the first source in the property
 ;;
 ;; A position POS stands for the character after it, as the cursor does.
 
-(cl-defgeneric hel-things-at (thing producer begin end)
-  "Return the THINGs that PRODUCER finds around BEGIN..END.
-These are the things that contain BEGIN..END, and the neighbours whose
-gap or header comment may hold it.")
+(cl-defgeneric hel-things-at (thing producer range)
+  "Return the THINGs that PRODUCER finds around RANGE.
+These are the things that contain RANGE, and the neighbours whose gap or
+header comment may hold it.")
 
 (cl-defgeneric hel-thing-next (thing producer pos dir)
   "Return the nearest THING from POS in direction DIR, or nil.
@@ -278,8 +277,8 @@ at or before LIMIT forward, and ends at or after LIMIT backward.")
 ;; A node is whatever the producer uses for it: a tree-sitter node, or the
 ;; (BEGIN . END) range of a sexp. `hel-node-range' turns it into a range.
 
-(cl-defgeneric hel-node-at (thing producer begin end)
-  "Return the smallest node of THING that covers BEGIN..END, or nil.")
+(cl-defgeneric hel-node-at (thing producer range)
+  "Return the smallest node of THING that covers RANGE, or nil.")
 
 (cl-defgeneric hel-node-range (thing producer node)
   "Return the (BEGIN . END) range of NODE.")
@@ -337,19 +336,20 @@ This is the command of `H' and `L'.")
   "Select to the edge of the parent, as `M-b' and `M-e' do."
   (hel--select-to-parent-edge thing count))
 
-(cl-defgeneric hel-node-expand-steps (thing producer begin end)
-  "Return the regions that expand steps through from BEGIN..END.
-The regions are (BEGIN . END) ranges, in any order.")
+(cl-defgeneric hel-node-expand-steps (thing producer range)
+  "Return the regions that expand steps through from RANGE.
+The regions are ranges, in any order.")
 
-(cl-defmethod hel-node-expand-steps (thing producer begin end)
-  "Return the ranges of the node at BEGIN..END and of its parents.
-The root is not among them. An empty BEGIN..END stands for the character
+(cl-defmethod hel-node-expand-steps (thing producer range)
+  "Return the ranges of the node at RANGE and of its parents.
+The root is not among them. An empty RANGE stands for the character
 after it."
-  (let ((node (hel-node-at thing producer begin
-                           (if (= begin end)
-                               (min (1+ end) (point-max))
-                             end)))
-        regions)
+  (-let* (((begin . end) range)
+          (node (hel-node-at thing producer
+                             (if (= begin end)
+                                 (cons begin (min (1+ end) (point-max)))
+                               range)))
+          regions)
     (while-let ((node)
                 (parent (hel-node-parent thing producer node)))
       (push (hel-node-range thing producer node) regions)
@@ -465,8 +465,8 @@ A jump pushes the old point to the mark ring.")
     (backward-prefix-chars)
     (point)))
 
-(defun hel--sexp-at (begin end)
-  "Return the range of the sexp that covers BEGIN..END, as (BEGIN . END).
+(cl-defun hel--sexp-at ((begin . end))
+  "Return the range of the sexp that covers BEGIN..END.
 When BEGIN..END spans several sexps, the range runs from the start of the
 first one to END. Return nil if no sexp is at BEGIN."
   (save-excursion
@@ -477,7 +477,9 @@ first one to END. Return nil if no sexp is at BEGIN."
        ((and (char-after)
              (not (hel-whitespace-p (char-after)))
              (forward-comment 1))
-        (cons begin (max end (cdr (hel-trim-whitespace-from-range begin (point))))))
+        (cons begin
+              (max end
+                   (cdr (hel-trim-whitespace-from-range (cons begin (point)))))))
        ((and (char-after)
              (eq ?\) (char-syntax (char-after))))
         (cons (scan-sexps (1+ begin) -1) (1+ begin)))
@@ -506,7 +508,7 @@ none. SEXP is a (BEGIN . END) range."
                     ((<= stop begin)))
           (cons (hel--sexp-start stop) stop))))))
 
-(defun hel--sexps-in (begin end)
+(cl-defun hel--sexps-in ((begin . end))
   "Return the ranges of the sexps from BEGIN to END, in buffer order."
   (let ((pos begin)
         sexps)
@@ -533,7 +535,7 @@ Each pair is the (OPEN . CLOSE) range of the whole bracketed form."
   "Return the range of the sexp, string or comment with POS inside it, or nil.
 POS lies inside it and not at its edge. Point lies inside a sexp when
 the sexp after it starts before it, as in a symbol or after the quote of
-'sym."
+\\='sym."
   (save-excursion
     (let ((ppss (syntax-ppss pos)))
       (cond ((nth 3 ppss)
@@ -546,7 +548,7 @@ the sexp after it starts before it, as in a symbol or after the quote of
              (when-let* ((comment (hel-bounds-of-comment-at-point-ppss))
                          ((cdr comment))
                          ((< (car comment) pos)))
-               (hel-trim-whitespace-from-range (car comment) (cdr comment))))
+               (hel-trim-whitespace-from-range comment)))
             (t
              (when-let* ((end (ignore-errors (scan-sexps pos 1)))
                          (start (hel--sexp-start end))
@@ -586,7 +588,7 @@ The sexp lies in the bracket pair around POS."
   (when (hel-treesit-active-p)
     (hel-treesit-node-producer-create)))
 
-(defun hel-treesit--node-region (node)
+(defun hel-treesit--node-range (node)
   "Return (BEGIN . END) positions of NODE."
   (cons (treesit-node-start node)
         (treesit-node-end node)))
@@ -605,13 +607,13 @@ The sexp lies in the bracket pair around POS."
                      (< (treesit-node-start node) pos (treesit-node-end node)))
            return node))
 
-(cl-defmethod hel-node-at (_thing (_producer hel-treesit-node-producer) begin end)
-  "Return the smallest named node that covers BEGIN..END."
-  (treesit-node-on begin end nil t))
+(cl-defmethod hel-node-at (_thing (_producer hel-treesit-node-producer) range)
+  "Return the smallest named node that covers RANGE."
+  (treesit-node-on (car range) (cdr range) nil t))
 
 (cl-defmethod hel-node-range (_thing (_producer hel-treesit-node-producer) node)
   "Return the range of NODE."
-  (hel-treesit--node-region node))
+  (hel-treesit--node-range node))
 
 (cl-defmethod hel-node-parent (_thing (_producer hel-treesit-node-producer) node)
   "Return the parent of NODE."
@@ -625,10 +627,10 @@ The sexp lies in the bracket pair around POS."
   "Return the named sibling of NODE in direction DIR.
 A parent with the same range as NODE counts as NODE, so when NODE has no
 sibling there, return the sibling of such a parent."
-  (let ((region (hel-treesit--node-region node)))
+  (let ((region (hel-treesit--node-range node)))
     (cl-loop for same = node then (treesit-node-parent same)
              while (and same
-                        (equal region (hel-treesit--node-region same)))
+                        (equal region (hel-treesit--node-range same)))
              thereis (if (< 0 dir)
                          (treesit-node-next-sibling same t)
                        (treesit-node-prev-sibling same t)))))
@@ -681,9 +683,9 @@ alone, as if a parser gave them.")
   "Return the range of the whole buffer, the root of the sexps."
   (cons (point-min) (point-max)))
 
-(cl-defmethod hel-node-at (_thing (_producer hel-sexp-node-producer) begin end)
-  "Return the sexp that covers BEGIN..END."
-  (hel--sexp-at begin end))
+(cl-defmethod hel-node-at (_thing (_producer hel-sexp-node-producer) range)
+  "Return the sexp that covers RANGE."
+  (hel--sexp-at range))
 
 (cl-defmethod hel-node-range (_thing (_producer hel-sexp-node-producer) node)
   "Return NODE: a sexp is its range."
@@ -705,9 +707,9 @@ children of other ranges are the sexps in them, except the range itself."
     (if (and open
              (eq ?\( (char-syntax (char-after open)))
              (eql begin (ignore-errors (hel--sexp-start end))))
-        (hel--sexps-in (1+ open) (1- end))
+        (hel--sexps-in (cons (1+ open) (1- end)))
       (-remove (lambda (sexp) (equal sexp node))
-               (hel--sexps-in begin end)))))
+               (hel--sexps-in node)))))
 
 (cl-defmethod hel-node-sibling (_thing (_producer hel-sexp-node-producer) node dir)
   "Return the sexp next to NODE inside the same bracket pair."
@@ -741,9 +743,9 @@ children of other ranges are the sexps in them, except the range itself."
     (hel--sexp-before pos)))
 
 (cl-defmethod hel-node-expand-steps (_thing (_producer hel-sexp-node-producer)
-                                            begin _end)
-  "Return the regions of the syntax table around BEGIN."
-  (hel--syntax-regions begin))
+                                            range)
+  "Return the regions of the syntax table around the start of RANGE."
+  (hel--syntax-ranges (car range)))
 
 (cl-defmethod hel-node-select-side (thing (_producer hel-lisp-node-producer) count)
   "Select the enclosing sexp, with point on the side of COUNT.
@@ -754,16 +756,17 @@ parent itself are one step."
     (hel-ensure-region-direction (hel-sign count))))
 
 (cl-defmethod hel-node-expand-steps (_thing (_producer hel-lisp-node-producer)
-                                            begin _end)
-  "Return the regions of the sexps around BEGIN.
-These are the atom, the string or the comment with BEGIN inside it, and
-each list around BEGIN as a whole sexp, with its prefix characters. No
-region is the inside of a list or of a string: `mi(' and `mi\"' select
-those."
-  (cons (hel--sexp-token begin)
-        (-map #'hel--whole-sexp (hel--bracket-pairs begin))))
+                                            range)
+  "Return the regions of the sexps around the start of RANGE.
+These are the atom, the string or the comment with the start of RANGE
+inside it, and each list around it as a whole sexp, with its prefix
+characters. No region is the inside of a list or of a string: `mi(' and
+`mi\"' select those."
+  (let ((begin (car range)))
+    (cons (hel--sexp-token begin)
+          (-map #'hel--whole-sexp (hel--bracket-pairs begin)))))
 
-(defun hel--syntax-regions (pos)
+(defun hel--syntax-ranges (pos)
   "Return the regions that the syntax table gives around POS.
 The result is a list of (BEGIN . END) pairs. It holds the word and the
 symbol at POS, the inside and the whole of each string, comment and
@@ -784,14 +787,14 @@ come from the things of these names."
                    (symbol (progn (goto-char pos)
                                   (bounds-of-thing-at-point 'symbol))))
          (list symbol))
-       (hel--syntax-ppss-regions pos)
+       (hel--syntax-ppss-ranges pos)
        ;; The cursor sits on the character after POS. When that character
        ;; opens a bracket pair, a string or a comment, the scan from the
        ;; next position finds it.
        (if (< pos (point-max))
-           (hel--syntax-ppss-regions (1+ pos)))))))
+           (hel--syntax-ppss-ranges (1+ pos)))))))
 
-(defun hel--syntax-ppss-regions (pos)
+(defun hel--syntax-ppss-ranges (pos)
   "Return the strings, comments and bracket pairs that enclose POS.
 Each of them gives two (BEGIN . END) pairs: its inside and its whole."
   (let ((ppss (save-excursion (syntax-ppss pos)))
@@ -799,7 +802,7 @@ Each of them gives two (BEGIN . END) pairs: its inside and its whole."
     (-each (hel--bracket-pairs pos)
       (-lambda ((open . close))
         (push (cons open close) regions)
-        (push (hel-trim-whitespace-from-range (1+ open) (1- close))
+        (push (hel-trim-whitespace-from-range (cons (1+ open) (1- close)))
               regions)))
     (when-let* ((start (nth 8 ppss)))
       (if (nth 3 ppss)
@@ -809,25 +812,25 @@ Each of them gives two (BEGIN . END) pairs: its inside and its whole."
         (when-let* ((end (cdr (save-excursion
                                 (goto-char pos)
                                 (hel-bounds-of-comment-at-point-ppss)))))
-          (setq regions (append (hel--comment-regions start end) regions)))))
+          (setq regions (append (hel--comment-ranges (cons start end)) regions)))))
     (delq nil regions)))
 
-(defun hel--comment-regions (start end)
-  "Return the whole and the inside of the comment from START to END.
+(cl-defun hel--comment-ranges ((begin . end))
+  "Return the whole and the inside of the comment from BEGIN to END.
 The whole excludes the trailing whitespace and newline. The inside also
 excludes the comment delimiters, and is nil when nothing remains."
   (comment-normalize-vars t)
   (save-excursion
     (let* ((end (progn
                   (goto-char end)
-                  (skip-chars-backward " \t\r\n" start)
+                  (skip-chars-backward " \t\r\n" begin)
                   (point)))
            (inner-begin (progn
-                          (goto-char start)
+                          (goto-char begin)
                           (if (and comment-start-skip
                                    (looking-at comment-start-skip))
                               (match-end 0)
-                            start)))
+                            begin)))
            (inner-end (progn
                         (goto-char end)
                         (if (and comment-end-skip
@@ -835,8 +838,8 @@ excludes the comment delimiters, and is nil when nothing remains."
                                  (looking-back comment-end-skip inner-begin))
                             (match-beginning 0)
                           end))))
-      (list (cons start end)
-            (hel-trim-whitespace-from-range inner-begin inner-end)))))
+      (list (cons begin end)
+            (hel-trim-whitespace-from-range (cons inner-begin inner-end))))))
 
 ;;; Run producers
 ;;;; The queries
@@ -1129,15 +1132,15 @@ The source applies where `hel-treesit-text-objects-p' returns non-nil."
     (when (hel-treesit-text-objects-p)
       (hel-treesit-producer-create :capture capture))))
 
-(cl-defmethod hel-things-at (_thing (producer hel-treesit-producer) begin end)
-  "Return the things whose around range may contain BEGIN..END.
-These are the things that overlap BEGIN..END, the neighbours that only
+(cl-defmethod hel-things-at (_thing (producer hel-treesit-producer) range)
+  "Return the things whose around range may contain RANGE.
+These are the things that overlap RANGE, the neighbours that only
 whitespace and separators separate from it, and the thing after the
 comments behind it, which may be a header comment."
   (let ((from (max (point-min)
-                   (1- (hel-treesit--skip-gap begin -1))))
+                   (1- (hel-treesit--skip-gap (car range) -1))))
         (to (min (point-max)
-                 (1+ (hel-treesit--skip-gap end 1 t)))))
+                 (1+ (hel-treesit--skip-gap (cdr range) 1 t)))))
     (hel-treesit--capture-things (hel-treesit-producer-capture producer)
                                  from to)))
 
@@ -1214,17 +1217,17 @@ COUNT that it could not move, as `hel--forward-word' does."))
   (let ((producer (hel-motion-producer-create :motion motion)))
     (lambda () producer)))
 
-(defun hel--motion-thing (thing begin end)
-  "Return the THING from BEGIN to END, or nil.
-The thing leaves out the whitespace at the edges of BEGIN..END, and it
-covers whole lines when THING is linewise."
-  (when-let* ((range (hel-trim-whitespace-from-range begin end)))
+(defun hel--motion-thing (thing range)
+  "Return the THING at RANGE, or nil.
+The thing leaves out the whitespace at the edges of RANGE, and it covers
+whole lines when THING is linewise."
+  (when-let* ((trimmed (hel-trim-whitespace-from-range range)))
     (-let [(begin . end) (if (hel-thing-linewise-p thing)
-                             (hel--line-range (car range) (cdr range))
-                           range)]
+                             (hel--line-range trimmed)
+                           trimmed)]
       (list :begin begin :end end))))
 
-(defun hel--motion-at (thing producer begin end)
+(cl-defun hel--motion-at (thing producer (begin . end))
   "Return the THING that contains BEGIN..END, or nil.
 The thing starts where the motion of PRODUCER stops when it goes back
 from the end of the thing. The first backward move can stop elsewhere:
@@ -1237,16 +1240,17 @@ before it."
                                  (zerop (funcall motion 1))
                                  (let ((end (point)))
                                    (funcall motion -1)
-                                   (hel--motion-thing thing (point) end)))))
+                                   (hel--motion-thing thing (cons (point) end))))))
                 ((<= (plist-get instance :begin) begin))
                 ((<= end (plist-get instance :end))))
       instance)))
 
-(cl-defmethod hel-things-at (thing (producer hel-motion-producer) begin end)
-  "Return the thing that holds BEGIN..END, and its neighbours."
-  (-non-nil (list (hel--motion-at thing producer begin end)
-                  (hel-thing-next thing producer begin -1)
-                  (hel-thing-next thing producer (max begin (1- end)) 1))))
+(cl-defmethod hel-things-at (thing (producer hel-motion-producer) range)
+  "Return the thing that holds RANGE, and its neighbours."
+  (-let [(begin . end) range]
+    (-non-nil (list (hel--motion-at thing producer range)
+                    (hel-thing-next thing producer begin -1)
+                    (hel-thing-next thing producer (max begin (1- end)) 1)))))
 
 (cl-defmethod hel-thing-next (thing (producer hel-motion-producer) pos dir)
   "Return the next thing that the motion of PRODUCER finds from POS in DIR."
@@ -1262,9 +1266,7 @@ before it."
                  (other (save-excursion
                           (funcall motion (- dir))
                           (point)))
-                 (instance (hel--motion-thing thing
-                                              (min stop other)
-                                              (max stop other))))
+                 (instance (hel--motion-thing thing (hel-range stop other))))
             (when (and instance
                        (if (< 0 dir)
                            (< pos (plist-get instance :begin))
@@ -1298,8 +1300,7 @@ that returns the comment there."
                    (skip-chars-backward " \t")
                    (1- (point)))))
         (when-let* ((other (funcall comment-at pos))
-                    ((hel--fills-lines-p (plist-get other :begin)
-                                         (plist-get other :end)))
+                    ((hel--fills-lines-p (hel--thing-range other)))
                     ((if (< 0 dir)
                          (= pos (plist-get other :begin))
                        (save-excursion
@@ -1316,8 +1317,7 @@ blank line between them. A run covers whole lines, as a paragraph does,
 with the line end of its last line. A comment after code is a run of
 its own, and it covers only the comment. COMMENT-AT is a function of
 a position that returns the comment there."
-  (if (not (hel--fills-lines-p (plist-get comment :begin)
-                               (plist-get comment :end)))
+  (if (not (hel--fills-lines-p (hel--thing-range comment)))
       comment
     (let ((first comment)
           (last comment))
@@ -1325,8 +1325,8 @@ a position that returns the comment there."
         (setq first previous))
       (while-let ((next (hel--adjacent-comment comment-at last 1)))
         (setq last next))
-      (-let [(begin . end) (hel--line-range (plist-get first :begin)
-                                            (plist-get last :end))]
+      (-let [(begin . end) (hel--line-range (cons (plist-get first :begin)
+                                                  (plist-get last :end)))]
         (list :begin begin
               :end end
               :parent (plist-get first :parent))))))
@@ -1346,9 +1346,9 @@ a direction that returns the start of the next comment, or nil."))
               (comment (funcall comment-at start)))
     (hel--comment-run comment-at comment)))
 
-(cl-defmethod hel-things-at (_thing (producer hel-comment-producer) begin _end)
-  "Return the comment run of PRODUCER at BEGIN, as a list."
-  (-non-nil (list (hel--comment-run-from producer begin))))
+(cl-defmethod hel-things-at (_thing (producer hel-comment-producer) range)
+  "Return the comment run of PRODUCER at the start of RANGE, as a list."
+  (-non-nil (list (hel--comment-run-from producer (car range)))))
 
 (cl-defmethod hel-thing-next (_thing (producer hel-comment-producer) pos dir)
   "Return the next comment run of PRODUCER from POS in direction DIR."
@@ -1376,8 +1376,8 @@ a direction that returns the start of the next comment, or nil."))
                                        (< pos (treesit-node-end node)))))
                        (-min-by (-on #'> #'hel-treesit--node-length))))
                ((begin . end) (hel-trim-whitespace-from-range
-                               (treesit-node-start node)
-                               (treesit-node-end node))))
+                               (cons (treesit-node-start node)
+                                     (treesit-node-end node)))))
     (list :begin begin
           :end end
           :parent (treesit-node-parent node))))
@@ -1432,7 +1432,7 @@ The source applies where `hel-treesit-text-objects-p' returns non-nil."
                          ((not (nth 3 (syntax-ppss start))))
                          ((progn (goto-char start)
                                  (forward-comment 1)))
-                         (range (hel-trim-whitespace-from-range start (point)))
+                         (range (hel-trim-whitespace-from-range (cons start (point))))
                          ((= start (car range)))
                          ((<= start pos))
                          ((< pos (cdr range))))
@@ -1482,7 +1482,7 @@ The header comment is the run of comment lines directly above the thing.
 Return POS when the thing has no header comment."
   (save-excursion
     (goto-char pos)
-    (if (not (hel--only-whitespace-p (line-beginning-position) pos))
+    (if (not (hel--only-whitespace-p (cons (line-beginning-position) pos)))
         pos
       (let ((start pos))
         (while (and (progn
@@ -1548,24 +1548,24 @@ line of code."
               end)
       range)))
 
-(cl-defgeneric hel-thing-at (thing producer begin end)
-  "Return the THING at BEGIN..END, or nil.
-PRODUCER finds the things. An empty BEGIN..END is a bare point.")
+(cl-defgeneric hel-thing-at (thing producer range)
+  "Return the THING at RANGE, or nil.
+PRODUCER finds the things. An empty RANGE is a bare point.")
 
-(cl-defmethod hel-thing-at (thing producer begin end)
-  "Return the thing whose range or around range holds BEGIN..END.
+(cl-defmethod hel-thing-at (thing producer range)
+  "Return the thing whose range or around range holds RANGE.
 Of nested things, the innermost one wins. Of two neighbours, the one
-that contains BEGIN..END wins, and the one after a bare point wins
-a tie. When no thing contains BEGIN..END, the selection lies in a gap or
-on a header comment: the thing before it wins, and the thing after it
-when nothing comes before."
-  (cl-flet* ((contains-p (range)
-               (<= (car range) begin end (cdr range)))
+that contains RANGE wins, and the one after a bare point wins a tie. When
+no thing contains RANGE, the selection lies in a gap or on a header
+comment: the thing before it wins, and the thing after it when nothing
+comes before."
+  (cl-flet* ((contains-p (outer)
+               (<= (car outer) (car range) (cdr range) (cdr outer)))
              (inside-p (inner outer)
                (and (not (equal inner outer))
                     (<= (car outer) (car inner) (cdr inner) (cdr outer)))))
     (let* ((candidates
-            (->> (hel-things-at thing producer begin end)
+            (->> (hel-things-at thing producer range)
                  ;; Keep one thing of each range.
                  (-group-by #'hel--thing-range)
                  (-map #'cadr)
@@ -1585,7 +1585,7 @@ when nothing comes before."
                        (contains-p (hel--thing-range instance))))
             (-max-by (-on #'> (lambda (x) (plist-get x :begin)))))
           (-some->> innermost
-            (-filter (lambda (x) (<= (plist-get x :end) begin)))
+            (-filter (lambda (x) (<= (plist-get x :end) (car range))))
             (-max-by (-on #'> (lambda (x) (plist-get x :end)))))
           (-some->> innermost
             (-min-by (-on #'> (lambda (x) (plist-get x :begin)))))))))
@@ -1611,7 +1611,7 @@ Forward, the cursor is the character after POS, and backward the
 character before it."
   (let ((char (if (< 0 dir) pos (1- pos))))
     (when (and (<= (point-min) char) (< char (point-max)))
-      (-some->> (hel-things-at thing producer char (1+ char))
+      (-some->> (hel-things-at thing producer (cons char (1+ char)))
         (-filter (lambda (instance)
                    (and (<= (plist-get instance :begin) char)
                         (< char (plist-get instance :end)))))
@@ -1732,8 +1732,8 @@ See the method of `hel-thing-edge' for words."
 (defun hel--node-at-selection (thing producer)
   "Return the node of THING under the selection, or nil without one.
 The node covers the region without the whitespace at its edges."
-  (-when-let ((begin . end) (hel--selection))
-    (hel-node-at thing producer begin end)))
+  (when-let* ((range (hel--trimmed-selection)))
+    (hel-node-at thing producer range)))
 
 (defun hel--point-touching (thing producer pos dir)
   "Return the smallest node of THING that touches POS, or nil.
@@ -1813,7 +1813,7 @@ child."
            return (-map (-partial #'hel-node-range thing producer)
                         children)))
 
-(defun hel--smallest-enclosing-region (regions begin end)
+(cl-defun hel--smallest-enclosing-range (regions (begin . end))
   "Return the smallest of REGIONS that contains BEGIN..END and is larger."
   (-some->> regions
     (-non-nil)
@@ -1844,9 +1844,9 @@ the previous call for THING and KIND selected, add COUNT more things."
                           (equal key (car hel--text-object-run))
                           (equal run-range current))
                      (hel--extend-things thing producer run-first run-last count)
-                   (-when-let* (((begin . end) (or (hel--selection)
-                                                   (cons (point) (point))))
-                                (instance (hel-thing-at thing producer begin end)))
+                   (-when-let* ((selection (or (hel--trimmed-selection)
+                                               (cons (point) (point))))
+                                (instance (hel-thing-at thing producer selection)))
                      (hel--extend-things thing producer instance instance
                                          (- count (hel-sign count))))))
                 (range (when first
@@ -1886,16 +1886,16 @@ shows what the selection is. Without a selection, the first step selects
 the node that touches point, when point lies inside no token. Return non-nil
 if the selection changed."
   (hel--sync-selection-history)
-  (-let* ((before (hel--selection-before))
-          ((begin end) before))
-    (-when-let ((new-begin . new-end)
-                (or (and (not (use-region-p))
-                         (not (hel-node-token thing producer (point)))
-                         (-some->> (hel--point-touching thing producer (point) 1)
-                           (hel-node-range thing producer)))
-                    (-> (hel-node-expand-steps thing producer begin end)
-                        (hel--smallest-enclosing-region begin end))))
-      (hel-select (cons new-begin new-end) -1)
+  (let* ((before (hel--selection-before))
+         (range (car before)))
+    (when-let* ((new-range
+                 (or (and (not (use-region-p))
+                          (not (hel-node-token thing producer (point)))
+                          (-some->> (hel--point-touching thing producer (point) 1)
+                            (hel-node-range thing producer)))
+                     (-> (hel-node-expand-steps thing producer range)
+                         (hel--smallest-enclosing-range range)))))
+      (hel-select new-range -1)
       (hel--record-selection before)
       t)))
 
@@ -1920,7 +1920,7 @@ Return to the selection before the last expand. When the selection is not
 the last one in the history, select the first child of its node."
   (-let [(before after run) (car hel-selection-history)]
     (if (and hel-selection-history
-             (equal after (hel-region)))
+             (equal after (hel-selection)))
         (progn
           (pop hel-selection-history)
           (setq hel--text-object-run run)
@@ -1957,10 +1957,10 @@ A negative COUNT shrinks it."
 (defun hel--moving-node (thing producer)
   "Return the node of THING at the end of the selection that point is on.
 Of the nodes that end there, this is the largest one inside the selection."
-  (-let* (((begin . end) (hel--selection))
+  (-let* (((begin . end) (hel--trimmed-selection))
           (forward (< 0 (hel-region-direction)))
           (char (if forward (1- end) begin))
-          (node (hel-node-at thing producer char (1+ char))))
+          (node (hel-node-at thing producer (cons char (1+ char)))))
     (while-let ((node)
                 (parent (hel-node-parent thing producer node))
                 ((-let [(parent-begin . parent-end)
@@ -2013,30 +2013,30 @@ With the selection extended, extend it."
                       (hel--extend-to-sibling thing producer dir)))
             (hel-push-point origin)
             (hel-reveal-point-when-on-top)))
-    (let* ((origin (point))
-           (dir (hel-sign count))
-           (no-selection? (not (use-region-p)))
-           (direction (if no-selection? dir (hel-region-direction)))
-           (node (if no-selection?
-                     (hel--point-sibling-node thing producer dir)
-                   (hel--node-at-selection thing producer)))
-           moved?)
-      (when node
-        (cl-flet ((select (node)
-                    (hel-select (hel-node-range thing producer node) direction)))
-          (when no-selection?
-            (select node)
-            (setq moved? t)
-            (cl-callf - count dir))
-          (when (/= count
-                    (hel-motion-loop (dir count)
-                      (when-let* ((sibling (hel-node-sibling thing producer node dir)))
-                        (setq node sibling)
-                        (select node))))
-            (setq moved? t)))
-        (when moved?
-          (hel-push-point origin)
-          (hel-reveal-point-when-on-top)))))))
+      (let* ((origin (point))
+             (dir (hel-sign count))
+             (no-selection? (not (use-region-p)))
+             (direction (if no-selection? dir (hel-region-direction)))
+             (node (if no-selection?
+                       (hel--point-sibling-node thing producer dir)
+                     (hel--node-at-selection thing producer)))
+             moved?)
+        (when node
+          (cl-flet ((select (node)
+                      (hel-select (hel-node-range thing producer node) direction)))
+            (when no-selection?
+              (select node)
+              (setq moved? t)
+              (cl-callf - count dir))
+            (when (/= count
+                      (hel-motion-loop (dir count)
+                        (when-let* ((sibling (hel-node-sibling thing producer node dir)))
+                          (setq node sibling)
+                          (select node))))
+              (setq moved? t)))
+          (when moved?
+            (hel-push-point origin)
+            (hel-reveal-point-when-on-top)))))))
 
 (defun hel--select-to-parent-edge (thing count)
   "Select from point to the end of the node of THING at the selection.
@@ -2055,21 +2055,21 @@ starts. With the selection extended, extend it."
         (hel-push-point origin)
         (hel-reveal-point-when-on-top)))))
 
-(defun hel--select-regions-for-each-cursor (fn)
+(defun hel--select-ranges-for-each-cursor (fn)
   "Put a cursor on each region that FN returns, for every cursor.
 FN takes no arguments and runs at each cursor with its selection."
   (hel-with-each-cursor
     (hel-extend-selection -1)
     (when-let* ((regions (funcall fn)))
-      (hel-select-regions regions (if (use-region-p)
-                                      (hel-region-direction)
-                                    1)))))
+      (hel-select-ranges regions (if (use-region-p)
+                                     (hel-region-direction)
+                                   1)))))
 
 (defun hel--select-all-siblings (thing)
   "Put a cursor on the node of THING at each cursor and on its siblings.
 At a bare point that touches no node, use the children of the node around
 point."
-  (hel--select-regions-for-each-cursor
+  (hel--select-ranges-for-each-cursor
    (lambda ()
      (when-let* ((producer (hel--producer thing)))
        (if-let* ((node (if (use-region-p)
@@ -2081,7 +2081,7 @@ point."
 
 (defun hel--select-all-children (thing)
   "Put a cursor on each child of the node of THING at each cursor."
-  (hel--select-regions-for-each-cursor
+  (hel--select-ranges-for-each-cursor
    (lambda ()
      (when-let* ((producer (hel--producer thing))
                  (node (hel--start-node thing producer 1)))

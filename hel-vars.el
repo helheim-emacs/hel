@@ -597,9 +597,9 @@ use `hel-state-property' function.
 The newest entry comes first. Each entry is a list (BEFORE AFTER RUN):
 the selection before a command, the region that the command selected,
 and the value of `hel--text-object-run' before the command. BEFORE and
-AFTER have the form (BEG END DIRECTION) that `hel-region' returns. When
-DIRECTION in BEFORE is nil, no region was active, and BEG and END both
-equal point.")
+AFTER have the form (RANGE DIRECTION) that `hel-selection' returns. When
+DIRECTION in BEFORE is nil, no region was active, and RANGE is empty at
+point.")
 
 (hel-defvar-permanent-local hel--text-object-run nil
   "The text objects that the last text object command selected.
@@ -608,8 +608,8 @@ name and the kind of range, `:inner' or `:around'. RANGE is the selected
 \(BEG . END) range. FIRST and LAST are the first and the last selected
 objects. A repeated text object command extends this run of objects.")
 
-(hel-defvar-permanent-local hel--region-was-active-on-insert nil
-  "Whether region was active when we last time switched to Insert state.")
+(hel-defvar-permanent-local hel--selection-was-active-on-insert nil
+  "Whether a selection was active when we last time switched to Insert state.")
 
 (hel-defvar-permanent-local hel-scroll-count 0
   "Hold last used prefix for `hel-scroll-up' and `hel-scroll-down' commands.

@@ -1523,7 +1523,7 @@ Each object appears once."
         (when-let* ((object (hel-thing-next thing producer pos dir)))
           (push object objects)))
       (when (< pos (point-max))
-        (setq objects (append (hel-things-at thing producer pos (1+ pos))
+        (setq objects (append (hel-things-at thing producer (cons pos (1+ pos)))
                               objects))))
     (cl-remove-duplicates objects :key #'hel-to--key :test #'equal)))
 
@@ -4350,6 +4350,30 @@ previous word."
       (hel-select-motion 15 2)
       (should (equal (hel-select-tests--state) '(5 2 t))))))
 
+(ert-deftest hel-selection-shape ()
+  (hel-select-tests--with-buffer
+    (should-not (hel-selection))
+    (hel-select (cons 3 7) -1)
+    (should (equal (hel-selection) (list (cons 3 7) -1)))))
+
+(ert-deftest hel-trim-whitespace-takes-a-range ()
+  (with-temp-buffer
+    (insert "  ab \n")
+    (should (equal (hel-trim-whitespace-from-range (cons 1 7)) (cons 3 5)))
+    (should-not (hel-trim-whitespace-from-range (cons 1 3)))))
+
+(ert-deftest hel-invert-case-takes-a-range ()
+  (with-temp-buffer
+    (insert "abcd")
+    (hel-invert-case-in-range (cons 2 4))
+    (should (equal (buffer-string) "aBCd"))))
+
+(ert-deftest hel-replace-chars-takes-a-range ()
+  (with-temp-buffer
+    (insert "ab\ncd")
+    (hel-replace-chars (cons 2 5) ?x)
+    (should (equal (buffer-string) "ax\nxd"))))
+
 (ert-deftest hel-range-any-order ()
   (should (equal (hel-range 3 7) (hel-range 7 3)))
   (should (= 3 (car (hel-range 7 3))))
@@ -4357,14 +4381,14 @@ previous word."
   (should (= 3 (car (hel-range 3 3))))
   (should (= 3 (cdr (hel-range 3 3)))))
 
-(ert-deftest hel-restore-region-round-trip ()
+(ert-deftest hel-selection-round-trip ()
   (hel-select-tests--with-buffer
     (dolist (dir '(1 -1))
       (hel-select (cons 3 7) dir)
-      (let ((region (hel-region))
+      (let ((region (hel-selection))
             (state (hel-select-tests--state)))
         (hel-select (cons 11 13))
-        (hel-restore-region region)
+        (apply #'hel-select region)
         (should (equal (hel-select-tests--state) state))))))
 
 (provide 'hel-structural-editing-tests)

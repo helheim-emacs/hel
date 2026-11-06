@@ -68,21 +68,22 @@ flickering."
        (unless hel-executing-command-for-fake-cursor
          (redisplay)))))
 
-(defmacro hel-save-region (&rest body)
-  "Evaluate BODY with preserving original region.
+(defmacro hel-save-selection (&rest body)
+  "Evaluate BODY with preserving original selection.
 The difference from `save-mark-and-excursion' is that both point and mark are
-saved as markers and correctly handle case when text was inserted before region."
+saved as markers and correctly handle case when text was inserted before
+the selection."
   (declare (indent 0) (debug t))
-  (cl-with-gensyms (pnt beg end dir)
+  (cl-with-gensyms (pnt begin end dir)
     `(if (use-region-p)
          (let ((deactivate-mark nil)
-               (,beg (copy-marker (region-beginning) t))
+               (,begin (copy-marker (region-beginning) t))
                (,end (copy-marker (region-end)))
                (,dir (hel-region-direction)))
            (unwind-protect
                (save-excursion ,@body)
-             (hel-select (cons ,beg ,end) ,dir)
-             (set-marker ,beg nil)
+             (hel-select (cons ,begin ,end) ,dir)
+             (set-marker ,begin nil)
              (set-marker ,end nil)))
        ;; else
        (let ((,pnt (copy-marker (point) t)))
@@ -92,19 +93,19 @@ saved as markers and correctly handle case when text was inserted before region.
            (goto-char ,pnt)
            (set-marker ,pnt nil))))))
 
-(defmacro hel-restore-region-on-error (&rest body)
-  "Restore initial region if error occured during BODY evaluation."
+(defmacro hel-restore-selection-on-error (&rest body)
+  "Restore initial selection if error occured during BODY evaluation."
   (declare (indent 0) (debug t))
-  (cl-with-gensyms (region point something-goes-wrong?)
-    `(let ((,region (hel-region))
+  (cl-with-gensyms (selection point something-goes-wrong?)
+    `(let ((,selection (hel-selection))
            (,point (point))
            (,something-goes-wrong? t))
        (unwind-protect
            (prog1 (progn ,@body)
              (setq ,something-goes-wrong? nil))
          (when ,something-goes-wrong?
-           (if ,region
-               (hel-restore-region ,region)
+           (if ,selection
+               (apply #'hel-select ,selection)
              (goto-char ,point)))))))
 
 ;;; Utils
@@ -161,23 +162,23 @@ DIRECTION: 1 or -1. If provided — check if region spawns at least one full
 logical line on desired end of the region."
   (and (use-region-p)
        (save-excursion
-         (let ((beg (region-beginning))
+         (let ((begin (region-beginning))
                (end (region-end)))
            (cond ((null direction)
-                  (and (progn (goto-char beg) (bolp))
+                  (and (progn (goto-char begin) (bolp))
                        (progn (goto-char end) (bolp))))
                  ((<= direction 0)
-                  (goto-char beg)
+                  (goto-char begin)
                   (and (bolp)
                        ;; at least one full line is selected:
-                       ;; point is at BEG, END should be on a later line
+                       ;; point is at BEGIN, END should be on a later line
                        (< (line-end-position) end)))
                  (t
                   (goto-char end)
                   (and (bolp)
                        ;; at least one full line is selected:
-                       ;; point is at END, BEG should be on an earlier line
-                       (< beg (line-beginning-position)))))))))
+                       ;; point is at END, BEGIN should be on an earlier line
+                       (< begin (line-beginning-position)))))))))
 
 (defun hel-visual-lines-p ()
   "Return t if active region spawns visual lines."
@@ -196,8 +197,8 @@ logical line on desired end of the region."
   ;; (memq char '(?\s ?\t))
   )
 
-(defun hel-trim-whitespace-from-range (begin end)
-  "Return BEGIN..END without the whitespace at its edges, as (BEGIN . END).
+(cl-defun hel-trim-whitespace-from-range ((begin . end))
+  "Return the range BEGIN..END without the whitespace at its edges.
 Whitespace is spaces, tabs and line ends. Return nil if nothing remains."
   (save-excursion
     (setq begin (progn
@@ -239,10 +240,10 @@ that `match-beginning', `match-end' and `match-data' access."
           (looking-at string)
         (looking-back string (line-beginning-position)))
     ;; literall
-    (let* ((beg (point))
-           (end (+ beg (* (length string) direction))))
+    (let* ((begin (point))
+           (end (+ begin (* (length string) direction))))
       (and (<= (point-min) end (point-max))
-           (string-equal (buffer-substring-no-properties beg end) string)))))
+           (string-equal (buffer-substring-no-properties begin end) string)))))
 
 (defun hel-string-ends-with-newline (string)
   "Return t if STRING ends with newline character."
@@ -302,19 +303,16 @@ When DIRECTION is specified, START and END can be provided in any order."
   (set-mark start)
   (goto-char end))
 
-(defun hel-region ()
-  "Return (BEG END DIRECTION) of the active region. If no region return nil.
-The returned list is suitable to restore region with `hel-restore-region':
+(defun hel-selection ()
+  "Return (RANGE DIRECTION) of the selection, or nil without a selection.
+RANGE is (BEGIN . END). `hel-select' takes the returned list as its arguments:
 
-  (let ((region (hel-region)))
+  (let ((selection (hel-selection)))
     ...
-    (hel-restore-region region))"
+    (apply #\='hel-select selection))"
   (if (use-region-p)
-      (list (region-beginning) (region-end) (hel-region-direction))))
-
-(cl-defun hel-restore-region ((begin end dir))
-  "Select the range BEGIN..END in direction DIR, as `hel-region' returns them."
-  (hel-select (cons begin end) dir))
+      (list (cons (region-beginning) (region-end))
+            (hel-region-direction))))
 
 (defun hel-maybe-set-mark ()
   "Set mark at point unless extending selection is active."
@@ -327,7 +325,7 @@ The returned list is suitable to restore region with `hel-restore-region':
       (deactivate-mark)))
 
 (defun hel-ensure-region-direction (direction)
-  "Exchange point and mark if region direction mismatch DIRECTION.
+  "Exchange point and mark if the region direction mismatches DIRECTION.
 DIRECTION should be 1 or -1."
   (when (/= direction (hel-region-direction))
     (hel--exchange-point-and-mark)))
@@ -369,10 +367,9 @@ When REGEXP is invalid PCRE, show the error and return nil."
          nil))
     regexp))
 
-(cl-defun hel-collect-positions (fun &optional (start (window-start))
-                                               (end (window-end)))
+(cl-defun hel-collect-positions (fun &optional (begin (window-start)) (end (window-end)))
   "Consecutively call FUN and collect point positions after each invocation.
-Finish as soon as point moves outside of START END buffer positions.
+Finish as soon as point moves outside of BEGIN END buffer positions.
 FUN on each invocation should move point."
   (save-excursion
     (cl-loop with win = (get-buffer-window)
@@ -385,12 +382,12 @@ FUN on each invocation should move point."
                         (this-command fun))
                     (call-interactively fun)))
              while (and (/= (point) old-point)
-                        (<= start (point) end))
+                        (<= begin (point) end))
              collect (cons (point) win))))
 
-(defun hel-invert-case-in-region (start end)
-  "Invert case of characters within START...END buffer positions."
-  (goto-char start)
+(cl-defun hel-invert-case-in-range ((begin . end))
+  "Invert case of characters in the range BEGIN..END."
+  (goto-char begin)
   (while (< (point) end)
     (let ((char (following-char)))
       (delete-char 1)
@@ -458,7 +455,7 @@ the string is delimited by general string fences."
     (overlay-buffer)
     (buffer-live-p)))
 
-(defun hel-pulse-main-region (&optional face)
+(defun hel-pulse-main-selection (&optional face)
   (pulse-momentary-highlight-region (region-beginning) (region-end) face))
 
 (defun hel-reveal-point-when-on-top (&rest _)
@@ -492,23 +489,23 @@ REST contains all other elements."
              (setq lol (-non-nil (-map #'cdr lol)))))
     (nreverse result)))
 
-(defun hel-replace-chars (beg end char)
-  "Replace each non-newline character between BEG and END with CHAR."
+(cl-defun hel-replace-chars ((begin . end) char)
+  "Replace each non-newline character in the range BEGIN..END with CHAR."
   (save-excursion
-    (goto-char beg)
+    (goto-char begin)
     (while (< (point) end)
       (if (eq (char-after) ?\n)
           (forward-char 1)
         (insert-char char)
         (delete-char 1)))))
 
-(defun hel-read-char-and-replace (beg end)
-  "Replace characters in BEG..END with an interactive entered one."
-  (when (< beg end)
-    (let ((overlay (-doto (make-overlay beg end nil t nil)
+(cl-defun hel-read-char-and-replace ((begin . end))
+  "Replace characters in the range BEGIN..END with an interactive entered one."
+  (when (< begin end)
+    (let ((overlay (-doto (make-overlay begin end nil t nil)
                      (overlay-put 'face 'region))))
       (unwind-protect
-          (hel-replace-chars beg end (read-char "replace: " t))
+          (hel-replace-chars (cons begin end) (read-char "replace: " t))
         (delete-overlay overlay)))))
 
 (cl-defun hel-hide-cursor (&optional (window (selected-window)))
@@ -798,10 +795,10 @@ When region is active: expand selection to line boundaries to encompass full
 line(s). With no region, select current line."
   (unless (hel-linewise-selection-p)
     (if (use-region-p)
-        (let ((beg (region-beginning))
+        (let ((begin (region-beginning))
               (end (region-end))
               (dir (or direction (hel-region-direction))))
-          (hel-select (cons (progn (goto-char beg)
+          (hel-select (cons (progn (goto-char begin)
                                    (car (bounds-of-thing-at-point 'hel-line)))
                             (progn (goto-char end)
                                    (cdr (bounds-of-thing-at-point 'hel-line))))
@@ -842,7 +839,7 @@ If the selection is linewise, both tags end with a newline."
 (defun hel-surround-4-bounds-of-html-tag-at-point (&optional name)
   "Return 4 bounds of the HTML tag NAME around point, or nil.
 If NAME is nil or empty string, match the nearest tag pair.
-The result is the list (LEFT-BEG LEFT-END RIGHT-BEG RIGHT-END).
+The result is the list (LEFT-BEGIN LEFT-END RIGHT-BEGIN RIGHT-END).
 Nested tag pairs are skipped. Self-closing tags like <br/> do not count
 as opening tags."
   (let ((open (if (member name '(nil ""))
@@ -855,17 +852,17 @@ as opening tags."
     (save-excursion
       ;; Point inside a tag belongs to that tag: the search starts before an
       ;; opening tag or after a closing one.
-      (when-let* ((beg (save-excursion
-                         (skip-chars-backward "^<>")
-                         (if (eq (char-before) ?<)
-                             (1- (point)))))
+      (when-let* ((begin (save-excursion
+                           (skip-chars-backward "^<>")
+                           (if (eq (char-before) ?<)
+                               (1- (point)))))
                   (end (save-excursion
                          (skip-chars-forward "^<>")
                          (if (eq (char-after) ?>)
                              (1+ (point))))))
-        (goto-char (if (eq ?/ (char-after (1+ beg)))
+        (goto-char (if (eq ?/ (char-after (1+ begin)))
                        end
-                     beg)))
+                     begin)))
       ;; The search covers the whole buffer since modes like `html-mode' treat
       ;; each tag as a defun, so defun bounds cannot limit it.
       (hel-surround-4-bounds-at-point open close nil t t))))
@@ -897,18 +894,18 @@ or nil if nothing found."
 (declare-function org-table-end   "org-table")
 
 (defun hel-bounds-of-quoted-at-point (quote-mark)
-  "Return a cons cell (START . END) with bounds of text region
+  "Return a cons cell (BEGIN . END) with bounds of text region
 enclosed in QUOTE-MARKs."
   (if-let* ((limits (or (bounds-of-thing-at-point 'hel-comment)
                         (bounds-of-thing-at-point 'string)
                         (if (and (require 'org-table nil t)
                                  (org-at-table-p))
                             (cons (org-table-begin) (org-table-end))))))
-      (-if-let ((beg _ _ end) (hel-surround-4-bounds-at-point
-                               (char-to-string quote-mark)
-                               (char-to-string quote-mark)
-                               limits))
-          (cons beg end))
+      (-if-let ((begin _ _ end) (hel-surround-4-bounds-at-point
+                                 (char-to-string quote-mark)
+                                 (char-to-string quote-mark)
+                                 limits))
+          (cons begin end))
     ;; else
     (hel--bounds-of-quoted-at-point-ppss quote-mark)))
 
@@ -928,7 +925,7 @@ If REGEXP? is non-nil LEFT and RIGHT will be searched as regexp patterns
 
 If BALANCED? is non-nil all nested LEFT RIGHT pairs will be skipped.
 
-Return the list (LEFT-BEG LEFT-END RIGHT-LEFT RIGHT-END) with
+Return the list (LEFT-BEGIN LEFT-END RIGHT-LEFT RIGHT-END) with
 4 positions: before/after LEFT and before/after RIGHT, or nil."
   (save-excursion
     (when (string-equal left right)
@@ -939,9 +936,9 @@ Return the list (LEFT-BEG LEFT-END RIGHT-LEFT RIGHT-END) with
              (length= right 1)
              (eq ?\( (char-syntax (string-to-char left)) )
              (eq ?\) (char-syntax (string-to-char right)) ))
-        (-if-let ((beg . end) (hel-bounds-of-brackets-at-point
-                               (string-to-char left) (string-to-char right)))
-            (list beg (1+ beg) (1- end) end))
+        (-if-let ((begin . end) (hel-bounds-of-brackets-at-point
+                                 (string-to-char left) (string-to-char right)))
+            (list begin (1+ begin) (1- end) end))
       ;; else
       (hel-surround--4-bounds-at-point-1 left right limits regexp? balanced?))))
 
@@ -955,37 +952,37 @@ Parse-Partial-Sexp Scanner can't be used."
        ;; point is before LEFT
        ((and left-not-equal-right?
              (hel-looking-at left 1 regexp?))
-        (let* ((left-beg (point))
+        (let* ((left-begin (point))
                (left-end (if regexp? (match-end 0)
-                           (+ left-beg (length left)))))
+                           (+ left-begin (length left)))))
           (goto-char left-end)
           (if-let* ((right-end (hel-surround-search-outward
                                 left right 1 limits regexp? balanced?))
-                    (right-beg (if regexp? (match-beginning 0)
-                                 (- right-end (length right)))))
-              (list left-beg left-end right-beg right-end))))
+                    (right-begin (if regexp? (match-beginning 0)
+                                   (- right-end (length right)))))
+              (list left-begin left-end right-begin right-end))))
        ;; point is after RIGHT
        ((and left-not-equal-right?
              (hel-looking-at right -1 regexp?))
         (let* ((right-end (point))
-               (right-beg (if regexp? (match-beginning 0)
-                            (- right-end (length right)))))
-          (goto-char right-beg)
-          (if-let* ((left-beg (hel-surround-search-outward
-                               left right -1 limits regexp? balanced?))
+               (right-begin (if regexp? (match-beginning 0)
+                              (- right-end (length right)))))
+          (goto-char right-begin)
+          (if-let* ((left-begin (hel-surround-search-outward
+                                 left right -1 limits regexp? balanced?))
                     (left-end (if regexp? (match-end 0)
-                                (+ left-beg (length left)))))
-              (list left-beg left-end right-beg right-end))))
+                                (+ left-begin (length left)))))
+              (list left-begin left-end right-begin right-end))))
        (t
-        (if-let* ((left-beg (hel-surround-search-outward
-                             left right -1 limits regexp? balanced?))
+        (if-let* ((left-begin (hel-surround-search-outward
+                               left right -1 limits regexp? balanced?))
                   (left-end (if regexp? (match-end 0)
-                              (+ left-beg (length left))))
+                              (+ left-begin (length left))))
                   (right-end (hel-surround-search-outward
                               left right 1 limits regexp? balanced?))
-                  (right-beg (if regexp? (match-beginning 0)
-                               (- right-end (length right)))))
-            (list left-beg left-end right-beg right-end)))))))
+                  (right-begin (if regexp? (match-beginning 0)
+                                 (- right-end (length right)))))
+            (list left-begin left-end right-begin right-end)))))))
 
 (defun hel-bounds-of-brackets-at-point (left right)
   "Return the bounds of the balanced expression at point enclosed
@@ -999,7 +996,7 @@ This function is intended to search balanced brackets in programming modes,
 since internally uses Emacs built-in Parse-Partial-Sexp Scanner for balanced
 expressions. For arbitrary delimiters use `hel-surround-4-bounds-at-point'.
 
-Return the cons cell (START . END) with positions before LEFT and
+Return the cons cell (BEGIN . END) with positions before LEFT and
 after RIGHT."
   (when (eq left right)
     (user-error "Left and right brackets should not be equal"))
@@ -1011,8 +1008,8 @@ after RIGHT."
                      string-or-comment-bounds
                      nil t)))
       ;; If inside comment or string use manual algorithm.
-      (-let [(beg _ _ end) bounds]
-        (cons beg end))
+      (-let [(begin _ _ end) bounds]
+        (cons begin end))
     ;; Else if not or nothing have found — go out ...
     (when string-or-comment-bounds
       (goto-char (car string-or-comment-bounds)))
@@ -1031,8 +1028,8 @@ after RIGHT."
                  (if-let* ((end (scan-lists pnt 1 0)))
                      (cons pnt end)))
                 ((eq (preceding-char) right) ; point is after RIGHT
-                 (if-let* ((beg (scan-lists pnt -1 0)))
-                     (cons beg pnt)))
+                 (if-let* ((begin (scan-lists pnt -1 0)))
+                     (cons begin pnt)))
                 (t
                  (ignore-errors
                    (while (progn (up-list -1 t)
@@ -1052,7 +1049,7 @@ This function is intended to search balanced brackets in programming modes,
 since internally uses Emacs built-in Parse-Partial-Sexp Scanner for balanced
 expressions. For arbitrary delimiters use `hel-surround-4-bounds-at-point'.
 
-Return the list (LEFT-BEG LEFT-END RIGHT-LEFT RIGHT-END) with 4 positions:
+Return the list (LEFT-BEGIN LEFT-END RIGHT-LEFT RIGHT-END) with 4 positions:
 1. Before LEFT bracket;
 2. After LEFT bracket all following whitespaces and newlines;
 3. Before RIGHT bracket all preceding whitespaces and newlines;
@@ -1060,10 +1057,10 @@ Return the list (LEFT-BEG LEFT-END RIGHT-LEFT RIGHT-END) with 4 positions:
 When the brackets hold only whitespace, positions 2 and 3 are both the
 position after LEFT bracket."
   (-when-let*
-      (((l-beg . r-end) (hel-bounds-of-brackets-at-point left right))
-       ((l-end . r-beg) (or (hel-trim-whitespace-from-range (1+ l-beg) (1- r-end))
-                            (cons (1+ l-beg) (1+ l-beg)))))
-    (list l-beg l-end r-beg r-end)))
+      (((l-begin . r-end) (hel-bounds-of-brackets-at-point left right))
+       ((l-end . r-begin) (or (hel-trim-whitespace-from-range (cons (1+ l-begin) (1- r-end)))
+                              (cons (1+ l-begin) (1+ l-begin)))))
+    (list l-begin l-end r-begin r-end)))
 
 (defun hel-surround-search-outward
     (left right &optional direction limits regexp? balanced?)
@@ -1130,7 +1127,7 @@ that is used when BALANCED? argument is non-nil."
             (point))))))
 
 (defun hel--bounds-of-quoted-at-point-ppss (quote-mark)
-  "Return a cons cell (START . END) with bounds of region around
+  "Return a cons cell (BEGIN . END) with bounds of region around
 the point enclosed in QUOTE-MARK character.
 
 Internally uses Emacs' built-in Parse-Partial-Sexp Scanner for
@@ -1181,7 +1178,7 @@ that `match-beginning', `match-end' and `match-data' access."
     (while (and (not found)
                 (funcall search-fun string bound t direction))
       (if (or (not visible?)
-              (hel-range-visible? (match-beginning 0) (match-end 0)))
+              (hel-range-visible? (cons (match-beginning 0) (match-end 0))))
           (setq found t)))
     (if found (point))))
 
@@ -1323,22 +1320,22 @@ YANK-FUNCTION should be a `yank' like function."
 (defun hel-indent (indent-function count)
   "Indent active region COUNT times. With no selection indent current line.
 INDENT-FUNCTION should be a `indent-rigidly-left' like function that takes
-BEG, END position and done the indentation."
+BEGIN, END position and done the indentation."
   (cond ((hel-linewise-selection-p)
          (let ((deactivate-mark nil))
            (dotimes (_ count)
              (funcall indent-function (region-beginning) (region-end))))
          (hel-extend-selection -1))
         ((use-region-p)
-         (hel-save-region
+         (hel-save-selection
            (hel-expand-selection-to-full-lines)
            (dotimes (_ count)
              (funcall indent-function (region-beginning) (region-end))))
          (hel-extend-selection -1))
         (t
-         (-let [(beg . end) (bounds-of-thing-at-point 'hel-line)]
+         (-let [(begin . end) (bounds-of-thing-at-point 'hel-line)]
            (dotimes (_ count)
-             (funcall indent-function beg end))))))
+             (funcall indent-function begin end))))))
 
 (defun hel--fix-newline-at-end-of-buffer ()
   "If selection ends at the end of buffer, and buffer doesn't ends with newline
@@ -1362,8 +1359,8 @@ character -- add it and adjust selection."
 
 ;;; Fold opening
 
-(defun hel-range-visible? (start end)
-  "Test whether the text in [START, END) range can be shown to the user.
+(cl-defun hel-range-visible? ((begin . end))
+  "Test whether the text in the range BEGIN..END can be shown to the user.
 
 Return values:
 
@@ -1376,8 +1373,7 @@ Return values:
 
   t       The range is, at least partially, visible with no folds to open.
           (E.g. Org link with hidden target.)"
-  (when (/= start end)
-    (when (< end start) (cl-rotatef end start))
+  (when (/= begin end)
     (save-excursion
       ;; The range is "showable" if any of its positions is visible, or
       ;; or hidden by openable overlay.
@@ -1385,7 +1381,7 @@ Return values:
             (openable-overlays nil))
         ;; Walk the whole range, stepping at every text-property or
         ;; overlay boundary.
-        (goto-char start)
+        (goto-char begin)
         (while (< (point) end)
           (cond ((not (invisible-p (point)))
                  (setq visible? t))
@@ -1481,6 +1477,12 @@ Can be used as advice."
 (defun hel--execute-for-all-cursors-a (&rest _)
   "Execute selected command for all cursors."
   (setq hel-this-command this-command))
+
+;;; Obsolete names
+
+(define-obsolete-function-alias 'hel-region #'hel-selection "0.14.0")
+(define-obsolete-function-alias 'hel-save-region
+  #'hel-save-selection "0.14.0")
 
 ;;; .
 (provide 'hel-lib)

@@ -265,7 +265,7 @@ the nested keymap of ~tab-bar-mode-map~ hides the class motion.
    for the new cursors too. A new cursor on =[3, 4]= would then select =3=
    and =4=. So these two commands use =:multiple-cursors nil= and run their
    body for each cursor with ~hel-with-each-cursor~, as
-   ~hel-split-region-on-newline~ does. That macro collects the fake cursors
+   ~hel-split-selection-on-newline~ does. That macro collects the fake cursors
    before the body runs, so it visits only the cursors that existed before
    the command.
 
