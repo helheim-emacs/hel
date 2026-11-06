@@ -1288,6 +1288,9 @@ that returns the comment there."
     (beginning-of-line)
     (when (and (if (< 0 dir) (not (eobp)) (not (bobp)))
                (zerop (forward-line dir))
+               ;; From a last line without a newline, `forward-line' reports
+               ;; success and stays on that line.
+               (bolp)
                (progn (back-to-indentation)
                       (not (eolp))))
       (let ((pos (if (< 0 dir)
@@ -1342,10 +1345,24 @@ a direction that returns the start of the next comment, or nil."))
               (comment (funcall comment-at start)))
     (hel--comment-run comment-at comment)))
 
-(cl-defmethod hel-things-at (_thing (producer hel-comment-producer) range)
-  "Return the comment run of PRODUCER at the start of RANGE, as a list."
-  (-some-> (hel--comment-run-from producer (car range))
-    (list)))
+(defun hel--comment-run-at (producer pos)
+  "Return the comment run of PRODUCER that holds POS, or nil.
+The blanks and the line end after a comment belong to its run."
+  (or (hel--comment-run-from producer pos)
+      (let ((text-end (hel--skip-blanks pos -1)))
+        (when (save-excursion
+                (and (progn (goto-char (hel--skip-blanks pos 1))
+                            (eolp))
+                     (progn (goto-char text-end)
+                            (not (bolp)))))
+          (hel--comment-run-from producer (1- text-end))))))
+
+(cl-defmethod hel-things-at (thing (producer hel-comment-producer) range)
+  "Return the comment run of PRODUCER that holds RANGE, and its neighbours."
+  (-let [(begin . end) range]
+    (-non-nil (list (hel--comment-run-at producer begin)
+                    (hel-thing-next thing producer begin -1)
+                    (hel-thing-next thing producer (max begin (1- end)) 1)))))
 
 (cl-defmethod hel-thing-next (_thing (producer hel-comment-producer) pos dir)
   "Return the next comment run of PRODUCER from POS in direction DIR."
@@ -1427,8 +1444,11 @@ The source applies where `hel-treesit-text-objects-p' returns non-nil."
                          ((<= (point-min) start))
                          ((not (memq (char-after start) '(nil ?\s ?\t ?\n ?\r))))
                          ((not (nth 3 (syntax-ppss start))))
+                         ;; A comment that the buffer end closes moves point
+                         ;; to the end, but `forward-comment' returns nil.
                          ((progn (goto-char start)
-                                 (forward-comment 1)))
+                                 (or (forward-comment 1)
+                                     (eobp))))
                          (range (hel-trim-whitespace-from-range (cons start (point))))
                          ((= start (car range)))
                          ((<= start pos))

@@ -886,6 +886,75 @@ object, also when the outer function is decorated."
     (hel-mark-a-comment 1)
     (should (equal (hel-structural-tests--selection) "\n;; c\n"))))
 
+(ert-deftest hel-comment-object-found-from-position ()
+  "`mic' and `mac' find a comment from every position that belongs to it."
+  (pcase-dolist (`(,mode ,text ,positions ,inner ,around)
+                 `(;; The line ends of a run.
+                   (emacs-lisp-mode ";; a\n;; b\n\n(c)\n" (5 10)
+                                    ";; a\n;; b\n" ";; a\n;; b\n")
+                   ;; The blank line at the end edge of a run.
+                   (emacs-lisp-mode ";; a\n;; b\n\n(c)\n" (11)
+                                    ";; a\n;; b\n" ";; a\n;; b\n")
+                   ;; The blank lines of the gap between two runs.
+                   (emacs-lisp-mode ";; a\n\n\n;; c\n" (5 6 7)
+                                    ";; a\n" ";; a\n\n\n")
+                   ;; The blanks after a comment.
+                   (emacs-lisp-mode ";; a  \n(c)\n" (5 6 7)
+                                    ";; a  \n" ";; a  \n")
+                   ;; The line end of a comment after code.
+                   (emacs-lisp-mode "(foo)  ; note\n(bar)\n" (14)
+                                    "; note" "  ; note")
+                   ;; No line end after the comment.
+                   (emacs-lisp-mode ";; a" (1 3 5) ";; a" ";; a")
+                   ;; An unterminated comment.
+                   (c-mode "int x;\n/* open" (8 9 11 15) "/* open" "/* open")))
+    (dolist (position positions)
+      (ert-info ((format "%S at %d" text position))
+        (hel-structural-tests--with-buffer mode text ""
+          (goto-char position)
+          (hel-mark-inner-comment 1)
+          (should (equal (hel-structural-tests--selection) inner))
+          (deactivate-mark)
+          (goto-char position)
+          (hel-mark-a-comment 1)
+          (should (equal (hel-structural-tests--selection) around)))))))
+
+(ert-deftest hel-comment-object-not-found ()
+  "`mic' selects nothing where no comment or gap of a comment holds point."
+  (pcase-dolist (`(,text ,position)
+                 '(("(a)\n\n(c)\n" 4)
+                   ("(a)\n\n(c)\n" 2)
+                   (";; a\n(c)\n" 7)
+                   ;; No comment run follows, so these blank lines are no gap.
+                   (";; a\n\n\n(c)\n" 7)))
+    (ert-info ((format "%S at %d" text position))
+      (hel-structural-tests--with-buffer #'emacs-lisp-mode text ""
+        (goto-char position)
+        (hel-mark-inner-comment 1)
+        (should-not (use-region-p))))))
+
+(ert-deftest hel-comment-object-line-end-with-parser ()
+  "The query producer finds a run from the line ends of its lines too."
+  (hel-structural-tests--with-objects #'python-ts-mode
+      hel-structural-tests--objects "first"
+    (end-of-line)
+    (hel-mark-inner-comment 1)
+    (should (equal (hel-structural-tests--selection) "# first\n# second\n"))))
+
+(ert-deftest hel-comment-motion-from-line-end ()
+  "`]c' at a line end of a run selects to the end of the run."
+  (hel-structural-tests--with-buffer #'emacs-lisp-mode
+      ";; a\n;; b\n\n;; c\n" ""
+    (goto-char 5)
+    (hel-mark-comment-forward 1)
+    (should (equal (hel-structural-tests--selection) "\n;; b\n"))))
+
+(ert-deftest hel-comment-motion-to-unterminated ()
+  "`]c' selects an unterminated comment."
+  (hel-structural-tests--with-buffer #'c-mode "int x;\n/* open" "int"
+    (hel-mark-comment-forward 1)
+    (should (equal (hel-structural-tests--selection) "/* open"))))
+
 (ert-deftest hel-function-jumps ()
   (hel-structural-tests--with-objects #'python-ts-mode
       hel-structural-tests--objects "class A"

@@ -54,7 +54,7 @@ Before step 1, the uncommitted changes in ~hel-lib.el~ and
 ~hel-structural-editing.el~ go into their own commit, so that moved code stays
 readable in the later commits.
 
-** TODO 1. Fix the ~comment~ thing
+** DONE 1. Fix the ~comment~ thing
 
 - ~hel-things-at~ of ~hel-comment-producer~ also returns the run when point is
   at a line end inside it, and the neighbouring run for a cursor in a gap.
