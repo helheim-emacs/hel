@@ -35,12 +35,11 @@
 
 ** Changed
 
-- ~hel-set-region~ is obsolete. Use ~hel-select~ with a range and a direction, or
+- ~hel-set-region~ is removed. Use ~hel-select~ with a range and a direction, or
   ~hel-select-motion~ for a motion that keeps the mark after =v=.
 
 - The Hel API says "selection" for a selection as a value. ~hel-region~ and
-  ~hel-save-region~ are obsolete aliases of ~hel-selection~ and
-  ~hel-save-selection~.
+  ~hel-save-region~ are renamed to ~hel-selection~ and ~hel-save-selection~.
 
 - ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~.
   ~hel-trim-whitespace-from-range~, ~hel-invert-case-in-range~,

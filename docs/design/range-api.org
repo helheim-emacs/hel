@@ -48,9 +48,7 @@ mark and point. With a direction, they are bounds in any order.
 - ~hel-select-motion~ absorbs ~(if hel--extend-selection (mark) ...)~, which
   appears 8 times.
 - ~hel-range~ builds a range from two positions in any order.
-- ~hel-set-region~ stays as an obsolete function, and no local code calls it.
-  The builds of ~hel-org~, ~hel-vterm~ and ~hel-ghostel~ come from GitHub, so
-  remove it after those three repositories are pushed.
+- ~hel-set-region~ is removed, and all the extensions use the new functions.
 
 ** DONE 2. One shape and one name for ranges
 
@@ -72,8 +70,8 @@ and mark keeps "region", as Emacs does.
 
 - ~hel--selection~ is ~hel--trimmed-selection~, because it leaves out the
   whitespace at the edges.
-- ~hel-region~ and ~hel-save-region~ stay as obsolete aliases, because the GitHub builds of the
-  extensions call them. Remove them with ~hel-set-region~.
+- ~hel-region~ and ~hel-save-region~ are ~hel-selection~ and
+  ~hel-save-selection~.
 - ~hel-region-direction~ and ~hel-ensure-region-direction~ keep their names.
   They sit next to the Emacs functions ~use-region-p~, ~region-beginning~ and
   ~region-end~, and work on the same point and mark.

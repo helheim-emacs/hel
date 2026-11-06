@@ -287,23 +287,6 @@ When extending selection is active, keep the mark and only move point."
   (set-mark (if hel--extend-selection (mark) start))
   (goto-char end))
 
-(defun hel-set-region (start end &optional direction)
-  "Set the active region between START and END positions.
-
-DIRECTION of the region:
-  nil      Region direction is from START to END.
-   1       Force forward region (mark < point).
-  -1       Force backward region (point < mark).
-
-When DIRECTION is specified, START and END can be provided in any order."
-  (declare (obsolete "use `hel-select' or `hel-select-motion'." "0.14.0"))
-  (when (and (numberp direction)
-             (xor (< 0 direction)
-                  (<= start end)))
-    (cl-rotatef start end))
-  (set-mark start)
-  (goto-char end))
-
 (defun hel-selection ()
   "Return (RANGE DIRECTION) of the selection, or nil without a selection.
 RANGE is (BEGIN . END). `hel-select' takes the returned list as its arguments:
@@ -1478,12 +1461,6 @@ Can be used as advice."
 (defun hel--execute-for-all-cursors-a (&rest _)
   "Execute selected command for all cursors."
   (setq hel-this-command this-command))
-
-;;; Obsolete names
-
-(define-obsolete-function-alias 'hel-region #'hel-selection "0.14.0")
-(define-obsolete-function-alias 'hel-save-region
-  #'hel-save-selection "0.14.0")
 
 ;;; .
 (provide 'hel-lib)
