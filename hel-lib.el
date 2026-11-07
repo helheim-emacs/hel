@@ -1361,7 +1361,7 @@ that `match-beginning', `match-end' and `match-data' access."
   (or position (setq position (point)))
   ;; Don't store POSITION into mark ring if it equals to the last stored one.
   (unless (and mark-ring
-               (= (point) (car mark-ring)))
+               (= position (car mark-ring)))
     (let ((old (nth mark-ring-max mark-ring))
           (history-delete-duplicates nil))
       (add-to-history 'mark-ring (copy-marker position)
