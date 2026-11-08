@@ -1358,28 +1358,29 @@ that `match-beginning', `match-end' and `match-data' access."
 
 (defun hel-push-point (&optional position)
   "Push POSITION (point by default) on the `mark-ring'."
-  (or position (setq position (point)))
-  ;; Don't store POSITION into mark ring if it equals to the last stored one.
-  (unless (and mark-ring
-               (= position (car mark-ring)))
-    (let ((old (nth mark-ring-max mark-ring))
-          (history-delete-duplicates nil))
-      (add-to-history 'mark-ring (copy-marker position)
-                      mark-ring-max t)
-      (when old
-        (set-marker old nil))))
-  ;; Don't store POSITION into global mark ring if the last position there
-  ;; is in this same buffer.
-  (unless (and global-mark-ring
-               (eq (marker-buffer (car global-mark-ring))
-                   (current-buffer)))
-    (let ((old (nth global-mark-ring-max global-mark-ring))
-          (history-delete-duplicates nil))
-      (add-to-history 'global-mark-ring (copy-marker position)
-                      global-mark-ring-max t)
-      (when old
-        (set-marker old nil))))
-  nil)
+  (unless (minibufferp)
+    (or position (setq position (point)))
+    ;; Don't store POSITION into mark ring if it equals to the last stored one.
+    (unless (and mark-ring
+                 (= position (car mark-ring)))
+      (let ((old (nth mark-ring-max mark-ring))
+            (history-delete-duplicates nil))
+        (add-to-history 'mark-ring (copy-marker position)
+                        mark-ring-max t)
+        (when old
+          (set-marker old nil))))
+    ;; Don't store POSITION into global mark ring if the last position there
+    ;; is in this same buffer.
+    (unless (and global-mark-ring
+                 (eq (marker-buffer (car global-mark-ring))
+                     (current-buffer)))
+      (let ((old (nth global-mark-ring-max global-mark-ring))
+            (history-delete-duplicates nil))
+        (add-to-history 'global-mark-ring (copy-marker position)
+                        global-mark-ring-max t)
+        (when old
+          (set-marker old nil))))
+    nil))
 
 (defun hel--jump-over-mark-ring (&optional backward?)
   "Jump to the top position on `mark-ring'.
