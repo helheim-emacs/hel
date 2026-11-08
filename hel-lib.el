@@ -1368,11 +1368,12 @@ that `match-beginning', `match-end' and `match-data' access."
                       mark-ring-max t)
       (when old
         (set-marker old nil))))
-  ;; Don't store POSITION into global mark ring if the last position there
-  ;; is in this same buffer.
-  (unless (and global-mark-ring
-               (eq (marker-buffer (car global-mark-ring))
-                   (current-buffer)))
+  ;; Don't store POSITION into global mark ring if the last position there is
+  ;; in this same buffer. Also don't do it in a minibuffer: it dies on exit.
+  (unless (or (minibufferp)
+              (and global-mark-ring
+                   (eq (marker-buffer (car global-mark-ring))
+                       (current-buffer))))
     (let ((old (nth global-mark-ring-max global-mark-ring))
           (history-delete-duplicates nil))
       (add-to-history 'global-mark-ring (copy-marker position)
