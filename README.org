@@ -277,9 +277,10 @@ Hel is heavily inspired by:
 - [[https://github.com/magnars/multiple-cursors.el][multiple-cursors.el]]
 - [[https://github.com/aome510/kak.el][kak.el]]
 - [[https://github.com/mkleehammer/surround][surround]]
-- [[https://github.com/meow-edit/meow][meow]]
+- [[https://github.com/casouri/expreg][expreg]]
 - isearch (built-in)
 - [[https://github.com/karb94/neoscroll.nvim][neoscroll.nvim]]
+- [[https://github.com/meow-edit/meow][meow]]
 - [[https://github.com/doomemacs/doomemacs][doomemacs]]
 - [[https://github.com/bbatsov/crux][crux]]
 

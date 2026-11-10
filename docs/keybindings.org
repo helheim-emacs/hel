@@ -283,6 +283,34 @@ All keys available in Emacs state are also work in Normal state.
 
 - =J= :: Join lines inside selection.
 
+*** Structural selection
+
+These keys select the nodes of the syntax tree in a buffer with
+a tree-sitter parser. In other buffers, a sexp takes the place of a node,
+and the enclosing bracket pair takes the place of the parent node.
+
+- =M-o= or =C-k= :: Expand the selection to the enclosing node. In a buffer
+  without a parser, the steps are the word, the string, the comment, the
+  brackets, the sentence and the paragraph.
+
+- =M-i= or =C-j= :: Shrink the selection back along the path of =M-o=, or to
+  the first child.
+
+- =M-n= or =C-l= :: Select the next sibling node.
+
+- =M-p= or =C-h= :: Select the previous sibling node.
+
+- =M-b= :: Expand the selection to the enclosing node, with point at its start.
+
+- =M-e= :: Expand the selection to the enclosing node, with point at its end.
+
+- =M-a= :: Select all sibling nodes, a cursor on each.
+
+- =M-I= or =M-j= :: Select all child nodes, a cursor on each.
+
+The =C-h=, =C-j=, =C-k= and =C-l= keys are bound only when
+~hel-want-C-hjkl-keys~ is non-nil.
+
 *** Mark
 
 Here the word "mark" is used as synonym to "select", to form the mnemonic
@@ -333,7 +361,7 @@ queries of Helix on Emacs 31 and later, in a buffer with a tree-sitter
 parser. In other buffers, the function and comment objects work through
 the syntax table, and the class and argument objects show a message. With a
 count, these keys mark several objects. When you press the same key again,
-it adds the next object.
+it adds the next object, and =M-i= removes it.
 
 - =m"=, =m'=, =m`= or =mi"=, =mi'=, =mi`= ::
   Mark inside ="= / ='= / =`= quotes.

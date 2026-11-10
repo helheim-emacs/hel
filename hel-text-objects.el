@@ -27,7 +27,8 @@
 ;;
 ;; The thing protocol, the text objects and the motions over things. The
 ;; commands in `hel-commands.el' call them, and every one of these commands
-;; works in every buffer.
+;; works in every buffer. The tree level, which walks a syntax tree, builds
+;; on this file in `hel-structural-editing.el'.
 ;;
 ;; Every command runs an algorithm over one kind of thing such as `word',
 ;; `function' or `comment'. The property `hel-thing-sources' of a thing holds
@@ -47,7 +48,8 @@
 ;;
 ;; The producers in this file give things one after another
 ;; (`hel-thing-candidates', `hel-thing-next'). The text object keys and the
-;; motions need nothing more.
+;; motions need nothing more. A tree producer knows the parent and the
+;; children of a node instead, and `hel-structural-editing.el' defines it.
 ;;
 ;; The algorithms are generic functions with default methods, so a thing with
 ;; different rules gets a method of its own: words specialize `hel-thing-edge'.
@@ -206,7 +208,8 @@ The producer comes from the first source in the property
 ;; A producer returns each thing that it finds as a `hel-thing-instance':
 ;; the bounds of the thing and the parent that the producer knows. The
 ;; operations that find things return this struct, whatever producer finds
-;; them, and every algorithm in this file reads it.
+;; them, and every algorithm in this file reads it. The tree level in
+;; `hel-structural-editing.el' works on nodes instead.
 
 (cl-defstruct (hel-thing-instance (:constructor hel-thing-instance--create)
                                   (:copier nil))

@@ -165,6 +165,8 @@ use it."
   "g ;" #'hel-exchange-point-and-mark
   "_"   #'hel-trim-whitespace-from-selection
   "g v" #'hel-restore-cursors
+  "M-o" #'hel-expand-selection-backward
+  "M-i" #'hel-shrink-selection
 
   ;; Surround
   "m m" #'hel-jump-to-match-item
@@ -224,6 +226,15 @@ use it."
   "] x" #'xref-go-forward)
 
 (hel-keymap-global-set :state 'normal
+  ;; Node selection
+  "M-n" #'hel-select-next-sibling
+  "M-p" #'hel-select-previous-sibling
+  "M-b" #'hel-expand-selection-backward
+  "M-e" #'hel-expand-selection-forward
+  "M-a" #'hel-select-all-siblings
+  "M-I" #'hel-select-all-children
+  "M-j" #'hel-select-all-children
+
   ;; Text objects
   "m f"   #'hel-mark-inner-function
   "m i f" #'hel-mark-inner-function
@@ -245,6 +256,13 @@ use it."
   "m a c" #'hel-mark-a-comment
   "] c"   #'hel-mark-comment-forward
   "[ c"   #'hel-mark-comment-backward)
+
+(when hel-want-C-hjkl-keys
+  (hel-keymap-global-set :state 'normal
+    "C-k" #'hel-expand-selection-backward
+    "C-j" #'hel-shrink-selection
+    "C-l" #'hel-select-next-sibling
+    "C-h" #'hel-select-previous-sibling))
 
 ;;;; Keys active while there are multiple cursors
 

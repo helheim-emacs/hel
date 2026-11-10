@@ -311,8 +311,9 @@ The cursor is restored as soon as the scroll command finishes."
 To access help commands, use `F1' instead of `C-h'.
 AST stands for Abstract Syntax Tree.
 
-These commands are also bound to `M-i', `M-n', `M-p', `M-o' for compatibility
-with the Hel text editor.
+The keys select the previous sibling, shrink the selection, expand it, and
+select the next sibling. These commands are also bound to `M-p', `M-i',
+`M-o', `M-n', as in the Helix text editor.
 
 This variable must be set before Hel is loaded!"
   :type 'boolean
@@ -569,9 +570,10 @@ use `hel-state-property' function.
   "When this flag is set motions will extend selection.")
 
 (hel-defvar-permanent-local hel-selection-history nil
-  "The selections of a chain of text object commands.
+  "The selections of a chain of expand and text object commands.
 The newest entry comes first and holds the active region. The oldest entry
-holds the selection where the chain began.
+holds the selection where the chain began. `hel-shrink-selection' returns
+to the previous entry.
 
 Each entry is a list (RANGE DIRECTION RUN). RANGE and DIRECTION have the
 form that `hel-selection' returns. When DIRECTION is nil, no region was

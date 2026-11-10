@@ -29,7 +29,8 @@
 ;; surround. Window navigation commands.
 ;;
 ;; The word motions and the text objects choose the thing and the parameters
-;; of an algorithm in `hel-text-objects.el'.
+;; of an algorithm in `hel-text-objects.el'. The node commands call the
+;; algorithms over trees in `hel-structural-editing.el'.
 ;;
 ;;; Code:
 
@@ -45,6 +46,7 @@
 (require 'hel-core)
 (require 'hel-search)
 (require 'hel-text-objects)
+(require 'hel-structural-editing)
 (require 'hel-surround)
 (require 'avy)
 
@@ -1404,6 +1406,96 @@ already there."
               (bounds (hel-surround--remove char)))
     (-let [(beg _ _ end) bounds]
       (hel-select (cons beg end)))))
+
+;;;; Expand and shrink
+
+;; M-o, M-b or C-k
+(hel-define-command hel-expand-selection-backward (count)
+  "Select the smallest syntax region that encloses the selection.
+Put point at its start. Without an active region, start from the node at
+point. Repeat COUNT times. A negative COUNT shrinks the selection.
+
+In a buffer with a tree-sitter parser, the regions are the syntax nodes.
+In a Lisp buffer they are the sexps. In other buffers they come from the
+syntax table: the word and the symbol at the selection start, the inside
+and the whole of each enclosing string, comment and bracket pair, the
+sentence in `text-mode' and the paragraph."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (when-let* ((producer (hel--node-producer)))
+    (hel--tree-expand producer count -1)))
+
+;; M-e
+(hel-define-command hel-expand-selection-forward (count)
+  "Select the smallest syntax region that encloses the selection.
+Put point at its end. Without an active region, start from the node at
+point. Repeat COUNT times. A negative COUNT shrinks the selection.
+The regions are those of `hel-expand-selection-backward'."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (when-let* ((producer (hel--node-producer)))
+    (hel--tree-expand producer count 1)))
+
+;; M-i or C-j
+(hel-define-command hel-shrink-selection (count)
+  "Restore the selection that preceded the last expand or text object.
+Repeat COUNT times. A negative COUNT expands the selection. When the
+selection differs from the last entry of the history, select the first
+child of its node."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (when-let* ((producer (hel--node-producer)))
+    (hel--tree-expand producer (- count) -1)))
+
+;;;; Node commands
+
+;; M-n or C-l
+(hel-define-command hel-select-next-sibling (count)
+  "Select the next sibling of the node under the selection.
+At the last sibling, keep the selection. Repeat COUNT times. A negative
+COUNT selects the previous siblings. Without a selection, first select
+the node after point."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (when-let* ((producer (hel--node-producer)))
+    (hel--tree-select-sibling producer count)))
+
+;; M-p or C-h
+(hel-define-command hel-select-previous-sibling (count)
+  "Select the previous sibling of the node under the selection.
+At the first sibling, keep the selection. Repeat COUNT times. Without
+a selection, first select the node before point."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (when-let* ((producer (hel--node-producer)))
+    (hel--tree-select-sibling producer (- count))))
+
+;; M-a
+(hel-define-command hel-select-all-siblings ()
+  "Select the node under the selection and all its siblings.
+Put a cursor on each of them. When the node is an only child, use the
+nearest parent with more than one child."
+  :multiple-cursors nil
+  :merge-selections t
+  (interactive)
+  (when-let* ((producer (hel--node-producer)))
+    (hel--tree-select-all-siblings producer)))
+
+;; M-I or M-j
+(hel-define-command hel-select-all-children ()
+  "Select all children of the node under the selection.
+Put a cursor on each of them. When the node has no children, keep the
+selection."
+  :multiple-cursors nil
+  :merge-selections t
+  (interactive)
+  (when-let* ((producer (hel--node-producer)))
+    (hel--tree-select-all-children producer)))
 
 ;;; Text objects
 ;;

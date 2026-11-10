@@ -4,33 +4,22 @@
 ;;
 ;;; Commentary:
 ;;
-;; In the texts of these tests, the character `|' marks point.
+;; The texts of the tests use the notation of `hel-test-helpers.el'.
 ;;
 ;;; Code:
 
 (require 'ert)
 (require 'hel)
-
-(defmacro hel-surround-tests--with (mode text &rest body)
-  "Run BODY in a MODE buffer with TEXT, point at the `|' in TEXT."
-  (declare (indent 2))
-  `(cl-letf (((symbol-function 'hel-reveal-point-when-on-top) #'ignore)
-             ((symbol-function 'hel-push-point) #'ignore))
-     (with-temp-buffer
-       (let ((transient-mark-mode t))
-         (funcall ,mode)
-         (insert ,text)
-         (goto-char (point-min))
-         (search-forward "|")
-         (delete-char -1)
-         ,@body))))
+(require 'hel-test-helpers
+         (expand-file-name "hel-test-helpers"
+                           (file-name-directory (or load-file-name buffer-file-name))))
 
 (defun hel-surround-tests--check (cases)
   "Check CASES, a list of (MODE TEXT COMMAND EXPECTED).
 EXPECTED is the text that COMMAND selects, or nil for no selection."
   (pcase-dolist (`(,mode ,text ,command ,expected) cases)
     (ert-info ((format "%S in %S" command text))
-      (hel-surround-tests--with mode text
+      (hel-test-with mode text
         (funcall command)
         (should (equal (when (use-region-p)
                          (buffer-substring-no-properties (region-beginning)
