@@ -109,9 +109,10 @@ in the command loop, and the fake cursors can pick up on those instead."
 
 ;;; Advices for general commands not related to particular packages
 
-(dolist (cmd '(fill-region    ; gq
-               indent-region  ; =
-               comment-dwim)) ; gc
+(dolist (cmd '(fill-region               ; gq
+               fill-region-as-paragraph  ; gQ
+               indent-region             ; =
+               comment-dwim))            ; gc
   (hel-advice-add cmd :around #'hel-keep-selection-a))
 
 (hel-advice-add 'clone-indirect-buffer :before #'hel-deactivate-mark-a)
