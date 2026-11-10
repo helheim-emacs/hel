@@ -125,28 +125,8 @@ the selection."
 (defun hel-bolp ()
   "Like `bolp' but consider visual lines when `visual-line-mode' is enabled."
   (if visual-line-mode
-      (hel-visual-bolp)
+      (= (point) (hel-line-begin))
     (bolp)))
-
-(defun hel-visual-bolp ()
-  "Return t if point is at the beginning of visual line."
-  (save-excursion
-    (let ((p (point)))
-      (beginning-of-visual-line)
-      (= p (point)))))
-
-(defun hel-eolp ()
-  "Like `eolp' but consider visual lines when `visual-line-mode' is enabled."
-  (if visual-line-mode
-      (hel-visual-eolp)
-    (eolp)))
-
-(defun hel-visual-eolp ()
-  "Return t if point is at the end of visual line."
-  (save-excursion
-    (let ((p (point)))
-      (end-of-visual-line)
-      (= p (point)))))
 
 (defun hel-line-boundary-p (direction)
   "If DIRECTION is negative number, checks for beginning of line,
@@ -185,10 +165,8 @@ logical line on desired end of the region."
   "Return t if active region spawns visual lines."
   (and visual-line-mode
        (use-region-p)
-       (save-excursion (goto-char (region-beginning))
-                       (hel-visual-bolp))
-       (save-excursion (goto-char (region-end))
-                       (hel-visual-bolp))))
+       (= (region-beginning) (hel-line-begin (region-beginning)))
+       (= (region-end) (hel-line-begin (region-end)))))
 
 (defun hel-whitespace-p (char)
   "Non-nil when CHAR belongs to whitespace syntax class."
@@ -597,22 +575,6 @@ If DIRECTION is positive number — get following char, otherwise preceding char
       (following-char)
     (preceding-char)))
 
-(defun hel-beginning-of-line (&optional count)
-  "Move point to the beginning of current line.
-Move over visual line when `visual-line-mode' is active."
-  (if visual-line-mode
-      (beginning-of-visual-line count)
-    (hel--beginning-of-line count))
-  (point))
-
-(defun hel-end-of-line (&optional count)
-  "Move point to the end of current line.
-Move over visual line when `visual-line-mode' is active."
-  (if visual-line-mode
-      (end-of-visual-line count)
-    (move-end-of-line count))
-  (point))
-
 (defun hel--forward-word-start (thing count)
   "Move to the COUNT-th next start of a word-like THING."
   (cl-assert (< 0 count))
@@ -641,33 +603,29 @@ Move over visual line when `visual-line-mode' is active."
                      (progn (forward-thing thing count)
                             (point))))
 
-;;; Things
-;;;; `hel-line'
+;;; Lines
 
-;; The difference from built-in `line' thing is that `hel-line' ignores
-;; invisible parts of the buffer (lines folded by `outline-minor-mode' for
-;; example) and always denotes visible lines.
-;;
-;; The need for this thing arose from the requirement to select a folded section
-;; of the buffer (in Org-mode or Outline-mode) using the `x' key command.
-
-(put 'hel-line 'forward-op #'hel--forward-line)
-(put 'hel-line 'bounds-of-thing-at-point
-     (lambda ()
-       (cons (save-excursion
-               (hel--beginning-of-line 1)
-               ;; `hel--beginning-of-line' may leave point after invisible
-               ;; characters if line starts with such of these (e.g., with
-               ;; a link at column 0 in Org mode). Really move to the beginning
-               ;; of the current visible line.
-               (beginning-of-line)
-               (point))
-             (save-excursion
-               (hel--forward-line 1)
-               (point)))))
+(cl-defun hel-visible-line-bounds (&optional (pos (point)))
+  "Return the bounds of the visible logical line at POS, with its line end.
+The built-in `line' thing stops at lines that are invisible. This range
+holds them, such as the lines that `outline-minor-mode' folds, so the `x'
+key selects a folded section as one line."
+  (save-excursion
+    (goto-char pos)
+    (cons (save-excursion
+            (hel-beginning-of-visible-line)
+            ;; `hel-beginning-of-visible-line' may leave point after invisible
+            ;; characters if line starts with such of these (e.g., with
+            ;; a link at column 0 in Org mode). Really move to the beginning
+            ;; of the current visible line.
+            (beginning-of-line)
+            (point))
+          (progn
+            (hel-forward-line 1)
+            (point)))))
 
 ;; Adopted from `move-end-of-line'.
-(defun hel--forward-line (&optional count)
+(defun hel-forward-line (&optional count)
   "Goto COUNT visible logical lines forward (backward if COUNT is negative).
 The difference from `forward-line' is that this function ignores invisible parts
 of the buffer (lines folded by `outline-minor-mode' for example) and always
@@ -683,15 +641,10 @@ moves only over visible lines."
            (goto-char (previous-single-char-property-change
                        (point) 'invisible))))))
 
-(defun hel--beginning-of-line (&optional count)
+(defun hel-beginning-of-visible-line ()
   "Move point to the beginning of the current visible logical line.
 This is actually refactored `move-beginning-of-line' command."
-  (or count (setq count 1))
   (let ((init-point (point)))
-    ;; Move by lines, if COUNT is not 1 (the default).
-    (when (/= count 1)
-      (let ((line-move-visual nil))
-        (line-move (1- count) t)))
     ;; Move to beginning-of-line, ignoring fields and invisible text.
     (let ((inhibit-field-text-motion t))
       (beginning-of-line)
@@ -703,13 +656,31 @@ This is actually refactored `move-beginning-of-line' command."
                 (invisible-p (point)))
       (goto-char (next-char-property-change (point) init-point)))
     ;; Obey field constraints.
-    (goto-char (constrain-to-field (point) init-point (/= count 1) t nil))))
+    (goto-char (constrain-to-field (point) init-point nil t nil))))
 
-;;;; `hel-visual-line'
+(cl-defun hel-line-begin (&optional (pos (point)))
+  "Return the start of the line at POS.
+This is the visual line of the selected window when `visual-line-mode' is
+active, and otherwise the visible logical line."
+  (save-excursion
+    (goto-char pos)
+    (if visual-line-mode
+        (beginning-of-visual-line)
+      (hel-beginning-of-visible-line))
+    (point)))
 
-(put 'hel-visual-line 'forward-op #'vertical-motion)
-;; (put 'hel-visual-line 'beginning-op #'beginning-of-visual-line)
-;; (put 'hel-visual-line 'end-op       #'end-of-visual-line)
+(cl-defun hel-line-end (&optional (pos (point)))
+  "Return the end of the line at POS.
+This is the visual line of the selected window when `visual-line-mode' is
+active, and otherwise the logical line."
+  (save-excursion
+    (goto-char pos)
+    (if visual-line-mode
+        (end-of-visual-line)
+      (move-end-of-line 1))
+    (point)))
+
+;;; Things
 
 ;;;; `hel-word'
 
@@ -847,17 +818,14 @@ When region is active: expand selection to line boundaries to encompass full
 line(s). With no region, select current line."
   (unless (hel-linewise-selection-p)
     (if (use-region-p)
-        (let ((beg (region-beginning))
+        (let ((begin (region-beginning))
               (end (region-end))
               (dir (or direction (hel-region-direction))))
-          (hel-select (cons (progn (goto-char beg)
-                                   (car (bounds-of-thing-at-point 'hel-line)))
-                            (progn (goto-char end)
-                                   (cdr (bounds-of-thing-at-point 'hel-line))))
+          (hel-select (cons (car (hel-visible-line-bounds begin))
+                            (cdr (hel-visible-line-bounds end)))
                       dir))
       ;; else no region
-      (-let [(beg . end) (bounds-of-thing-at-point 'hel-line)]
-        (hel-select (cons beg end) (or direction 1))))
+      (hel-select (hel-visible-line-bounds) (or direction 1)))
     (hel--fix-newline-at-end-of-buffer)
     t))
 
@@ -1515,9 +1483,9 @@ BEGIN, END position and done the indentation."
              (funcall indent-function (region-beginning) (region-end))))
          (hel-extend-selection -1))
         (t
-         (-let [(beg . end) (bounds-of-thing-at-point 'hel-line)]
+         (-let [(begin . end) (hel-visible-line-bounds)]
            (dotimes (_ count)
-             (funcall indent-function beg end))))))
+             (funcall indent-function begin end))))))
 
 (defun hel--fix-newline-at-end-of-buffer ()
   "If selection ends at the end of buffer, and buffer doesn't ends with newline
