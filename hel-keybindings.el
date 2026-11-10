@@ -66,6 +66,9 @@ use it."
   ":"   #'execute-extended-command
   "C-:" #'execute-extended-command-for-buffer
 
+  ;; `d' deletes in Normal state.
+  "DEL" #'ignore
+
   ;; Arrows
   "<left>"  #'hel-backward-char
   "<down>"  #'hel-next-line
