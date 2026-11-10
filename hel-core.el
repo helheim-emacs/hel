@@ -303,7 +303,7 @@ When ARG is non-positive integer and Hel is in %s — disable it.\n\n%s"
            ,@body
            ;; Switch color and shape of all cursors.
            ;; main cursor
-           (setq hel--extend-selection nil)
+           (setq hel-extending-selection nil)
            (hel-update-cursor)
            ;; fake cursors
            (when hel-multiple-cursors-mode
@@ -311,7 +311,7 @@ When ARG is non-positive integer and Hel is in %s — disable it.\n\n%s"
                (hel-save-excursion
                  (dolist (cursor (hel-all-fake-cursors))
                    (hel-with-fake-cursor cursor
-                     (setq hel--extend-selection nil))))))
+                     (setq hel-extending-selection nil))))))
            (run-hooks ',enter-hook))
          (hel-update-active-keymaps)
          (force-mode-line-update)))))
@@ -453,7 +453,7 @@ MODE and STATE should be symbols."
   :keymap (define-keymap :full t :suppress t)
   :cursor (list hel-normal-state-cursor-type
                 (lambda ()
-                  (if hel--extend-selection
+                  (if hel-extending-selection
                       'hel-extend-selection-cursor
                     'hel-normal-state-main-cursor))))
 
@@ -481,7 +481,7 @@ MODE and STATE should be symbols."
   "Emacs state."
   :cursor (list hel-emacs-state-cursor-type
                 'hel-emacs-state-main-cursor) ; face
-  (setq hel--extend-selection nil)
+  (setq hel-extending-selection nil)
   (deactivate-mark))
 
 ;;; Keymaps
@@ -741,7 +741,7 @@ a Hel modal state. Can be a symbol or list of symbols.
 
 (defun hel--pre-command-hook ()
   "Hook run before each command is executed. See `pre-command-hook'."
-  (when (and hel--extend-selection (not mark-active))
+  (when (and hel-extending-selection (not mark-active))
     (set-mark (point)))
   (unless hel-executing-command-for-fake-cursor
     (setq hel-this-command this-command)

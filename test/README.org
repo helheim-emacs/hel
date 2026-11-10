@@ -1,0 +1,358 @@
+#+title: Hel tests
+
+This directory holds the tests of Hel and the files that run them in a batch
+Emacs. The ~Makefile~ in the root of the repository is the entry point for
+both people and coding agents.
+
+* Quick start
+
+Run these commands from the root of the repository:
+
+#+begin_src sh
+make deps                        # once: install the dependencies into .deps/
+make check                       # compile every file, then run every suite
+make test                        # run every suite
+make test-behaviour              # run one suite
+make test-text-object SELECTOR='^hel-maf'   # run some tests
+make compile                     # byte-compile every file, fail on a warning
+make test-display                # run every suite in a terminal frame
+make emacs                       # debug the tests in an interactive Emacs
+make bench                       # time the commands with many cursors
+make help                        # list the targets and the variables
+#+end_src
+
+Every target except =make test-display= and =make emacs= starts a fresh
+=emacs -Q --batch=. It never touches your running Emacs, your
+configuration or your files. A suite fails with a non-zero exit status, so
+=make check= is also the check to run before a commit.
+
+The tests run the byte-compiled files in ~build/~, which is the code that
+users run. =make test= compiles the changed files first. Interpreted and
+compiled code can differ, for example in macros that expand at compile time
+or in the compiler macros of ~cl-defstruct~, so a test of the sources alone
+can miss a bug. =COMPILED=no= runs the tests on the sources, for example to
+test code that still has a compile warning.
+
+* The suites
+
+Each suite is one file, ~test/hel-SUITE-tests.el~, and =make test-SUITE=
+runs it.
+
+| Suite       | What it checks                                                      | Live Emacs |
+|-------------+---------------------------------------------------------------------+------------|
+| ~behaviour~   | what a user sees after pressing keys                                | no         |
+| ~node~        | expand, shrink, siblings and the Lisp nodes                         | yes        |
+| ~text-object~ | text objects, their producers, the query files, the protocol laws   | yes        |
+| ~word-motion~ | =w=, =e=, =b= and their WORD forms                                      | yes        |
+| ~selection~   | setting and reading the selection, and the functions on ranges      | yes        |
+| ~search~      | the helpers of search: binary search, match ranges, the session     | yes        |
+| ~surround~    | the bounds of quotes and brackets, and the limits that comments set | yes        |
+
+The *behaviour* suite presses keys through the real keymaps and compares the
+text, the selection, the cursors and the state with the expected ones. Its
+cases are tables of rows like ~("foo |bar baz" "w" "foo ^bar |baz")~: the
+text before, the keys, and the text after. Some commands in it reach
+a minibuffer prompt, so this suite runs only in batch.
+
+The *node*, *text-object*, *word-motion* and *selection* suites call the
+commands and the functions of Hel directly. The *search* suite tests pure
+functions and the search session, without the minibuffer. The *surround*
+suite tests the delimiter search of ~hel-surround.el~.
+
+A tree-sitter test skips itself when the grammar of its language is
+missing, so a machine without grammars runs fewer tests and does not fail.
+
+* The harness
+
+~test/hel-test-helpers.el~ is the harness that every suite builds on. A test
+makes a buffer from a /marked text/, does something in it, and compares the
+buffer with another marked text:
+
+#+begin_src emacs-lisp
+(ert-deftest hel-example ()
+  (hel-test-with #'emacs-lisp-mode "(foo |bar baz)"
+    (hel-test-run #'hel-forward-word-start)
+    (should (equal (hel-test-render) "(foo ^bar |baz)"))))
+#+end_src
+
+In a marked text, =|= is point and =^= is the other end of the selection.
+=¦= and =¬= are the same for a secondary cursor; ~hel-test-render~ shows
+them, and an input text has only the main cursor. A literal =|= or =^= is
+written twice.
+
+| Helper                | What it does                                                     |
+|-----------------------+------------------------------------------------------------------|
+| ~hel-test-with~         | runs the body in a fresh buffer in a major mode                  |
+| ~hel-test-mark~         | marks point in a shared text, before the first match of a string |
+| ~hel-test-run~          | runs a command for every cursor, as the command loop does        |
+| ~hel-test-press~        | presses keys through the real keymaps                            |
+| ~hel-test-render~       | returns the buffer as a marked text                              |
+| ~hel-test-selection~    | returns the selected text, or nil                                |
+| ~hel-test-selections~   | returns the selected text of every cursor, in buffer order       |
+| ~hel-test-goto~         | drops the selection and moves point to a string                  |
+| ~hel-test-need~         | skips the test without a tree-sitter grammar                     |
+| ~hel-test-need-queries~ | also skips it when Emacs cannot run the text object queries      |
+
+The helpers that read the internals of Hel are in one section of that
+file, so a change to the internals touches only that section.
+
+* Make targets
+
+- =make check= :: Run =make compile=, then =make test=.
+- =make test= :: Run every suite, one after another, on the compiled files.
+  Make stops at the first suite that fails. Add =-k= to run the rest
+  anyway.
+- =make test-SUITE= :: Run one suite, such as =test-behaviour= or
+  =test-node=. =make help= lists the suites.
+- =make test-display= :: Run every suite in =emacs -nw= inside
+  a pseudo-terminal, where Emacs redisplays, see [[*Tests with redisplay][Tests with redisplay]].
+  =make test-display-SUITE= runs one suite.
+- =make compile= :: Byte-compile every ~hel*.el~ file into ~build/~. Any
+  warning fails the check. Make =-j= runs the files in parallel:
+  =make -j8 compile=. A change to any source recompiles every file, because
+  a file can expand the macros of another one.
+- =make compile-FILE= :: Byte-compile one file, for example
+  =make compile-hel-lib=.
+- =make deps= :: Install =dash=, =avy=, =pcre2el= and =ultra-scroll= into
+  ~.deps/~ with ~package.el~. GNU ELPA and NonGNU ELPA come first, so you get
+  the stable releases; only =ultra-scroll= comes from MELPA. Once ~.deps/~
+  exists, the tests use it instead of your Elpaca directory.
+- =make emacs= :: Open a fresh interactive Emacs with the test setup and
+  every suite loaded, and run the tests in the =*ert*= buffer. There you can
+  read a backtrace, rerun one test with =r=, and look at the buffer that a
+  test leaves. Your configuration is not loaded, and the setup isolates
+  every file that the session writes. ~SELECTOR~ limits the tests.
+- =make bench= :: Time the benchmark scenarios, see [[*Benchmarks and profiling][Benchmarks and profiling]].
+- =make profile= :: Profile the benchmark scenarios.
+- =make clean= :: Remove ~build/~ and any stray ~.elc~ file. A stale ~.elc~
+  file next to its source can shadow the source in a running Emacs.
+
+* Variables
+
+Pass a variable on the command line, as in =make test SELECTOR=word=.
+
+- ~SELECTOR~ :: A regexp. Only the tests whose names match it run. An empty
+  selector runs every test of the suite.
+- ~EMACS~ :: The Emacs to run. The default is =emacs=.
+- ~TIMEOUT~ :: The time limit of one Emacs process, in seconds. The default
+  is 600. A command that loops forever ends with this limit instead of
+  hanging the run.
+- ~COMPILED~ :: =yes= by default: the tests run the compiled files in
+  ~build/~. =COMPILED=no= runs them on the sources.
+- ~HEL_TEST_DEPS~ :: Directories that hold the dependencies of Hel, one
+  subdirectory per package: =dash=, =avy=, =pcre2el= and =ultra-scroll=.
+  Separate several directories with colons. The default is ~.deps/~ when
+  =make deps= has created it, and otherwise the Elpaca build directory,
+  ~~/.config/emacs/var/elpaca/builds~. With ~package.el~, use
+  =make test HEL_TEST_DEPS=~/.emacs.d/elpa=.
+- ~HEL_TEST_TREESIT~ :: Extra directories with tree-sitter grammars,
+  separated by colons. Emacs also looks in its usual places.
+- ~CURSORS~, ~REPEAT~, ~SCENARIO~, ~PROFILER~ :: The settings of the
+  benchmarks, see [[*Benchmarks and profiling][Benchmarks and profiling]].
+
+The directory variables are environment variables as well, so the commands
+below in [[*Running a test file by hand][Running a test file by hand]] read them too. =make= also sets
+~HEL_TEST_BUILD~, the directory of the compiled files, which comes before
+the sources on ~load-path~.
+
+* How the batch session is set up
+
+These files in this directory prepare the batch Emacs:
+
+- ~hel-test-paths.el~ puts the dependencies, this checkout and the
+  directory of the compiled files on ~load-path~. It skips any package
+  directory named ~hel~ or ~hel-*~, so an installed copy of Hel or an
+  extension never shadows the code under test. It also sets
+  ~load-no-native~, because the compiled files in ~build/~ have no source
+  next to them and the native compiler would warn about each one.
+- ~hel-test-setup.el~ loads ~hel-test-paths.el~ and isolates the session:
+  ~user-emacs-directory~, ~custom-file~ and ~hel-whitelist-file~ point to
+  a temporary directory, and no backup, lock or clipboard is used. It turns
+  on ~transient-mark-mode~, because a Hel selection is the active region and
+  batch Emacs starts without that mode. It makes ~y-or-n-p~ and
+  ~yes-or-no-p~ fail the test instead of waiting for input. Last, it loads
+  Hel and turns on ~hel-mode~.
+- ~hel-test-compile.el~ loads ~hel-test-paths.el~ and byte-compiles the
+  files named on its command line, with ~byte-compile-error-on-warn~ set.
+  The ~.elc~ files go to the directory in ~HEL_TEST_OUTPUT~, ~build/~ under
+  =make=. The compilation reads the other Hel files from their sources, so
+  a stale compiled file cannot change the result.
+- ~hel-test-deps.el~ installs the dependencies for =make deps=.
+- ~hel-benchmarks.el~ defines the benchmark scenarios and runs them.
+
+=make compile= runs one Emacs for each file. In a shared Emacs, a file that
+is compiled later sees the files that the earlier ones loaded, and a missing
+~require~ gives no warning there.
+
+The compile script loads ~pcre2el~ before it compiles. Without that, a Hel
+file that gets ~pcre2el~ through another Hel file causes a false warning
+about ~rxt--re-builder-switch-pcre-mode~, a function that no Hel code calls.
+
+* Benchmarks and profiling
+
+Every command runs once for the real cursor and then once for each fake
+cursor, one after another, in the single thread of Emacs. A command that
+takes 0.1 ms takes 100 ms with 1000 cursors, so the speed of a command with
+many cursors is a feature, and the benchmarks measure it.
+
+A scenario is a key sequence and a buffer with one line for each cursor;
+each line starts with a cursor. =make bench= runs every scenario with each
+number of cursors in ~CURSORS~ and prints a line like this:
+
+#+begin_example
+scenario            cursors    median ms  us per cursor   gcs
+expand-selection       1000       241.64          241.6     0
+#+end_example
+
+The columns are the median time of the key sequence over ~REPEAT~ runs, the
+same time divided by the number of cursors, and the number of garbage
+collections during the run. The first run of each scenario does not count,
+because it loads code and fills caches. Read the column "us per cursor"
+down a scenario: when it stays flat, the cost is linear in the number of
+cursors; when it grows, something does more work for each cursor as the
+buffer grows, and that is the place to profile.
+
+=make profile= runs the scenarios once with the largest number of cursors
+under a profiler:
+
+- =PROFILER=elp= (the default) instruments every ~hel-~ function and prints
+  the number of calls, the total time and the average time of each one.
+  It sees only Hel functions.
+- =PROFILER=cpu= uses the sampling profiler of Emacs. It sees every
+  function, C functions and garbage collection included. It prints the
+  functions that use the most time themselves, then the whole call tree,
+  where you find the callers of such a function.
+
+The variables of the benchmarks:
+
+- ~CURSORS~ :: The numbers of cursors, =1 100 1000= by default.
+- ~REPEAT~ :: The runs of each scenario and number of cursors, 5 by default.
+- ~SCENARIO~ :: An Emacs regexp for the names of the scenarios. Emacs
+  writes "or" as =\|=: =make bench SCENARIO='insert\|undo'=.
+- ~PROFILER~ :: =elp= or =cpu=.
+
+To add a scenario, call ~hel-bench-define~ in ~hel-benchmarks.el~ with the
+keys, and with the major mode and the text of each line when the defaults
+do not fit.
+
+* Tests with redisplay
+
+A batch Emacs never redisplays, so some calls give answers that a user
+never sees:
+
+| Call                    | In batch Emacs        | Code of Hel that it affects               |
+|-------------------------+-----------------------+-------------------------------------------|
+| ~window-end~              | the end of the buffer | the limit of =f= / =t=, the Avy jumps =gw= =gb= |
+| ~pos-visible-in-window-p~ | nil                   | the recentering after =n= and other jumps   |
+| ~posn-at-point~           | nil                   | the pixel paths of smooth scrolling       |
+| ~end-of-visual-line~      | does not move         | =gh=, =gl= and =x= with ~visual-line-mode~        |
+| ~redisplay~               | does nothing          | revealing point under a header line       |
+
+~vertical-motion~ and ~scroll-up~ work in batch, so the scrolling tests
+check real behaviour.
+
+=make test-display= runs the same suites in =emacs -nw= inside a
+pseudo-terminal of 30 rows and 100 columns. Two files make this work:
+
+- ~hel-test-tty.py~ runs a command in a pseudo-terminal of a fixed size,
+  throws the terminal output away, and returns the exit status of the
+  command. It kills the command after ~TIMEOUT~ seconds.
+- ~hel-test-display.el~ runs the loaded tests in the interactive Emacs and
+  writes each failure and the summary to a report file in ~build/~. Emacs
+  exits with status 0 only when every result is as expected. The target
+  prints the report.
+
+A test that passes in batch and fails here depends on the display. It
+shows either a bug that users meet, or a test that expects what only batch
+does.
+
+Three rows of the =motion-line= table fail here. In a frame, =j= and =k=
+move by screen lines, because ~line-move-visual~ is t by default:
+
+- =gl= sets ~temporary-goal-column~ to ~most-positive-fixnum~, and the
+  next =j= or =k= fails with "Args out of range".
+- =k= on the first line leaves point where it is. With
+  ~line-move-visual~ set to nil, it moves point to the start of the line.
+
+Batch Emacs moves by logical lines, so these rows pass there.
+
+* Continuous integration
+
+~.github/workflows/test.yml~ runs =make deps= and =make -k check= on
+Ubuntu for every push and pull request. It uses Emacs 29.4, the last
+release of 29, the oldest major version that Hel supports, then 30.2, 31.1
+and the development snapshot. A
+failure on the snapshot does not fail the run. The runner has no
+tree-sitter grammars, so the tree-sitter tests skip themselves there.
+
+A second step runs =make -k test-display=. It reports its failures
+without failing the run, because of the three known failures in the
+behaviour suite.
+
+* Running a test file by hand
+
+Each suite runs with the same command that =make= uses:
+
+#+begin_src sh
+timeout 600 emacs -Q --batch -l test/hel-test-setup.el \
+  -l test/hel-surround-tests.el -f ert-run-tests-batch-and-exit < /dev/null
+#+end_src
+
+Every suite except behaviour also runs in a live Emacs that has Hel loaded.
+The harness puts the windows back after each test:
+
+#+begin_src emacs-lisp
+(load-file "test/hel-node-tests.el")
+(ert "^hel-")
+#+end_src
+
+A live run tests the code that your Emacs has loaded, which may differ from
+the files on disk. Run =load-file= on every changed source file first. The
+batch run always tests the files on disk.
+
+#+begin_quote
+[!WARNING]
+Never run the behaviour suite in a live Emacs. Some of its commands open a
+minibuffer prompt, and the prompt waits for input inside your session.
+#+end_quote
+
+* Writing tests
+
+- Put a test in the suite of its subject. A key and what the user sees go to
+  the behaviour suite; a rule about nodes goes to the node suite, and so on.
+  Each suite has one prefix for its helpers, such as ~hel-node-tests--~.
+- Build every test on ~hel-test-helpers.el~. A file may add helpers for its
+  own subject, such as the laws of the thing protocol, but it makes its
+  buffers with ~hel-test-with~ and writes its texts in the marked notation.
+- A test must never wait for input. Under =make=, every prompt fails: the
+  setup makes ~y-or-n-p~ and ~yes-or-no-p~ signal an error, and =make=
+  gives Emacs no standard input, so ~read-string~ and the other readers
+  signal ~end-of-file~. When you run a test file by hand from a terminal,
+  such a reader waits for your input instead.
+- A test that needs a tree-sitter grammar must skip itself when the grammar
+  is missing. ~hel-test-with~ skips a test whose tree-sitter mode has no
+  grammar, and ~hel-test-need~ skips one before it makes a buffer.
+
+* For coding agents
+
+These rules keep the user's running Emacs safe and the results honest.
+
+- Run the tests with =make=. A batch run cannot disturb the user's session,
+  and it tests the files on disk.
+- Never run =make emacs=: it opens a window on the user's screen and waits
+  for the user. It is a tool for people. =make test-display= is safe: its
+  terminal is a pseudo-terminal that nobody sees.
+- Before and after a change to code that runs for every cursor, run
+  =make bench= on the scenarios that use it, and report both tables.
+- Never run ~hel-behaviour-tests.el~ in the live Emacs, and never call a
+  command that reads the minibuffer there. A prompt waits for input inside
+  the user's session and blocks it.
+- New code with a loop goes through =make= first. An endless loop in the
+  live Emacs freezes the user's session, and in batch ~TIMEOUT~ ends it.
+- Check compilation with =make compile=, not with ~byte-compile-file~ in the
+  live Emacs. ~byte-compile-file~ writes an ~.elc~ file next to the source,
+  the live Emacs keeps ~byte-compile-warnings~ at nil, and a compilation
+  can leave stale compiler macros of a ~cl-defstruct~ in the session.
+- Report results with the numbers that ERT prints, such as "Ran 391 tests,
+  391 results as expected". Name every failing test, and say whether it also
+  fails without your change.

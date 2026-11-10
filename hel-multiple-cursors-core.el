@@ -58,6 +58,8 @@
 
 (defvar hel-insert-state)
 
+(declare-function hel-update-cursor "hel-core")
+
 ;;; Multiple cursors minor mode
 
 (define-minor-mode hel-multiple-cursors-mode
@@ -204,7 +206,7 @@ Return CURSOR."
                         (make-overlay pos pos nil t nil))
                        (t
                         (make-overlay pos (1+ pos) nil t nil))))
-    (let ((face (cond (hel--extend-selection
+    (let ((face (cond (hel-extending-selection
                        'hel-extend-selection-cursor)
                       (hel-insert-state
                        'hel-insert-state-fake-cursor)
@@ -421,6 +423,15 @@ CURSORS-POSITIONS is an alist as returned by `hel-cursors-positions'."
                (hel--create-fake-cursor-1 id point mark)))))))
   (hel-auto-multiple-cursors-mode))
 
+(defun hel-select-ranges (regions direction)
+  "Select the first of REGIONS with the real cursor, the others with fake ones.
+REGIONS is a list of (BEGIN . END) cons-cells. DIRECTION is 1 or -1."
+  (hel-select (car regions) direction)
+  (-each (cdr regions)
+    (-lambda ((beg . end))
+      (if (< 0 direction) (cl-rotatef beg end))
+      (hel-create-fake-cursor beg end))))
+
 ;;; Executing commands for real and fake cursors
 
 (defmacro hel-save-window-scroll (&rest body)
@@ -515,7 +526,11 @@ evaluate BODY, update fake CURSOR."
               (hel--prompt-for-unknown-command command)))
            (hel-save-window-scroll
              (hel-save-excursion
-               (dolist (cursor (hel-all-fake-cursors))
+               ;; `syntax-ppss' reuses an earlier parse only for a position
+               ;; after it. In buffer order every cursor finds such a parse;
+               ;; in reverse order none does, and each cursor parses the
+               ;; buffer from its start.
+               (dolist (cursor (hel-all-fake-cursors :sort))
                  (hel-with-fake-cursor cursor
                    (hel--call-interactively command)))))))))
 

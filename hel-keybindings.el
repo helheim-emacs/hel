@@ -30,6 +30,7 @@
 ;;; Code:
 
 (require 'hel-core)
+(require 'hel-text-objects)
 (require 'hel-commands)
 (require 'hel-scroll)
 (require 'pcre2el)
@@ -98,16 +99,14 @@ use it."
   "G"   #'hel-end-of-buffer
   "}"   #'hel-forward-paragraph
   "{"   #'hel-backward-paragraph
-  "] p" #'hel-forward-paragraph-end
-  "[ p" #'hel-backward-paragraph-end
-  "] f" #'hel-mark-function-forward
-  "[ f" #'hel-mark-function-backward
+  "] p" #'hel-forward-paragraph
+  "[ p" #'hel-backward-paragraph
   "] s" #'hel-mark-sentence-forward
   "[ s" #'hel-mark-sentence-backward
   "] ." #'hel-mark-sentence-forward
   "[ ." #'hel-mark-sentence-backward
-  "] e" #'next-error
-  "[ e" #'previous-error
+  "] d" #'next-error
+  "[ d" #'previous-error
   ;; Because page boudaries are displayed as ^L.
   "] l" #'forward-page
   "[ l" #'backward-page
@@ -166,6 +165,8 @@ use it."
   "g ;" #'hel-exchange-point-and-mark
   "_"   #'hel-trim-whitespace-from-selection
   "g v" #'hel-restore-cursors
+  "M-o" #'hel-expand-selection-backward
+  "M-i" #'hel-shrink-selection
 
   ;; Surround
   "m m" #'hel-jump-to-match-item
@@ -224,6 +225,49 @@ use it."
   "[ x" #'xref-go-back
   "] x" #'xref-go-forward)
 
+(hel-keymap-global-set :state 'normal
+  ;; Node selection
+  "M-n" #'hel-select-next-sibling
+  "M-p" #'hel-select-previous-sibling
+  "M-b" #'hel-expand-selection-backward
+  "M-e" #'hel-expand-selection-forward
+  "M-a" #'hel-select-all-siblings
+  "M-I" #'hel-select-all-children
+  "M-j" #'hel-select-all-children
+
+  ;; Text objects
+  "m f"   #'hel-mark-function
+  "m i f" #'hel-mark-function
+  "m a f" #'hel-mark-around-function
+  "] f"   #'hel-mark-function-forward
+  "[ f"   #'hel-mark-function-backward
+  "m t"   #'hel-mark-class
+  "m i t" #'hel-mark-class
+  "m a t" #'hel-mark-around-class
+  "] t"   #'hel-mark-class-forward
+  "[ t"   #'hel-mark-class-backward
+  "m A"   #'hel-mark-argument
+  "m i a" #'hel-mark-argument
+  "m a a" #'hel-mark-around-argument
+  "] a"   #'hel-mark-argument-forward
+  "[ a"   #'hel-mark-argument-backward
+  "m i e" #'hel-mark-entry
+  "m a e" #'hel-mark-around-entry
+  "] e"   #'hel-mark-entry-forward
+  "[ e"   #'hel-mark-entry-backward
+  "m c"   #'hel-mark-comment
+  "m i c" #'hel-mark-comment
+  "m a c" #'hel-mark-around-comment
+  "] c"   #'hel-mark-comment-forward
+  "[ c"   #'hel-mark-comment-backward)
+
+(when hel-want-C-hjkl-keys
+  (hel-keymap-global-set :state 'normal
+    "C-k" #'hel-expand-selection-backward
+    "C-j" #'hel-shrink-selection
+    "C-l" #'hel-select-next-sibling
+    "C-h" #'hel-select-previous-sibling))
+
 ;;;; Keys active while there are multiple cursors
 
 (hel-keymap-set hel-multiple-cursors-mode-map :state 'normal
@@ -244,26 +288,22 @@ use it."
 ;;;; Mark commands
 
 (hel-keymap-global-set :state 'normal
-  "m w"   #'hel-mark-inner-word
-  "m i w" #'hel-mark-inner-word
-  "m a w" #'hel-mark-a-word
-  "m W"   #'hel-mark-inner-WORD
-  "m i W" #'hel-mark-inner-WORD
-  "m a W" #'hel-mark-a-WORD
+  "m w"   #'hel-mark-word
+  "m i w" #'hel-mark-word
+  "m a w" #'hel-mark-around-word
+  "m W"   #'hel-mark-WORD
+  "m i W" #'hel-mark-WORD
+  "m a W" #'hel-mark-around-WORD
   ;; sentence
-  "m ."   #'hel-mark-inner-sentence
-  "m i ." #'hel-mark-inner-sentence
-  "m a ." #'hel-mark-a-sentence
-  "m i s" #'hel-mark-inner-sentence
-  "m a s" #'hel-mark-a-sentence
-  ;; function
-  "m f"   #'hel-mark-inner-function
-  "m i f" #'hel-mark-inner-function
-  "m a f" #'hel-mark-a-function
+  "m ."   #'hel-mark-sentence
+  "m i ." #'hel-mark-sentence
+  "m a ." #'hel-mark-around-sentence
+  "m i s" #'hel-mark-sentence
+  "m a s" #'hel-mark-around-sentence
   ;; paragraph
-  "m p"   #'hel-mark-inner-paragraph
-  "m i p" #'hel-mark-inner-paragraph
-  "m a p" #'hel-mark-a-paragraph
+  "m p"   #'hel-mark-paragraph
+  "m i p" #'hel-mark-paragraph
+  "m a p" #'hel-mark-around-paragraph
 
   "m \""   #'hel-mark-inner-double-quoted
   "m i \"" #'hel-mark-inner-double-quoted
@@ -302,6 +342,10 @@ use it."
   "m i >" #'hel-mark-inner-angle
   "m a <" #'hel-mark-an-angle
   "m a >" #'hel-mark-an-angle
+
+  "m b"   #'hel-mark-inner-closest-pair
+  "m i m" #'hel-mark-inner-closest-pair
+  "m a m" #'hel-mark-around-closest-pair
 
   "m !"   #'hel-mark-inner-surround
   "m @"   #'hel-mark-inner-surround

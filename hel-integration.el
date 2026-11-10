@@ -35,6 +35,7 @@
 (require 'hel-multiple-cursors-core)
 (require 'hel-lib)
 (require 'hel-core)
+(require 'hel-text-objects)
 (require 'hel-surround)
 (require 'hel-commands)
 
@@ -196,6 +197,8 @@ in the command loop, and the fake cursors can pick up on those instead."
                      'hel-backward-WORD-start  ; B
                      'hel-forward-word-end     ; e
                      'hel-forward-WORD-end     ; E
+                     'hel-backward-word-end
+                     'hel-backward-WORD-end
                      'hel-first-non-blank      ; gh
                      'hel-end-of-line-command  ; gl
                      'hel-beginning-of-buffer  ; gg
@@ -207,7 +210,22 @@ in the command loop, and the fake cursors can pick up on those instead."
                      'hel-find-char-forward    ; f
                      'hel-find-char-backward   ; F
                      'hel-till-char-forward    ; t
-                     'hel-till-char-backward)) ; T
+                     'hel-till-char-backward   ; T
+                     'hel-expand-selection-backward  ; M-o, M-b
+                     'hel-expand-selection-forward   ; M-e
+                     'hel-shrink-selection           ; M-i
+                     'hel-select-next-sibling        ; M-n
+                     'hel-select-previous-sibling    ; M-p
+                     'hel-mark-function-forward      ; ]f
+                     'hel-mark-function-backward     ; [f
+                     'hel-mark-class-forward         ; ]t
+                     'hel-mark-class-backward        ; [t
+                     'hel-mark-argument-forward      ; ]a
+                     'hel-mark-argument-backward     ; [a
+                     'hel-mark-entry-forward         ; ]e
+                     'hel-mark-entry-backward        ; [e
+                     'hel-mark-comment-forward       ; ]c
+                     'hel-mark-comment-backward))    ; [c
 
 ;;;; Elisp (emacs-lisp-mode)
 
@@ -228,11 +246,30 @@ in the command loop, and the fake cursors can pick up on those instead."
 ;; `emacs-lisp-mode' is inherited from `lisp-data-mode'.
 (add-hook 'lisp-data-mode-hook #'hel--emacs-lisp-mode-h)
 
+(dolist (hook '(lisp-data-mode-hook
+                scheme-mode-hook
+                inferior-emacs-lisp-mode-hook
+                inferior-lisp-mode-hook
+                inferior-scheme-mode-hook
+                clojure-mode-hook
+                cider-repl-mode-hook
+                fennel-mode-hook
+                hy-mode-hook
+                janet-mode-hook
+                racket-mode-hook
+                racket-repl-mode-hook
+                geiser-repl-mode-hook
+                sly-mrepl-mode-hook
+                slime-repl-mode-hook))
+  (add-hook hook #'hel-use-lisp-nodes))
+
 (defun hel--emacs-lisp-mode-h ()
-  ;; Add legacy quotes marks to Hel surround functionality.
-  (let ((spec '(:insert ("`" . "'") :remove ("`" . "'"))))
-    (setf (alist-get ?` hel-surround-alist) spec)
-    (setf (alist-get ?' hel-surround-alist) spec))
+  ;; The legacy quotes `like this' of docstrings and comments.
+  (let ((source (hel-delimiter-pair-source "`" "'")))
+    (setq-local hel-pair-sources
+                `((?` ,source) (?' ,source) ,@hel-pair-sources))
+    (setq-local hel-surround-delimiters
+                `((?` ("`" . "'")) (?' ("`" . "'")) ,@hel-surround-delimiters)))
   ;;
   ;; Teach `imenu' about Hel macros.
   (dolist (i (eval-when-compile
@@ -248,33 +285,9 @@ in the command loop, and the fake cursors can pick up on those instead."
                   2))))
     (cl-pushnew i imenu-generic-expression :test #'equal)))
 
-(dolist (keymap (list emacs-lisp-mode-map
-                      lisp-data-mode-map))
-  (hel-keymap-set keymap :state 'normal
-    "m `"   #'hel-mark-inner-legacy-quoted
-    "m '"   #'hel-mark-inner-legacy-quoted
-    "m i `" #'hel-mark-inner-legacy-quoted
-    "m i '" #'hel-mark-inner-legacy-quoted
-    "m a `" #'hel-mark-a-legacy-quoted
-    "m a '" #'hel-mark-a-legacy-quoted))
-
 (hel-keymap-set emacs-lisp-compilation-mode-map
   "g"   nil
   ", r" #'emacs-lisp-compilation-recompile)
-
-(hel-define-command hel-mark-inner-legacy-quoted ()
-  :multiple-cursors t
-  :merge-selections t
-  (interactive)
-  (pcase (hel-surround-4-bounds-at-point "`" "'")
-    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
-
-(hel-define-command hel-mark-a-legacy-quoted ()
-  :multiple-cursors t
-  :merge-selections t
-  (interactive)
-  (-when-let ((beg _ _ end) (hel-surround-4-bounds-at-point "`" "'"))
-    (hel-select (cons beg end))))
 
 ;;;; Help
 
@@ -461,7 +474,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 (hel-define-command helheim-wdired-exit ()
   :multiple-cursors t
   (interactive)
-  (cond (hel--extend-selection
+  (cond (hel-extending-selection
          (hel-extend-selection -1))
         ((use-region-p)
          (deactivate-mark))
@@ -595,6 +608,40 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 (hel-keymap-set text-mode-map :state 'insert
   "C-w" #'hel-delete-backward-word)
 
+;;;; Words in Org, Markdown and TeX
+
+(defun hel--org-word-rules-h ()
+  "Treat the Org markers of verbatim, code and bold text as brackets.
+`miW' also leaves out the angle brackets of a timestamp, and the `|' of
+a table separates words."
+  (setq-local hel-word-rules
+              (hel-word-rules-create
+               :brackets (append hel--bracket-pairs '((?= . ?=) (?~ . ?~) (?* . ?*)))
+               :pairs (append hel--quote-pairs '((?< . ?>)))
+               :separators '(?|))))
+
+(defun hel--markdown-word-rules-h ()
+  "Treat the Markdown markers of code and emphasis as brackets.
+`miW' also leaves out the angle brackets of an autolink or a tag, and the
+`|' of a table separates words."
+  (setq-local hel-word-rules
+              (hel-word-rules-create
+               :brackets (append hel--bracket-pairs '((?` . ?`) (?* . ?*)))
+               :pairs (append hel--quote-pairs '((?< . ?>)))
+               :separators '(?|))))
+
+(defun hel--tex-word-rules-h ()
+  "Treat the dollar signs of TeX inline math as brackets."
+  (setq-local hel-word-rules
+              (hel-word-rules-create
+               :brackets (append hel--bracket-pairs '((?$ . ?$))))))
+
+(add-hook 'org-mode-hook #'hel--org-word-rules-h)
+(add-hook 'markdown-mode-hook #'hel--markdown-word-rules-h)
+(add-hook 'markdown-ts-mode-hook #'hel--markdown-word-rules-h)  ; Emacs 31
+(add-hook 'tex-mode-hook #'hel--tex-word-rules-h)   ; built-in TeX modes
+(add-hook 'TeX-mode-hook #'hel--tex-word-rules-h)   ; AUCTeX
+
 ;;;; conf-mode
 
 (with-eval-after-load 'conf-mode
@@ -695,8 +742,9 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (hel-select-motion (point)
-                     (progn (widget-end-of-line) (point))))
+  (hel-motion-select (point) (progn
+                               (widget-end-of-line)
+                               (point))))
 
 ;;;; Xref
 

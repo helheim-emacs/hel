@@ -38,6 +38,8 @@
 (require 'hel-macros)
 (require 'hel-multiple-cursors-core)
 (require 'hel-core)
+(require 'hel-text-objects)
+(require 'hel-structural-editing)
 (require 'hel-surround)
 (require 'hel-commands)
 (require 'hel-search)

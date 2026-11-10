@@ -50,12 +50,53 @@ a DEFINITION is ~nil~, that key will be unbound.
 Hel itself uses a simple heuristic: if in the major mode letters are
 self-inserting Hel starts in Normal state; otherwise — in Emacs state.
 
-* Surround
+* Pairs and surround
 
-~hel-surround-alist~ variable defines patterns for =ms= (surround), =md= (delete
-surround), and =mr= (change surround) commands. It is buffer-local so you can
-modify it from a major-mode hook. See its documentation and default value for
-the structure and examples.
+Two buffer-local variables define the pairs of delimiters. A major-mode
+hook can change them for its buffers.
+
+- ~hel-pair-sources~ :: what =mi=, =ma=, =md= and =mr= find for a key
+  character. Each element is =(CHAR SOURCE...)=, and a source returns
+  a pair producer. A character without an element pairs with itself, as
+  the stars of =*bold*=.
+- ~hel-surround-delimiters~ :: what =ms= and =mr= insert for a key
+  character, and the /padding/ of the key: the whitespace between
+  a delimiter and the text. Each element is =(CHAR DELIMITERS :padding
+  PADDING)=. DELIMITERS is a cons =(LEFT . RIGHT)= of strings, or
+  a function that returns one. PADDING is nil, =t= for a space or lines of
+  their own, as for =(=, or =linewise= for lines of their own only, as for
+  HTML tags. For a Markdown code fence:
+
+  #+begin_src emacs-lisp
+  (add-hook 'markdown-mode-hook
+            (lambda ()
+              (push '(?` ("```" . "```") :padding linewise)
+                    hel-surround-delimiters)))
+  #+end_src
+
+The quickest way to add a pair is a function that returns the four
+positions of the two delimiters around point:
+
+#+begin_src emacs-lisp
+(defun my-latex-env-bounds ()
+  "Return the positions of \\begin{...} and \\end{...} around point."
+  ...)
+
+(add-hook 'latex-mode-hook
+          (lambda ()
+            (push (list ?e (hel-function-pair-source #'my-latex-env-bounds))
+                  hel-pair-sources)))
+#+end_src
+
+For two strings, such as =<<= and =>>=, use ~hel-delimiter-pair-source~:
+
+#+begin_src emacs-lisp
+(push (list ?q (hel-delimiter-pair-source "<<" ">>" :balanced t))
+      hel-pair-sources)
+#+end_src
+
+~hel-surround-alist~ is obsolete. Hel still reads it for one release, and
+an element there wins over both variables above.
 
 * Variables
 ** Regex Settings
