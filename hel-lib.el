@@ -525,6 +525,21 @@ Return the distance traveled, with the sign of DIR."
 Return the distance traveled, with the sign of DIR."
   (hel-skip-chars hel-whitespace-chars dir))
 
+(cl-defun hel-trim-whitespace-from-range ((begin . end))
+  "Return the range BEGIN..END without the whitespace at its edges.
+Return nil if nothing remains."
+  (save-excursion
+    (setq begin (progn
+                  (goto-char begin)
+                  (skip-chars-forward hel-whitespace-chars end)
+                  (point)))
+    (setq end (progn
+                (goto-char end)
+                (skip-chars-backward hel-whitespace-chars begin)
+                (point)))
+    (if (< begin end)
+        (cons begin end))))
+
 ;;; Motions
 
 (defun hel-forward-following-thing (thing &optional count)
