@@ -150,7 +150,7 @@ This function is the guts of the `hel-create-fake-cursor'."
       (overlay-put cursor 'type 'fake-cursor)
       (overlay-put cursor 'priority 101)
       (hel--store-cursor-state cursor point mark)
-      (hel--set-fake-region-overlay cursor)
+      (hel--set-fake-selection-overlay cursor)
       (puthash id cursor hel--cursors-table)
       cursor)))
 
@@ -179,7 +179,7 @@ Optionally UPDATE fake-cursors state."
   (set-marker (overlay-get cursor 'mark) (or mark point))
   (when update (hel-update-fake-cursor-state cursor))
   (hel--set-cursor-overlay cursor point)
-  (hel--set-fake-region-overlay cursor)
+  (hel--set-fake-selection-overlay cursor)
   cursor)
 
 (defun hel-delete-fake-cursor (cursor)
@@ -229,7 +229,7 @@ Return CURSOR."
              (overlay-put cursor 'after-string nil))))
     cursor))
 
-(defun hel--set-fake-region-overlay (cursor)
+(defun hel--set-fake-selection-overlay (cursor)
   "For fake CURSOR setup the overlay looking like active region when appropriate."
   (let ((beg (overlay-get cursor 'point))
         (end (overlay-get cursor 'mark)))
@@ -246,17 +246,17 @@ Return CURSOR."
                          (overlay-put 'priority 100)))
           (overlay-put cursor 'fake-region region))
       ;; else
-      (hel--delete-fake-region-overlay cursor))))
+      (hel--delete-fake-selection-overlay cursor))))
 
 (defun hel--delete-fake-cursor (cursor)
   "Delete CURSOR overlay."
   (remhash (overlay-get cursor 'id) hel--cursors-table)
   (set-marker (overlay-get cursor 'point) nil)
   (set-marker (overlay-get cursor 'mark) nil)
-  (hel--delete-fake-region-overlay cursor)
+  (hel--delete-fake-selection-overlay cursor)
   (delete-overlay cursor))
 
-(defun hel--delete-fake-region-overlay (cursor)
+(defun hel--delete-fake-selection-overlay (cursor)
   "Remove the dependent region overlay for a given CURSOR overlay."
   (-some-> (overlay-get cursor 'fake-region)
     (delete-overlay)))
@@ -293,12 +293,12 @@ Return CURSOR."
   (dolist (var hel-fake-cursor-variables)
     (if (boundp var)
         (set var (overlay-get overlay var))))
-  (hel--delete-fake-region-overlay overlay)
+  (hel--delete-fake-selection-overlay overlay)
   (delete-overlay overlay))
 
 (defun hel-hide-fake-cursor (cursor)
   "Disable the fake CURSOR visibility in the buffer without deleting it."
-  (hel--delete-fake-region-overlay cursor)
+  (hel--delete-fake-selection-overlay cursor)
   (delete-overlay cursor)
   cursor)
 
@@ -306,13 +306,13 @@ Return CURSOR."
   "Restore fake CURSOR visibility if it was previously hidden with
 `hel-hide-fake-cursor'."
   (hel--set-cursor-overlay cursor (overlay-get cursor 'point))
-  (hel--set-fake-region-overlay cursor))
+  (hel--set-fake-selection-overlay cursor))
 
 (defun hel-fake-cursor-p (overlay)
   "Return t if an OVERLAY is a fake cursor."
   (eq (overlay-get overlay 'type) 'fake-cursor))
 
-(defun hel-fake-region-p (overlay)
+(defun hel-fake-selection-p (overlay)
   "Return t if an OVERLAY is a fake region."
   (eq (overlay-get overlay 'type) 'fake-region))
 
@@ -413,7 +413,8 @@ CURSORS-POSITIONS is an alist as returned by `hel-cursors-positions'."
   (-each cursors-positions
     (-lambda ((id point mark))
       (pcase id
-        (0 (hel-set-region mark point))
+        (0 (set-mark mark)
+           (goto-char point))
         (_ (let ((mark-active (if mark t)))
              (if-let* ((cursor (gethash id hel--cursors-table)))
                  (hel-move-fake-cursor cursor point mark :update)
@@ -564,7 +565,7 @@ Restore it after BODY evaluation if it is still alive."
 (defun hel-merge-overlapping-cursors ()
   "Merge overlapping cursors."
   (if (use-region-p)
-      (hel--merge-overlapping-regions)
+      (hel--merge-overlapping-selections)
     (hel--merge-overlapping-points)))
 
 (defun hel--merge-overlapping-points ()
@@ -583,10 +584,10 @@ Restore it after BODY evaluation if it is still alive."
     (hel--delete-fake-cursor))
   (hel-auto-multiple-cursors-mode))
 
-(defun hel--merge-overlapping-regions ()
+(defun hel--merge-overlapping-selections ()
   "Merge overlapping regions."
   (let ((dir (hel-region-direction)))
-    (dolist (group-or-overlapping-regions (hel--overlapping-regions))
+    (dolist (group-or-overlapping-regions (hel--overlapping-selections))
       (-let (for-deletion
              real-cursor?
              ((id beg end) (car group-or-overlapping-regions)))
@@ -609,11 +610,11 @@ Restore it after BODY evaluation if it is still alive."
                        ((/= id i)
                         (push i for-deletion))))
         (pcase id
-          (0 (hel-set-region beg end dir))
+          (0 (hel-select (cons beg end) dir))
           (_ (when-let* ((cursor (gethash id hel--cursors-table)))
                (cond (real-cursor?
                       (hel-restore-point-from-fake-cursor cursor)
-                      (hel-set-region beg end dir))
+                      (hel-select (cons beg end) dir))
                      ((< dir 0)
                       (hel-move-fake-cursor cursor beg end))
                      (t
@@ -623,13 +624,13 @@ Restore it after BODY evaluation if it is still alive."
             (hel--delete-fake-cursor cursor)))))
     (hel-auto-multiple-cursors-mode)))
 
-(defun hel--overlapping-regions ()
+(defun hel--overlapping-selections ()
   "Return the list of groups, where each group is a list of
 cons cells (ID . (START END)) denoting fake cursor ID and its
 region bounds. Inside each group, all regions are overlapping
 and sorted by starting position. ID 0 coresponds to the real
 cursor."
-  (let ((alist (hel--regions-ranges))
+  (let ((alist (hel--selection-ranges))
         result
         current-group
         (current-end (point-min)))
@@ -646,7 +647,7 @@ cursor."
       (push (nreverse current-group) result))
     (nreverse result)))
 
-(defun hel--regions-ranges ()
+(defun hel--selection-ranges ()
   "Return the alist with cons cells (ID . (START END)).
 \(START END) are bounds of regions. Alist is sorted by START.
 ID 0 coresponds to the real cursor."

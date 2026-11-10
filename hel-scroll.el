@@ -63,7 +63,7 @@ to one screen so the main cursor stay in sync with fake ones."
       (if hel-multiple-cursors-mode
           ;; Whatever happens, cursor must not move, so
           ;; it stays in sync with the fake cursors.
-          (hel-save-region
+          (hel-save-selection
             (hel--animate-scroll delta duration))
         (hel--animate-scroll delta duration t)))))
 
@@ -378,7 +378,7 @@ backward instead."
   "Smoothly scroll current line to the top of the window."
   :multiple-cursors nil
   (interactive)
-  (hel-save-region
+  (hel-save-selection
     (hel--animate-scroll (-> (cdr (posn-x-y (posn-at-point)))
                              (or 0) ; because sometimes `posn-at-point' returns nil
                              (1-)) ; minus 1 pixel so that the cursor doesn't move
@@ -397,7 +397,7 @@ backward instead."
          (y-at-point (or (cdr (posn-x-y (posn-at-point)))
                          0))
          (delta (- win-height y-at-point line-height 1)))
-    (hel-save-region
+    (hel-save-selection
       (hel--animate-scroll (- delta) hel-scroll-half-page-duration))))
 
 (put 'hel-scroll-line-to-bottom 'scroll-command t)

@@ -199,8 +199,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-beginning-of-line-command))
   (interactive)
-  (hel-set-region (if hel--extend-selection (mark) (point))
-                  (hel-beginning-of-line)))
+  (hel-select-motion (point) (hel-beginning-of-line)))
 
 ;; gs
 (hel-define-command hel-first-non-blank ()
@@ -209,11 +208,11 @@ Use visual line when `visual-line-mode' is active."
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (hel-set-region (if hel--extend-selection (mark) (point))
-                  (progn (hel-beginning-of-line)
-                         (skip-syntax-forward " " (line-end-position))
-                         (backward-prefix-chars)
-                         (point))))
+  (hel-select-motion (point)
+                     (progn (hel-beginning-of-line)
+                            (skip-syntax-forward " " (line-end-position))
+                            (backward-prefix-chars)
+                            (point))))
 
 ;; gl
 (hel-define-command hel-end-of-line-command ()
@@ -223,8 +222,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-end-of-line-command))
   (interactive)
-  (hel-set-region (if hel--extend-selection (mark) (point))
-                  (hel-end-of-line))
+  (hel-select-motion (point) (hel-end-of-line))
   ;; "Stick" cursor to the end of line after moving to it. Vertical
   ;; motions right after "gl" will place point at the end of each line.
   (when (and (not visual-line-mode)
@@ -240,21 +238,20 @@ Use visual line when `visual-line-mode' is active."
   (interactive "p")
   (let ((thing 'hel-paragraph)
         (dir (hel-sign count)))
-    (hel-restore-region-on-error
+    (hel-restore-selection-on-error
       (if (< dir 0)
           (when (bobp) (user-error "Beginning of buffer"))
         (when (eobp) (user-error "End of buffer")))
       (hel-push-point (point))
-      (hel-set-region (if hel--extend-selection (mark) (point))
-                      (progn
-                        (cond ((and (< dir 0) move-to-bound?)
-                               (hel-forward-end-of-thing thing count))
-                              ((and (< 0 dir) (not move-to-bound?))
-                               (hel-forward-beginning-of-thing thing count))
-                              (t
-                               (forward-thing thing count)))
-                        (point))
-                      (unless hel--extend-selection dir))
+      (hel-select-motion (point)
+                         (progn
+                           (cond ((and (< dir 0) move-to-bound?)
+                                  (hel-forward-end-of-thing thing count))
+                                 ((and (< 0 dir) (not move-to-bound?))
+                                  (hel-forward-beginning-of-thing thing count))
+                                 (t
+                                  (forward-thing thing count)))
+                           (point)))
       (hel-reveal-point-when-on-top))))
 
 ;; {
@@ -406,9 +403,9 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (hel-set-region (if hel--extend-selection (mark) (point))
-                      (progn (forward-thing 'hel-word)
-                             (point))))))
+      (hel-select-motion (point)
+                         (progn (forward-thing 'hel-word)
+                                (point))))))
 
 ;; gb
 (hel-define-command hel-avy-word-backward ()
@@ -424,10 +421,10 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (if hel--extend-selection
-          (hel-set-region (mark) (point))
-        (hel-set-region (point)
-                        (progn (forward-thing 'hel-word)
-                               (point)))))))
+          (hel-select-motion (mark) (point))
+        (hel-select (cons (point)
+                          (progn (forward-thing 'hel-word)
+                                 (point))))))))
 
 ;; gW
 (hel-define-command hel-avy-WORD-forward ()
@@ -440,9 +437,9 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (hel-set-region (if hel--extend-selection (mark) (point))
-                      (progn (forward-thing 'hel-WORD)
-                             (point))))))
+      (hel-select-motion (point)
+                         (progn (forward-thing 'hel-WORD)
+                                (point))))))
 
 ;; gB
 (hel-define-command hel-avy-WORD-backward ()
@@ -457,10 +454,10 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (if hel--extend-selection
-          (hel-set-region (mark) (point))
-        (hel-set-region (point)
-                        (progn (forward-thing 'hel-WORD)
-                               (point)))))))
+          (hel-select-motion (mark) (point))
+        (hel-select (cons (point)
+                          (progn (forward-thing 'hel-WORD)
+                                 (point))))))))
 
 ;; gj
 (hel-define-command hel-avy-next-line (direction)
@@ -481,7 +478,7 @@ to the chosen one."
     (hel-push-point)
     (if hel--extend-selection
         (let ((lines? (hel-linewise-selection-p)))
-          (hel-set-region (mark) pos)
+          (hel-select-motion (mark) pos)
           (if lines? (hel-expand-selection-to-full-lines)))
       ;; else
       (deactivate-mark)
@@ -594,7 +591,7 @@ depending on DIRECTION."
   "Add COUNT blank lines below selection."
   :multiple-cursors t
   (interactive "p")
-  (hel-save-region
+  (hel-save-selection
     (when (use-region-p)
       (hel-ensure-region-direction 1))
     (unless (hel-linewise-selection-p 1)
@@ -606,7 +603,7 @@ depending on DIRECTION."
   "Add COUNT blank lines above selection."
   :multiple-cursors t
   (interactive "p")
-  (hel-save-region
+  (hel-save-selection
     (when (use-region-p)
       (hel-ensure-region-direction -1))
     (hel--beginning-of-line)
@@ -724,7 +721,7 @@ in the kill ring."
       (message "Copied into kill-ring"))
     (hel-maybe-set-killed-rectangle)
     (when (called-interactively-p 'interactive)
-      (hel-pulse-main-region))))
+      (hel-pulse-main-selection))))
 
 (defun hel-maybe-set-killed-rectangle ()
   "Add the latest `kill-ring' entry of each cursor to `killed-rectangle',
@@ -792,9 +789,9 @@ one. With no selection — replace COUNT characters before point."
   (if (use-region-p)
       (let ((char (read-char "Replace with: " t))
             (deactivate-mark nil))
-        (hel-replace-chars (region-beginning) (region-end) char))
-    (hel-read-char-and-replace (max (point-min) (- (point) count))
-                               (point))))
+        (hel-replace-chars (cons (region-beginning) (region-end)) char))
+    (hel-read-char-and-replace (cons (max (point-min) (- (point) count))
+                                     (point)))))
 
 ;; R
 (hel-define-command hel-replace-with-kill-ring (count)
@@ -814,20 +811,20 @@ forward)."
                                                   yank-transform-functions))
                   ((symbol-function 'push-mark) #'hel-push-mark))
           (yank))
-        (hel-set-region (mark t) (point) dir)
+        (hel-select (hel-range (mark t) (point)) dir)
         (hel-extend-selection -1)
         (when (and (derived-mode-p 'prog-mode)
                    (use-region-p))
           (indent-region (region-beginning) (region-end))))
-    (hel-read-char-and-replace (point)
-                               (min (point-max) (+ (point) count)))))
+    (hel-read-char-and-replace (cons (point)
+                                     (min (point-max) (+ (point) count))))))
 
 ;; J
 (hel-define-command hel-join-line ()
   "Join the selected lines."
   :multiple-cursors t
   (interactive "*")
-  (hel-save-region
+  (hel-save-selection
     (let* ((deactivate-mark nil)
            (region? (use-region-p))
            (count (let ((n (if region?
@@ -869,13 +866,12 @@ forward)."
   "Invert case of characters."
   :multiple-cursors t
   (interactive "*")
-  (if-let* ((region (hel-region)))
-      (-let (((beg end) region)
-             (deactivate-mark nil))
-        (hel-invert-case-in-region beg end)
-        (apply #'hel-set-region region))
+  (if-let* ((region (hel-selection)))
+      (let ((deactivate-mark nil))
+        (hel-invert-case-in-range (car region))
+        (apply #'hel-select region))
     ;; else
-    (hel-invert-case-in-region (point) (1+ (point)))))
+    (hel-invert-case-in-range (cons (point) (1+ (point))))))
 
 ;; ` or gu
 (hel-define-command hel-downcase (count)
@@ -961,7 +957,8 @@ When called interactively — toggle extending selection."
                           (forward-thing 'hel-line (- motion-dir))
                           (point))
                       (mark))))
-        (hel-set-region start end)))
+        (set-mark start)
+        (goto-char end)))
     (when (= 1 (count-lines (region-beginning) (region-end) t))
       (hel-ensure-region-direction -1))
     (setq disable-point-adjustment t)))
@@ -981,10 +978,10 @@ When called interactively — toggle extending selection."
   (hel-push-point)
   ;; `minibuffer-prompt-end'is really `point-min' in most cases, but if we're
   ;; in the minibuffer, this is at the end of the prompt.
-  (hel-set-region (minibuffer-prompt-end) (point-max) -1))
+  (hel-select (cons (minibuffer-prompt-end) (point-max)) -1))
 
 ;; M-s
-(hel-define-command hel-split-region-on-newline ()
+(hel-define-command hel-split-selection-on-newline ()
   "Split selections on line boundaries."
   :multiple-cursors nil
   (interactive)
@@ -1021,7 +1018,7 @@ When called interactively — toggle extending selection."
            (mark  (progn (goto-char (mark-marker))
                          (hel-skip-chars " \t\r\n" dir)
                          (point))))
-      (hel-set-region mark point))))
+      (hel-select (hel-range mark point) dir))))
 
 ;; &
 (hel-define-command hel-align-selections ()
@@ -1067,7 +1064,7 @@ When called interactively — toggle extending selection."
   (hel-with-each-cursor
     (hel-motion-loop (dir count)
       (if (use-region-p)
-          (hel--copy-region dir)
+          (hel--copy-selection dir)
         (hel--copy-cursor dir)))))
 
 ;; M-c
@@ -1091,15 +1088,15 @@ When called interactively — toggle extending selection."
     (deactivate-mark)
     (goto-char pos)))
 
-(defun hel--copy-region (direction)
+(defun hel--copy-selection (direction)
   "Copy region toward the DIRECTION."
-  (-let* (((beg end region-dir) (hel-region))
+  (-let* ((((beg . end) region-dir) (hel-selection))
           (num-of-lines (count-lines beg end))
           (beg-column (save-excursion (goto-char beg) (current-column)))
           (end-column (save-excursion (goto-char end) (current-column))))
     (when-let* ((bounds (save-excursion
                           (goto-char (if (< direction 0) beg end))
-                          (hel--bounds-of-following-region
+                          (hel--bounds-of-following-range
                            beg-column end-column num-of-lines direction))))
       (let (point mark)
         (if (< region-dir 0)
@@ -1113,8 +1110,8 @@ When called interactively — toggle extending selection."
           (goto-char point)
           (set-marker (mark-marker) mark))))))
 
-(defun hel--bounds-of-following-region ( start-column end-column
-                                         number-of-lines direction)
+(defun hel--bounds-of-following-range ( start-column end-column
+                                        number-of-lines direction)
   "Return bounds of following region toward the DIRECTION that starts
 at START-COLUMN, ends at END-COLUMN and consists of NUMBER-OF-LINES."
   (when (< direction 0)
@@ -1179,7 +1176,7 @@ You may restore them with %s (`hel-restore-cursors')."
                       (point)
                       (if (use-region-p) (mark) 0)))))
       (hel-disable-multiple-cursors-mode)
-      (hel-set-region beg end))))
+      (hel-select (cons beg end)))))
 
 ;; gg
 (hel-define-command hel-first-selection ()
@@ -1269,10 +1266,10 @@ You may restore them with %s (`hel-restore-cursors')."
          (content (buffer-substring (overlay-get first-cursor 'point)
                                     (overlay-get first-cursor 'mark))))
     (dolist (cursor (cdr cursors))
-      (setq content (hel-exchange-fake-region-content cursor content)))
-    (hel-exchange-fake-region-content first-cursor content)))
+      (setq content (hel-exchange-fake-selection-content cursor content)))
+    (hel-exchange-fake-selection-content first-cursor content)))
 
-(defun hel-exchange-fake-region-content (cursor content)
+(defun hel-exchange-fake-selection-content (cursor content)
   "Exchange the CURSORs region content with CONTENT and return the old one."
   (hel-with-fake-cursor cursor
     (let ((deactivate-mark nil) ;; Do not deactivate mark after insertion.
@@ -1404,7 +1401,7 @@ already there."
                               (car (hel-bounds-of-complement-of-thing-at-point thing))))
                        (cons space-beg thing-end))))
                (cons thing-beg thing-end))]
-      (hel-set-region beg end))))
+      (hel-select (cons beg end)))))
 
 ;; mip
 (hel-define-command hel-mark-inner-paragraph (count)
@@ -1466,7 +1463,7 @@ already there."
                     (goto-char thing-beg)
                     (car (bounds-of-thing-at-point 'hel-paragraph)))
               end thing-end))
-    (hel-set-region beg end (hel-sign count)))
+    (hel-select (cons beg end) (hel-sign count)))
   (hel-reveal-point-when-on-top))
 
 ;; mi"
@@ -1475,15 +1472,15 @@ already there."
   :merge-selections t
   (interactive)
   (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?\"))
-    (hel-set-region (1+ beg) (1- end))))
+    (hel-select (cons (1+ beg) (1- end)))))
 
 ;; ma"
 (hel-define-command hel-mark-a-double-quoted ()
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?\"))
-    (hel-set-region beg end)))
+  (-some-> (hel-bounds-of-quoted-at-point ?\")
+    (hel-select)))
 
 ;; mi'
 (hel-define-command hel-mark-inner-single-quoted ()
@@ -1491,15 +1488,15 @@ already there."
   :merge-selections t
   (interactive)
   (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?'))
-    (hel-set-region (1+ beg) (1- end))))
+    (hel-select (cons (1+ beg) (1- end)))))
 
 ;; ma'
 (hel-define-command hel-mark-a-single-quoted ()
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?'))
-    (hel-set-region beg end)))
+  (-some-> (hel-bounds-of-quoted-at-point ?')
+    (hel-select)))
 
 ;; mi`
 (hel-define-command hel-mark-inner-back-quoted ()
@@ -1507,15 +1504,15 @@ already there."
   :merge-selections t
   (interactive)
   (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?`))
-    (hel-set-region (1+ beg) (1- end))))
+    (hel-select (cons (1+ beg) (1- end)))))
 
 ;; ma`
 (hel-define-command hel-mark-a-back-quoted ()
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?`))
-    (hel-set-region beg end)))
+  (-some-> (hel-bounds-of-quoted-at-point ?`)
+    (hel-select)))
 
 ;; mi( mi)
 (hel-define-command hel-mark-inner-paren ()
@@ -1523,15 +1520,15 @@ already there."
   :merge-selections t
   (interactive)
   (pcase (hel-4-bounds-of-brackets-at-point ?\( ?\))
-    (`(,_ ,beg ,end ,_) (hel-set-region beg end))))
+    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
 
 ;; ma( ma)
 (hel-define-command hel-mark-a-paren ()
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (-when-let ((beg . end) (hel-bounds-of-brackets-at-point ?\( ?\)))
-    (hel-set-region beg end)))
+  (-some-> (hel-bounds-of-brackets-at-point ?\( ?\))
+    (hel-select)))
 
 ;; mi[ mi]
 (hel-define-command hel-mark-inner-bracket ()
@@ -1539,15 +1536,15 @@ already there."
   :merge-selections t
   (interactive)
   (pcase (hel-4-bounds-of-brackets-at-point ?\[ ?\])
-    (`(,_ ,beg ,end ,_) (hel-set-region beg end))))
+    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
 
 ;; ma[ ma]
 (hel-define-command hel-mark-a-bracket ()
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (-when-let ((beg . end) (hel-bounds-of-brackets-at-point ?\[ ?\]))
-    (hel-set-region beg end)))
+  (-some-> (hel-bounds-of-brackets-at-point ?\[ ?\])
+    (hel-select)))
 
 ;; mi{ mi}
 (hel-define-command hel-mark-inner-curly ()
@@ -1555,15 +1552,15 @@ already there."
   :merge-selections t
   (interactive)
   (pcase (hel-4-bounds-of-brackets-at-point ?{ ?})
-    (`(,_ ,beg ,end ,_) (hel-set-region beg end))))
+    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
 
 ;; ma{ ma}
 (hel-define-command hel-mark-a-curly ()
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (-when-let ((beg . end) (hel-bounds-of-brackets-at-point ?{ ?}))
-    (hel-set-region beg end)))
+  (-some-> (hel-bounds-of-brackets-at-point ?{ ?})
+    (hel-select)))
 
 ;; mi< mi>
 (hel-define-command hel-mark-inner-angle ()
@@ -1571,7 +1568,7 @@ already there."
   :merge-selections t
   (interactive)
   (pcase (hel-4-bounds-of-brackets-at-point ?< ?>)
-    (`(,_ ,beg ,end ,_) (hel-set-region beg end))))
+    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
 
 ;; ma< ma>
 (hel-define-command hel-mark-an-angle ()
@@ -1579,7 +1576,7 @@ already there."
   :merge-selections t
   (interactive)
   (-when-let ((beg _ _ end) (hel-4-bounds-of-brackets-at-point ?< ?>))
-    (hel-set-region beg end)))
+    (hel-select (cons beg end))))
 
 (hel-define-command hel-mark-inner-surround ()
   :multiple-cursors t
@@ -1590,7 +1587,7 @@ already there."
                       (get last-command-event 'ascii-character)))
               (bounds (hel-surround--remove char)))
     (-let [(_ beg end _) bounds]
-      (hel-set-region beg end))))
+      (hel-select (cons beg end)))))
 
 (hel-define-command hel-mark-a-surround ()
   :multiple-cursors t
@@ -1601,7 +1598,7 @@ already there."
                       (get last-command-event 'ascii-character)))
               (bounds (hel-surround--remove char)))
     (-let [(beg _ _ end) bounds]
-      (hel-set-region beg end))))
+      (hel-select (cons beg end)))))
 
 ;;; Surround
 
@@ -1639,7 +1636,7 @@ With linewise selection (made with %s) tags are placed on separate lines."
         (hel-trim-whitespaces-from-selection))
       (let ((beg (copy-marker (region-beginning)))
             (end (copy-marker (region-end) t)))
-        (hel-save-region
+        (hel-save-selection
           (goto-char beg)
           (insert left)
           (when linewise? (newline))
@@ -1688,7 +1685,7 @@ the nearest enclosing tag."
                                            (hel-surround--insert))))))
     (-when-let ((left-beg left-end right-beg right-end) 4-bounds)
       (let ((deactivate-mark nil))
-        (hel-save-region
+        (hel-save-selection
           (delete-region right-beg right-end)
           (goto-char right-beg)
           (insert right)

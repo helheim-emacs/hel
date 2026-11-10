@@ -68,21 +68,22 @@ flickering."
        (unless hel-executing-command-for-fake-cursor
          (redisplay)))))
 
-(defmacro hel-save-region (&rest body)
-  "Evaluate BODY with preserving original region.
+(defmacro hel-save-selection (&rest body)
+  "Evaluate BODY with preserving original selection.
 The difference from `save-mark-and-excursion' is that both point and mark are
-saved as markers and correctly handle case when text was inserted before region."
+saved as markers and correctly handle case when text was inserted before
+the selection."
   (declare (indent 0) (debug t))
-  (cl-with-gensyms (pnt beg end dir)
+  (cl-with-gensyms (pnt begin end dir)
     `(if (use-region-p)
          (let ((deactivate-mark nil)
-               (,beg (copy-marker (region-beginning) t))
+               (,begin (copy-marker (region-beginning) t))
                (,end (copy-marker (region-end)))
                (,dir (hel-region-direction)))
            (unwind-protect
                (save-excursion ,@body)
-             (hel-set-region ,beg ,end ,dir)
-             (set-marker ,beg nil)
+             (hel-select (cons ,begin ,end) ,dir)
+             (set-marker ,begin nil)
              (set-marker ,end nil)))
        ;; else
        (let ((,pnt (copy-marker (point) t)))
@@ -92,19 +93,19 @@ saved as markers and correctly handle case when text was inserted before region.
            (goto-char ,pnt)
            (set-marker ,pnt nil))))))
 
-(defmacro hel-restore-region-on-error (&rest body)
-  "Restore initial region if error occured during BODY evaluation."
+(defmacro hel-restore-selection-on-error (&rest body)
+  "Restore initial selection if error occured during BODY evaluation."
   (declare (indent 0) (debug t))
-  (cl-with-gensyms (region point something-goes-wrong?)
-    `(let ((,region (hel-region))
+  (cl-with-gensyms (selection point something-goes-wrong?)
+    `(let ((,selection (hel-selection))
            (,point (point))
            (,something-goes-wrong? t))
        (unwind-protect
            (prog1 (progn ,@body)
              (setq ,something-goes-wrong? nil))
          (when ,something-goes-wrong?
-           (if ,region
-               (apply #'hel-set-region ,region)
+           (if ,selection
+               (apply #'hel-select ,selection)
              (goto-char ,point)))))))
 
 ;;; Utils
@@ -161,23 +162,23 @@ DIRECTION: 1 or -1. If provided — check if region spawns at least one full
 logical line on desired end of the region."
   (and (use-region-p)
        (save-excursion
-         (let ((beg (region-beginning))
+         (let ((begin (region-beginning))
                (end (region-end)))
            (cond ((null direction)
-                  (and (progn (goto-char beg) (bolp))
+                  (and (progn (goto-char begin) (bolp))
                        (progn (goto-char end) (bolp))))
                  ((<= direction 0)
-                  (goto-char beg)
+                  (goto-char begin)
                   (and (bolp)
                        ;; at least one full line is selected:
-                       ;; point is at BEG, END should be on a later line
+                       ;; point is at BEGIN, END should be on a later line
                        (< (line-end-position) end)))
                  (t
                   (goto-char end)
                   (and (bolp)
                        ;; at least one full line is selected:
-                       ;; point is at END, BEG should be on an earlier line
-                       (< beg (line-beginning-position)))))))))
+                       ;; point is at END, BEGIN should be on an earlier line
+                       (< begin (line-beginning-position)))))))))
 
 (defun hel-visual-lines-p ()
   "Return t if active region spawns visual lines."
@@ -224,10 +225,10 @@ that `match-beginning', `match-end' and `match-data' access."
           (looking-at string)
         (looking-back string (line-beginning-position)))
     ;; literall
-    (let* ((beg (point))
-           (end (+ beg (* (length string) direction))))
+    (let* ((begin (point))
+           (end (+ begin (* (length string) direction))))
       (and (<= (point-min) end (point-max))
-           (string-equal (buffer-substring-no-properties beg end) string)))))
+           (string-equal (buffer-substring-no-properties begin end) string)))))
 
 (defun hel-string-ends-with-newline (string)
   "Return t if STRING ends with newline character."
@@ -249,36 +250,41 @@ that `match-beginning', `match-end' and `match-data' access."
         (and (consp cursor-type)
              (eq (car cursor-type) 'bar)))))
 
-(defun hel-set-region (start end &optional direction)
-  "Set the active region between START and END positions.
+(defun hel-range (a b)
+  "Return the range between positions A and B, which can come in any order."
+  (cons (min a b) (max a b)))
 
-DIRECTION of the region:
-  nil      Region direction is from START to END.
-   1       Force forward region (mark < point).
-  -1       Force backward region (point < mark).
+(defun hel-range-length (range)
+  "Return the length of RANGE."
+  (- (cdr range) (car range)))
 
-When DIRECTION is specified, START and END can be provided in any order."
-  (when (and (numberp direction)
-             (xor (< 0 direction)
-                  (<= start end)))
-    (cl-rotatef start end))
-  (set-mark start)
+(cl-defun hel-select ((begin . end) &optional (direction 1))
+  "Select the range BEGIN..END.
+The selection is forward, i.e. from BEGIN to END, when DIRECTION is 1, and
+backward when DIRECTION is -1."
+  (if (< direction 0)
+      (progn (set-mark end)
+             (goto-char begin))
+    ;; else
+    (set-mark begin)
+    (goto-char end)))
+
+(defun hel-select-motion (start end)
+  "Select from START to END, with point at END.
+When extending selection is active, keep the mark and only move point."
+  (set-mark (if hel--extend-selection (mark) start))
   (goto-char end))
 
-(defun hel-region ()
-  "Region list with parameters of the active region. If no region return nil.
+(defun hel-selection ()
+  "Return (RANGE DIRECTION) of the selection, or nil without a selection.
+RANGE is (BEGIN . END). `hel-select' takes the returned list as its arguments:
 
-The result is a list with following elements:
-
-  (BEG END DIRECTION)
-
-It is suitable to restore region with `hel-set-region':
-
-  (let ((region (hel-region)))
+  (let ((selection (hel-selection)))
     ...
-    (apply #\='hel-set-region region))"
+    (apply #\='hel-select selection))"
   (if (use-region-p)
-      (list (region-beginning) (region-end) (hel-region-direction))))
+      (list (cons (region-beginning) (region-end))
+            (hel-region-direction))))
 
 (defun hel-maybe-set-mark ()
   "Set mark at point unless extending selection is active."
@@ -291,7 +297,7 @@ It is suitable to restore region with `hel-set-region':
       (deactivate-mark)))
 
 (defun hel-ensure-region-direction (direction)
-  "Exchange point and mark if region direction mismatch DIRECTION.
+  "Exchange point and mark if the region direction mismatches DIRECTION.
 DIRECTION should be 1 or -1."
   (when (/= direction (hel-region-direction))
     (hel--exchange-point-and-mark)))
@@ -331,10 +337,9 @@ the returned list to the original symbol like this:
                       (propertize 'face 'error)))))
     regexp))
 
-(cl-defun hel-collect-positions (fun &optional (start (window-start))
-                                               (end (window-end)))
+(cl-defun hel-collect-positions (fun &optional (begin (window-start)) (end (window-end)))
   "Consecutively call FUN and collect point positions after each invocation.
-Finish as soon as point moves outside of START END buffer positions.
+Finish as soon as point moves outside of BEGIN END buffer positions.
 FUN on each invocation should move point."
   (save-excursion
     (cl-loop with win = (get-buffer-window)
@@ -347,12 +352,12 @@ FUN on each invocation should move point."
                         (this-command fun))
                     (call-interactively fun)))
              while (and (/= (point) old-point)
-                        (<= start (point) end))
+                        (<= begin (point) end))
              collect (cons (point) win))))
 
-(defun hel-invert-case-in-region (start end)
-  "Invert case of characters within START...END buffer positions."
-  (goto-char start)
+(cl-defun hel-invert-case-in-range ((begin . end))
+  "Invert case of characters in the range BEGIN..END."
+  (goto-char begin)
   (while (< (point) end)
     (let ((char (following-char)))
       (delete-char 1)
@@ -420,7 +425,7 @@ the string is delimited by general string fences."
     (overlay-buffer)
     (buffer-live-p)))
 
-(defun hel-pulse-main-region (&optional face)
+(defun hel-pulse-main-selection (&optional face)
   (pulse-momentary-highlight-region (region-beginning) (region-end) face))
 
 (defun hel-reveal-point-when-on-top (&rest _)
@@ -454,23 +459,23 @@ REST contains all other elements."
              (setq lol (-non-nil (-map #'cdr lol)))))
     (nreverse result)))
 
-(defun hel-replace-chars (beg end char)
-  "Replace each non-newline character between BEG and END with CHAR."
+(cl-defun hel-replace-chars ((begin . end) char)
+  "Replace each non-newline character in the range BEGIN..END with CHAR."
   (save-excursion
-    (goto-char beg)
+    (goto-char begin)
     (while (< (point) end)
       (if (eq (char-after) ?\n)
           (forward-char 1)
         (insert-char char)
         (delete-char 1)))))
 
-(defun hel-read-char-and-replace (beg end)
-  "Replace characters in BEG..END with an interactive entered one."
-  (when (< beg end)
-    (let ((overlay (-doto (make-overlay beg end nil t nil)
+(cl-defun hel-read-char-and-replace ((begin . end))
+  "Replace characters in the range BEGIN..END with an interactive entered one."
+  (when (< begin end)
+    (let ((overlay (-doto (make-overlay begin end nil t nil)
                      (overlay-put 'face 'region))))
       (unwind-protect
-          (hel-replace-chars beg end (read-char "replace: " t))
+          (hel-replace-chars (cons begin end) (read-char "replace: " t))
         (delete-overlay overlay)))))
 
 (cl-defun hel-hide-cursor (&optional (window (selected-window)))
@@ -609,29 +614,29 @@ Move over visual line when `visual-line-mode' is active."
   "Move to the COUNT-th next start of a word-like THING."
   (cl-assert (< 0 count))
   (skip-chars-forward "\r\n")
-  (hel-set-region (if hel--extend-selection (mark) (point))
-                  (progn (when (hel-whitespace-p (following-char))
-                           (cl-decf count))
-                         (forward-thing thing count)
-                         (hel-skip-whitespaces)
-                         (point))))
+  (hel-select-motion (point)
+                     (progn (when (hel-whitespace-p (following-char))
+                              (cl-decf count))
+                            (forward-thing thing count)
+                            (hel-skip-whitespaces)
+                            (point))))
 
 (defun hel--backward-word-start (thing count)
   "Move to the COUNT-th previous start of a word-like THING."
   (cl-assert (< 0 count))
   (skip-chars-backward "\r\n")
-  (hel-set-region (if hel--extend-selection (mark) (point))
-                  (progn (forward-thing thing (- count))
-                         (point))))
+  (hel-select-motion (point)
+                     (progn (forward-thing thing (- count))
+                            (point))))
 
 (defun hel--forward-word-end (thing count)
   "Move to the COUNT-th next word-like THING end."
   (interactive "p")
   (cl-assert (< 0 count))
   (skip-chars-forward "\r\n")
-  (hel-set-region (if hel--extend-selection (mark) (point))
-                  (progn (forward-thing thing count)
-                         (point))))
+  (hel-select-motion (point)
+                     (progn (forward-thing thing count)
+                            (point))))
 
 ;;; Things
 ;;;; `hel-line'
@@ -842,21 +847,21 @@ line(s). With no region, select current line."
         (let ((beg (region-beginning))
               (end (region-end))
               (dir (or direction (hel-region-direction))))
-          (hel-set-region (progn (goto-char beg)
-                                 (car (bounds-of-thing-at-point 'hel-line)))
-                          (progn (goto-char end)
-                                 (cdr (bounds-of-thing-at-point 'hel-line)))
-                          dir))
+          (hel-select (cons (progn (goto-char beg)
+                                   (car (bounds-of-thing-at-point 'hel-line)))
+                            (progn (goto-char end)
+                                   (cdr (bounds-of-thing-at-point 'hel-line))))
+                      dir))
       ;; else no region
       (-let [(beg . end) (bounds-of-thing-at-point 'hel-line)]
-        (hel-set-region beg end direction)))
+        (hel-select (cons beg end) (or direction 1))))
     (hel--fix-newline-at-end-of-buffer)
     t))
 
 (cl-defun hel-mark-inner-thing (thing &optional (count 1))
   (cl-assert (/= count 0))
   (-let (((beg . end) (hel-bounds-of-count-things-at-point thing count)))
-    (hel-set-region beg end (hel-sign count))))
+    (hel-select (cons beg end) (hel-sign count))))
 
 (defun hel-mark-a-thing (thing count)
   "Select COUNT THINGs with spacing around.
@@ -875,7 +880,7 @@ such as `paragraph', `hel-function'."
                             (car (hel-bounds-of-complement-of-thing-at-point thing))))
                      (cons space-beg thing-end)))
                (cons thing-beg thing-end))))
-    (hel-set-region beg end (hel-sign count))))
+    (hel-select (cons beg end) (hel-sign count))))
 
 (defun hel-bounds-of-count-things-at-point (thing count)
   "Return the bounds of COUNT things at point.
@@ -927,7 +932,7 @@ such as `hel-word', `hel-sentence', `hel-line', `paragraph'."
 (defun hel-mark-thing-forward (thing count)
   "Select from point to the end of the THING (or COUNT following THINGs).
 If no THING at point select COUNT following THINGs."
-  (hel-restore-region-on-error
+  (hel-restore-selection-on-error
     (let ((point-pos (point))
           (dir (hel-sign count)))
       (if (< dir 0)
@@ -949,7 +954,8 @@ If no THING at point select COUNT following THINGs."
                      (point)))
             (end (progn (forward-thing thing count)
                         (point))))
-        (hel-set-region start end)
+        (set-mark start)
+        (goto-char end)
         (when (= (region-beginning) (region-end))
           (hel-mark-thing-forward thing dir))
         (hel-reveal-point-when-on-top)))))
@@ -974,7 +980,7 @@ If no THING at point select COUNT following THINGs."
                               (car (hel-bounds-of-complement-of-thing-at-point thing))))
                        (cons space-beg thing-end))))
                (cons thing-beg thing-end))]
-      (hel-set-region beg end))))
+      (hel-select (cons beg end)))))
 
 ;;; Surround
 
@@ -1350,7 +1356,7 @@ that `match-beginning', `match-end' and `match-data' access."
     (while (and (not found)
                 (funcall search-fun string bound t direction))
       (if (or (not visible?)
-              (hel-range-visible? (match-beginning 0) (match-end 0)))
+              (hel-range-visible-p (cons (match-beginning 0) (match-end 0))))
           (setq found t)))
     (if found (point))))
 
@@ -1415,14 +1421,14 @@ forward (or BACKWARD) and jump to new top location."
         (switch-to-buffer buffer)
         (deactivate-mark)))))
 
-(defun hel-rotate-ring (ring &optional backward-p)
+(defun hel-rotate-ring (ring &optional backward?)
   "Rotate the RING elements.
 This function destructively modify RING and should be used the following way:
 `(setq RING (hel-rotate-ring RING))'
 
 RING should be a list like `mark-ring', not the ring structure from
 `ring.el'."
-  (if backward-p
+  (if backward?
       (nconc (last ring) (nbutlast ring))
     (nconc (cdr ring) (list (car ring)))))
 
@@ -1458,7 +1464,7 @@ YANK-FUNCTION should be a `yank' like function."
               ;; `hel-push-mark' is executed instead.
               ((symbol-function 'push-mark) #'hel-push-mark))
       (funcall yank-function))
-    (hel-set-region (mark t) (point) region-dir)
+    (hel-select (hel-range (mark t) (point)) region-dir)
     (hel-extend-selection -1)
     (when (and (derived-mode-p 'prog-mode)
                (use-region-p))
@@ -1493,14 +1499,14 @@ YANK-FUNCTION should be a `yank' like function."
 (defun hel-indent (indent-function count)
   "Indent active region COUNT times. With no selection indent current line.
 INDENT-FUNCTION should be a `indent-rigidly-left' like function that takes
-BEG, END position and done the indentation."
+BEGIN, END position and done the indentation."
   (cond ((hel-linewise-selection-p)
          (let ((deactivate-mark nil))
            (dotimes (_ count)
              (funcall indent-function (region-beginning) (region-end))))
          (hel-extend-selection -1))
         ((use-region-p)
-         (hel-save-region
+         (hel-save-selection
            (hel-expand-selection-to-full-lines)
            (dotimes (_ count)
              (funcall indent-function (region-beginning) (region-end))))
@@ -1532,8 +1538,8 @@ character -- add it and adjust selection."
 
 ;;; Fold opening
 
-(defun hel-range-visible? (start end)
-  "Test whether the text in [START, END) range can be shown to the user.
+(cl-defun hel-range-visible-p ((begin . end))
+  "Test whether the text in the range BEGIN..END can be shown to the user.
 
 Return values:
 
@@ -1546,8 +1552,7 @@ Return values:
 
   t       The range is, at least partially, visible with no folds to open.
           (E.g. Org link with hidden target.)"
-  (when (/= start end)
-    (when (< end start) (cl-rotatef end start))
+  (when (/= begin end)
     (save-excursion
       ;; The range is "showable" if any of its positions is visible, or
       ;; or hidden by openable overlay.
@@ -1555,7 +1560,7 @@ Return values:
             (openable-overlays nil))
         ;; Walk the whole range, stepping at every text-property or
         ;; overlay boundary.
-        (goto-char start)
+        (goto-char begin)
         (while (< (point) end)
           (cond ((not (invisible-p (point)))
                  (setq visible? t))
