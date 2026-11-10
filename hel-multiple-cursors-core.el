@@ -689,6 +689,17 @@ command. Calls with equal PROMPT or without it would be indistinguishable."
        ;; else
        (apply orig-fun args))))
 
+(defun hel-maybe-set-killed-rectangle ()
+  "Add the latest `kill-ring' entry of each cursor to `killed-rectangle',
+unless they all are equal. You can paste them later with `yank-rectangle'."
+  (when hel-multiple-cursors-mode
+    (let ((entries (hel-with-real-cursor-as-fake
+                     (-map (lambda (cursor)
+                             (car-safe (overlay-get cursor 'kill-ring)))
+                           (hel-all-fake-cursors :sort)))))
+      (unless (hel-all-elements-are-the-same-p entries)
+        (setq killed-rectangle entries)))))
+
 (defun hel-set-unsupported-command (symbol)
   "Prevent command from being executed while there are multiple cursors."
   (hel-advice-add symbol :around #'hel--unsupported-a)
