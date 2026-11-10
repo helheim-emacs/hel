@@ -526,7 +526,11 @@ evaluate BODY, update fake CURSOR."
               (hel--prompt-for-unknown-command command)))
            (hel-save-window-scroll
              (hel-save-excursion
-               (dolist (cursor (hel-all-fake-cursors))
+               ;; `syntax-ppss' reuses an earlier parse only for a position
+               ;; after it. In buffer order every cursor finds such a parse;
+               ;; in reverse order none does, and each cursor parses the
+               ;; buffer from its start.
+               (dolist (cursor (hel-all-fake-cursors :sort))
                  (hel-with-fake-cursor cursor
                    (hel--call-interactively command)))))))))
 

@@ -68,7 +68,7 @@ keymaps for these keys and activates the nested keymaps it finds.
 
 Fake cursors are overlays that store point, mark, kill-ring, and buffer-local
 state. The real cursor's command runs first; `hel--post-command-hook` then
-replays it for each fake cursor.
+replays it for each fake cursor, in buffer order.
 
 Command dispatch uses the `multiple-cursors` symbol property:
 
