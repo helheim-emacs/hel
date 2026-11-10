@@ -571,8 +571,8 @@ use `hel-state-property' function.
 (hel-defvar-permanent-local hel-selection-history nil
   "The history of selections.")
 
-(hel-defvar-permanent-local hel--region-was-active-on-insert nil
-  "Whether region was active when we last time switched to Insert state.")
+(hel-defvar-permanent-local hel--selection-was-active-on-insert nil
+  "Whether a selection was active when we last time switched to Insert state.")
 
 (hel-defvar-permanent-local hel-scroll-count 0
   "Hold last used prefix for `hel-scroll-up' and `hel-scroll-down' commands.

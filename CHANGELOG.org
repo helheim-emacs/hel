@@ -3,6 +3,18 @@
 
 - =mst=, =mdt=, =mrt= — surround functionality for XML/HTML tags.
 
+** Changed
+
+- ~hel-set-region~ is removed. Use ~hel-select~ with a range and a direction,
+  or ~hel-select-motion~ for a motion that keeps the mark after =v=.
+
+- The Hel API says "selection" for a selection as a value. ~hel-region~ and
+  ~hel-save-region~ are renamed to ~hel-selection~ and ~hel-save-selection~.
+
+- ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~.
+  ~hel-invert-case-in-range~, ~hel-replace-chars~, ~hel-read-char-and-replace~
+  and ~hel-range-visible-p~ take a range ~(BEGIN . END)~.
+
 * [0.13.0]
 ** Added
 

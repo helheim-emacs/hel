@@ -466,14 +466,14 @@ MODE and STATE should be symbols."
   (if hel-insert-state
       (progn
         (setq hel-undo--previous-command-kind 'other
-              hel--region-was-active-on-insert
+              hel--selection-was-active-on-insert
               (and hel-reactivate-selection-after-insert-state
                    (region-active-p)))
         (hel-with-each-cursor
           (deactivate-mark)))
     ;; else
     (hel-push-point)
-    (when hel--region-was-active-on-insert
+    (when hel--selection-was-active-on-insert
       (hel-with-each-cursor
         (activate-mark)))))
 
