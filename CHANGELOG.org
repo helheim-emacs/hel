@@ -12,8 +12,9 @@
   ~hel-save-region~ are renamed to ~hel-selection~ and ~hel-save-selection~.
 
 - ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~.
-  ~hel-invert-case-in-range~, ~hel-replace-chars~, ~hel-read-char-and-replace~
-  and ~hel-range-visible-p~ take a range ~(BEGIN . END)~.
+  ~hel-trim-whitespace-from-range~, ~hel-invert-case-in-range~,
+  ~hel-replace-chars~, ~hel-read-char-and-replace~ and ~hel-range-visible-p~
+  take a range ~(BEGIN . END)~.
 
 - Word motions, =_= and the text objects take every character with whitespace
   syntax as a blank, such as a page break, a no-break space and an ideographic

@@ -277,20 +277,16 @@ expressions. For arbitrary delimiters use `hel-surround-4-bounds-at-point'.
 
 Return the list (LEFT-BEGIN LEFT-END RIGHT-LEFT RIGHT-END) with 4 positions:
 1. Before LEFT bracket;
-2. After LEFT bracket all following whitespaces and newlines;
-3. Before RIGHT bracket all preceding whitespaces and newlines;
-4. After RIGHT bracket."
-  (-if-let ((left-begin . right-end) (hel-bounds-of-brackets-at-point left right))
-      (save-excursion
-        (let ((left-end (progn
-                          (goto-char (1+ left-begin))
-                          (skip-chars-forward " \t\r\n")
-                          (point)))
-              (right-begin (progn
-                           (goto-char (1- right-end))
-                           (skip-chars-backward " \t\r\n")
-                           (point))))
-          (list left-begin left-end right-begin right-end)))))
+2. After LEFT bracket and the whitespace that follows it;
+3. Before RIGHT bracket and the whitespace that precedes it;
+4. After RIGHT bracket.
+When the brackets hold only whitespace, positions 2 and 3 are both the
+position after LEFT bracket."
+  (-when-let*
+      (((l-begin . r-end) (hel-bounds-of-brackets-at-point left right))
+       ((l-end . r-begin) (or (hel-trim-whitespace-from-range (cons (1+ l-begin) (1- r-end)))
+                              (cons (1+ l-begin) (1+ l-begin)))))
+    (list l-begin l-end r-begin r-end)))
 
 (defun hel-surround-search-outward
     (left right &optional direction limits regexp? balanced?)
