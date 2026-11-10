@@ -31,11 +31,11 @@ In Emacs state Hel provide service keys to control Emacs itself.
 by default is bound to ~upcase-word~, for which Hel has itself version on =M-`= or =gU=.
 #+end_quote
 
-- =:= :: Emacs analoug of command pallete. (Native key is =M-x=)
+- =:= :: Emacs analogue of a command palette. (Native key is =M-x=)
 
 - =C-:= ::
-  Open command palette with only the commands that make sense in the current
-  buffer. (Native key is =M-X=)
+  Open the command palette with only the commands that make sense in the
+  current buffer. (Native key is =M-X=)
 
 - =SPC= :: Leader key (if ~hel-leader~ extension is installed)
 
@@ -67,6 +67,10 @@ by default is bound to ~upcase-word~, for which Hel has itself version on =M-`= 
 - =C-w n= :: Display the buffer of the next command in a new window.
 
 - =C-w r= :: Revert buffer.
+
+- =C-w := / =C-w C-:= ::
+  Run a command, and display its buffer in another window. =C-w C-:= offers
+  only the commands that make sense in the current buffer.
 
 All window commands also duplicated with =C-= prefix for convenience: =C-w C-s=,
 =C-w C-v=, etc.
@@ -231,7 +235,8 @@ All keys available in Emacs state are also work in Normal state.
 
 ** Multiple cursors
 
-- =M-right mouse= :: Create secondary cursor on click.
+- =M-right mouse= ::
+  Add a secondary cursor at the click, or remove the cursor that is there.
 
 - =C= / =M-c= :: Copy selection (cursor) *down* / *up*.
 
@@ -444,7 +449,7 @@ it adds the next object, and =M-i= removes it.
   Go-to previous/next position in the mark-ring. Read help for
   ~hel-backward-mark-ring~ command.
 
-- =C-O= / =C-I= ::
+- =C-S-o= / =C-S-i= ::
   Go-to previous/next position in the ~global-mark-ring~ (read about
   it in Emacs manual).
 
@@ -452,7 +457,6 @@ it adds the next object, and =M-i= removes it.
 
 - =zx= :: save buffer
 
-- =.=  :: repeat last command
 - =gc= :: comment selection
 
 - =go= :: ~imenu~

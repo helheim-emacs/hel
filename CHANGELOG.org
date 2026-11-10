@@ -167,7 +167,7 @@
 - Downcase and upcase commands (=gu= / =gU= or ~`~ / ~M-`~) now accept a numeric
   argument. The cursor no longer moves after these commands.
 
-- =gw= now calls ~fill-paragraph~ instead of ~fill-region~. It is more generic
+- =gq= now calls ~fill-paragraph~ instead of ~fill-region~. It is more generic
   and falls back to ~fill-region~ when a selection is active.
 
 - *[BREAKING]*
