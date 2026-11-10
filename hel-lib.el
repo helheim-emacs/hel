@@ -327,14 +327,16 @@ the returned list to the original symbol like this:
     list))
 
 (defun hel-pcre-to-elisp (regexp)
-  "Convert PCRE REGEXP into Elisp one if Hel configured to use PCRE syntax."
+  "Convert PCRE REGEXP into Elisp one if Hel configured to use PCRE syntax.
+When REGEXP is invalid PCRE, show the error and return nil."
   (if (and hel-use-pcre-regex
            (not (string-empty-p regexp)))
       (condition-case err
           (pcre-to-elisp regexp)
         (rxt-invalid-regexp
          (message (-> (error-message-string err)
-                      (propertize 'face 'error)))))
+                      (propertize 'face 'error)))
+         nil))
     regexp))
 
 (cl-defun hel-collect-positions (fun &optional (begin (window-start)) (end (window-end)))
