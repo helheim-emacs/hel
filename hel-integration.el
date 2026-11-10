@@ -35,6 +35,7 @@
 (require 'hel-multiple-cursors-core)
 (require 'hel-lib)
 (require 'hel-core)
+(require 'hel-surround)
 (require 'hel-commands)
 
 ;;; Integration multiple cursors with Emacs functionality

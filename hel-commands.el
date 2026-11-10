@@ -41,6 +41,7 @@
 (require 'hel-multiple-cursors-core)
 (require 'hel-core)
 (require 'hel-search)
+(require 'hel-surround)
 (require 'avy)
 
 ;; ESC in normal state

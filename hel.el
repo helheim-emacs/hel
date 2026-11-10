@@ -38,6 +38,7 @@
 (require 'hel-macros)
 (require 'hel-multiple-cursors-core)
 (require 'hel-core)
+(require 'hel-surround)
 (require 'hel-commands)
 (require 'hel-search)
 (require 'hel-scroll)
