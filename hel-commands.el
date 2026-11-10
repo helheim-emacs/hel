@@ -723,17 +723,6 @@ in the kill ring."
     (when (called-interactively-p 'interactive)
       (hel-pulse-main-selection))))
 
-(defun hel-maybe-set-killed-rectangle ()
-  "Add the latest `kill-ring' entry of each cursor to `killed-rectangle',
-unless they all are equal. You can paste them later with `yank-rectangle'."
-  (when hel-multiple-cursors-mode
-    (let ((entries (hel-with-real-cursor-as-fake
-                     (-map (lambda (cursor)
-                             (car-safe (overlay-get cursor 'kill-ring)))
-                           (hel-all-fake-cursors :sort)))))
-      (unless (hel-all-elements-are-the-same-p entries)
-        (setq killed-rectangle entries)))))
-
 ;; p
 (hel-define-command hel-paste-after (arg)
   "Paste after selection.
