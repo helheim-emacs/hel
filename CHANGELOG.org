@@ -3,18 +3,23 @@
 
 - =mst=, =mdt=, =mrt= — surround functionality for XML/HTML tags.
 
+- Function, class, argument and comment text objects: =mif= / =maf=, =mit= / =mat=,
+  =mia= / =maa=, =mic= / =mac=, and the jumps =]f= / =[f=, =]t= / =[t=, =]a= / =[a=, =]c= / =[c=.
+  On Emacs 31 they use the tree-sitter queries of Helix, which Hel ships
+  in the =queries= directory. A package recipe must include this directory:
+  ~:files (:defaults "queries")~. Without a query, the function and comment
+  objects use the syntax table, as before.
+
 ** Changed
+
+- =]p= and =[p= run the same commands as =}= and ={=. ~hel-forward-paragraph-end~
+  and ~hel-backward-paragraph-end~ are removed.
 
 - ~hel-set-region~ is removed. Use ~hel-select~ with a range and a direction,
   or ~hel-select-motion~ for a motion that keeps the mark after =v=.
 
 - The Hel API says "selection" for a selection as a value. ~hel-region~ and
   ~hel-save-region~ are renamed to ~hel-selection~ and ~hel-save-selection~.
-
-- ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~.
-  ~hel-trim-whitespace-from-range~, ~hel-invert-case-in-range~,
-  ~hel-replace-chars~, ~hel-read-char-and-replace~ and ~hel-range-visible-p~
-  take a range ~(BEGIN . END)~.
 
 - Word motions, =_= and the text objects take every character with whitespace
   syntax as a blank, such as a page break, a no-break space and an ideographic
@@ -24,6 +29,40 @@
   and leave point alone. They replace ~hel-beginning-of-line~ and
   ~hel-end-of-line~. ~hel-eolp~, ~hel-visual-bolp~ and ~hel-visual-eolp~ are
   removed.
+
+- ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~.
+  ~hel-trim-whitespace-from-range~, ~hel-invert-case-in-range~,
+  ~hel-replace-chars~, ~hel-read-char-and-replace~ and ~hel-range-visible-p~
+  take a range ~(BEGIN . END)~.
+
+- =maf= takes the header comment above the function and the blank lines after
+  it, and =maa= takes the comma after the argument, or before the last one.
+  A count selects several objects, and a repeated =maf= adds the next function.
+
+- =mif= selects the whole function with its signature, as before, also in
+  tree-sitter modes. Helix's =mif= selects only the body.
+
+- The word, WORD, sentence and paragraph objects (=miw= / =maw=, =miW= / =maW=, =mis=
+  / =mas=, =mip= / =map=) use the same rules as the function object. A count works
+  for all of them, and a repeated key adds the next object. =maw= takes the
+  spaces after the word, or before it when the word ends at punctuation or
+  at the end of the line. =mas= takes the whitespace after the sentence across
+  line ends, but not past the end of the paragraph, and a count stops at the
+  end of the paragraph as well.
+
+- ~hel-mark-a-sentence~ takes a count instead of a thing. The functions
+  ~hel-mark-inner-thing~, ~hel-mark-a-thing~, ~hel-bounds-of-count-things-at-point~
+  and ~hel-bounds-of-complement-of-thing-at-point~ are removed. A package defines
+  its own kind of object as a thing: a symbol whose property ~hel-thing-sources~
+  lists where its objects come from. Its commands call ~hel--mark-text-object~
+  and ~hel--mark-to-thing-edge~, and a rule that holds for one kind is a method
+  of a ~hel-thing-~ generic function.
+
+- A producer returns each thing that it finds as a ~hel-thing-instance~
+  struct instead of a plist. Build one with ~hel-thing-instance-create~, and
+  read it with ~hel-thing-instance-begin~, ~hel-thing-instance-end~ and
+  ~hel-thing-instance-parent~. ~hel-thing-instance-bounds~ returns its range,
+  and ~hel-thing-instance-edge~ returns its ~:begin~ or ~:end~ edge.
 
 * [0.13.0]
 ** Added

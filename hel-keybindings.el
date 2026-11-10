@@ -30,6 +30,7 @@
 ;;; Code:
 
 (require 'hel-core)
+(require 'hel-text-objects)
 (require 'hel-commands)
 (require 'hel-scroll)
 (require 'pcre2el)
@@ -98,10 +99,8 @@ use it."
   "G"   #'hel-end-of-buffer
   "}"   #'hel-forward-paragraph
   "{"   #'hel-backward-paragraph
-  "] p" #'hel-forward-paragraph-end
-  "[ p" #'hel-backward-paragraph-end
-  "] f" #'hel-mark-function-forward
-  "[ f" #'hel-mark-function-backward
+  "] p" #'hel-forward-paragraph
+  "[ p" #'hel-backward-paragraph
   "] s" #'hel-mark-sentence-forward
   "[ s" #'hel-mark-sentence-backward
   "] ." #'hel-mark-sentence-forward
@@ -224,6 +223,29 @@ use it."
   "[ x" #'xref-go-back
   "] x" #'xref-go-forward)
 
+(hel-keymap-global-set :state 'normal
+  ;; Text objects
+  "m f"   #'hel-mark-inner-function
+  "m i f" #'hel-mark-inner-function
+  "m a f" #'hel-mark-a-function
+  "] f"   #'hel-mark-function-forward
+  "[ f"   #'hel-mark-function-backward
+  "m t"   #'hel-mark-inner-class
+  "m i t" #'hel-mark-inner-class
+  "m a t" #'hel-mark-a-class
+  "] t"   #'hel-mark-class-forward
+  "[ t"   #'hel-mark-class-backward
+  "m A"   #'hel-mark-inner-argument
+  "m i a" #'hel-mark-inner-argument
+  "m a a" #'hel-mark-a-argument
+  "] a"   #'hel-mark-argument-forward
+  "[ a"   #'hel-mark-argument-backward
+  "m c"   #'hel-mark-inner-comment
+  "m i c" #'hel-mark-inner-comment
+  "m a c" #'hel-mark-a-comment
+  "] c"   #'hel-mark-comment-forward
+  "[ c"   #'hel-mark-comment-backward)
+
 ;;;; Keys active while there are multiple cursors
 
 (hel-keymap-set hel-multiple-cursors-mode-map :state 'normal
@@ -256,10 +278,6 @@ use it."
   "m a ." #'hel-mark-a-sentence
   "m i s" #'hel-mark-inner-sentence
   "m a s" #'hel-mark-a-sentence
-  ;; function
-  "m f"   #'hel-mark-inner-function
-  "m i f" #'hel-mark-inner-function
-  "m a f" #'hel-mark-a-function
   ;; paragraph
   "m p"   #'hel-mark-inner-paragraph
   "m i p" #'hel-mark-inner-paragraph

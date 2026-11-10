@@ -569,7 +569,18 @@ use `hel-state-property' function.
   "When this flag is set motions will extend selection.")
 
 (hel-defvar-permanent-local hel-selection-history nil
-  "The history of selections.")
+  "The selections of a chain of text object commands.
+The newest entry comes first and holds the active region. The oldest entry
+holds the selection where the chain began.
+
+Each entry is a list (RANGE DIRECTION RUN). RANGE and DIRECTION have the
+form that `hel-selection' returns. When DIRECTION is nil, no region was
+active, and RANGE is empty at point.
+
+RUN is non-nil when a text object command made the selection, and a
+repeated command extends it. RUN is a list (KEY FIRST LAST). KEY is a list
+of the object name and the kind of range, `:inner' or `:around'. FIRST
+and LAST are the first and the last selected objects.")
 
 (hel-defvar-permanent-local hel--selection-was-active-on-insert nil
   "Whether a selection was active when we last time switched to Insert state.")
@@ -614,6 +625,7 @@ Default value is 0 - scroll half the screen.")
     yank-undo-function
     temporary-goal-column
     hel--extend-selection
+    hel-selection-history
     ;; Dabbrev
     dabbrev--abbrev-char-regexp
     dabbrev--check-other-buffers

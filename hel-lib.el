@@ -32,7 +32,6 @@
 (eval-when-compile (require 'cl-lib))
 (require 'dash)
 (require 'map)
-(require 'thingatpt)
 (require 'pcre2el)
 (require 'pulse)
 (require 'hel-vars)
@@ -350,40 +349,7 @@ FUN on each invocation should move point."
         (eval-when-compile
           (-map #'char-to-string (number-sequence ?a ?z)))))
 
-(defun hel-comment-at-pos-p (pos)
-  "Return non-nil if position POS is inside a comment, or comment starts
-right after the point."
-  (ignore-errors
-    ;; We cannot be in a comment if we are inside a string
-    (unless (nth 3 (syntax-ppss pos))
-      (or (nth 4 (syntax-ppss pos))
-          ;; This test opening and closing comment delimiters... We need
-          ;; to check that it is not newline, which is in "comment ender"
-          ;; class in elisp-mode, but we just want it to be treated as
-          ;; whitespace.
-          (and (< pos (point-max))
-               (memq (char-syntax (char-after pos)) '(?< ?>))
-               (not (eq (char-after pos) ?\n)))
-          ;; We also need to test the special syntax flag for comment
-          ;; starters and enders, because `syntax-ppss' does not yet know if
-          ;; we are inside a comment or not (e.g. / can be a division or
-          ;; comment starter...).
-          (when-let* ((s (car (syntax-after pos))))
-            (or
-             ;; First char of 2 chars comment opener
-             (and (/= 0 (logand (ash 1 16) s))
-                  (nth 4 (syntax-ppss (+ pos 2))))
-             ;; Second char of 2 chars comment opener
-             (and (/= 0 (logand (ash 1 17) s))
-                  (nth 4 (syntax-ppss (+ pos 1))))
-             ;; First char of 2 chars comment closer
-             (and (/= 0 (logand (ash 1 18) s))
-                  (nth 4 (syntax-ppss (- pos 1))))
-             ;; Second char of 2 chars comment closer
-             (and (/= 0 (logand (ash 1 19) s))
-                  (nth 4 (syntax-ppss (- pos 2))))))))))
-
-(defun hel-string-at-pos-p (position)
+(defun hel-string-at-p (position)
   "Return non-nil if POSITION is inside string.
 This function actually returns the 3rd element of `syntax-ppss' which
 can be a number if the string is delimited by that character or t if
@@ -525,6 +491,20 @@ Return the distance traveled, with the sign of DIR."
 Return the distance traveled, with the sign of DIR."
   (hel-skip-chars hel-whitespace-chars dir))
 
+(defun hel-after-blanks (pos dir)
+  "Return the position after the blanks on the line from POS in direction DIR."
+  (save-excursion
+    (goto-char pos)
+    (hel-skip-blanks dir)
+    (point)))
+
+(defun hel-after-whitespace (pos dir)
+  "Return the position after the whitespace from POS in direction DIR."
+  (save-excursion
+    (goto-char pos)
+    (hel-skip-whitespace dir)
+    (point)))
+
 (cl-defun hel-trim-whitespace-from-range ((begin . end))
   "Return the range BEGIN..END without the whitespace at its edges.
 Return nil if nothing remains."
@@ -542,47 +522,6 @@ Return nil if nothing remains."
 
 ;;; Motions
 
-(defun hel-forward-following-thing (thing &optional count)
-  "Move forward to the end of the COUNT following THING.
-`forward-thing' first moves to the  boundary of the current THING, then to the
-next THING. This function skips first step and always moves to the next THING."
-  (or count (setq count 1))
-  (if (zerop count) 0
-    (-when-let ((beg . end) (bounds-of-thing-at-point thing))
-      (goto-char (if (< count 0) beg end)))
-    (forward-thing thing count)))
-
-(defun hel-forward-beginning-of-thing (thing &optional count)
-  "Move to the beginning of COUNT-th next THING.
-Move backward if COUNT is negative.
-Returns the count of steps left to move.
-
-Works only with THINGs, that returns the count of steps left to move,
-such as `hel-word', `hel-sentence', `hel-line', `paragraph'."
-  (or count (setq count 1))
-  (if (zerop count) 0
-    (let ((rest (hel-forward-following-thing thing count)))
-      (when-let* (((/= rest count))
-                  ((natnump count)) ; moving forward
-                  (bounds (bounds-of-thing-at-point thing)))
-        (goto-char (car bounds)))
-      rest)))
-
-(defun hel-forward-end-of-thing (thing &optional count)
-  "Move to the end of COUNT-th next THING.
-Move backward if COUNT is negative.
-Returns the count of steps left to move.
-
-Works only with THINGs, that returns the count of steps left to move,
-such as `hel-word', `hel-sentence', `hel-line', `paragraph'."
-  (or count (setq count 1))
-  (if (zerop count) 0
-    (let ((rest (hel-forward-following-thing thing count)))
-      (when (and (/= rest count)
-                 (< count 0)) ;; moving backward
-        (forward-thing thing))
-      rest)))
-
 (cl-defun hel-skip-chars (chars &optional (direction 1))
   "Move point across the characters in CHARS in direction DIRECTION.
 CHARS is a set in the form that `skip-chars-forward' takes. Return the
@@ -597,34 +536,6 @@ If DIRECTION is positive number — get following char, otherwise preceding char
   (if (natnump direction)
       (following-char)
     (preceding-char)))
-
-(defun hel--forward-word-start (thing count)
-  "Move to the COUNT-th next start of a word-like THING."
-  (cl-assert (< 0 count))
-  (skip-chars-forward "\r\n")
-  (hel-select-motion (point)
-                     (progn (when (hel-blank-p (following-char))
-                              (cl-decf count))
-                            (forward-thing thing count)
-                            (hel-skip-blanks)
-                            (point))))
-
-(defun hel--backward-word-start (thing count)
-  "Move to the COUNT-th previous start of a word-like THING."
-  (cl-assert (< 0 count))
-  (skip-chars-backward "\r\n")
-  (hel-select-motion (point)
-                     (progn (forward-thing thing (- count))
-                            (point))))
-
-(defun hel--forward-word-end (thing count)
-  "Move to the COUNT-th next word-like THING end."
-  (interactive "p")
-  (cl-assert (< 0 count))
-  (skip-chars-forward "\r\n")
-  (hel-select-motion (point)
-                     (progn (forward-thing thing count)
-                            (point))))
 
 ;;; Lines
 
@@ -703,137 +614,37 @@ active, and otherwise the logical line."
       (move-end-of-line 1))
     (point)))
 
-;;; Things
-
-;;;; `hel-word'
-
-(defun hel--forward-word (&optional count)
-  "Move point COUNT words forward (backward if COUNT is negative).
-Returns the count of word left to move, positive or negative depending
-on sign of COUNT.
-
-Word is:
-- sequence of characters matching `[[:word:]]'
-- sequence non-word non-whitespace characters matching `[^[:word:]\\n\\r\\t\\f ]'"
-  (hel-motion-loop (dir (or count 1))
-    (hel-skip-chars "\r\n" dir)
-    (hel-skip-blanks dir)
-    (or (hel-line-boundary-p dir)
-        (/= 0 (hel-skip-chars (concat "^[:word:]" hel-whitespace-chars) dir))
-        (let ((word-separating-categories hel-cjk-word-separating-categories)
-              (word-combining-categories  hel-cjk-word-combining-categories))
-          (forward-word dir)))))
-
-(put 'hel-word 'forward-op #'hel--forward-word)
-
-;;;; `hel-WORD'
-
-(defun hel--forward-WORD (&optional count)
-  "Move point COUNT WORDs forward (backward if COUNT is negative).
-Returns the count of WORD left to move, positive or negative depending
-on sign of COUNT.
-
-WORD is any space separated sequence of characters."
-  (hel-motion-loop (dir (or count 1))
-    (hel-skip-chars "\r\n" dir)
-    (hel-skip-blanks dir)
-    (unless (hel-line-boundary-p dir)
-      (hel-skip-chars (concat "^" hel-whitespace-chars) dir))))
-
-(put 'hel-WORD 'forward-op #'hel--forward-WORD)
-
-;;;; `hel-sentence'
-
-(defun hel--forward-sentence (&optional count)
-  "Move point COUNT sentences forward (backward if COUNT is negative).
-Returns then count of sentences left to move, positive of negative depending
-on sign of COUNT.
-
-What is sentence is defined by `forward-sentence-function'."
-  (hel-motion-loop (dir (or count 1))
-    (ignore-errors (forward-sentence dir))))
-
-(put 'hel-sentence 'forward-op #'hel--forward-sentence)
-
-;;;; `hel-paragraph'
-
-(defun hel--forward-paragraph (&optional count)
-  "Move point COUNT paragraphs forward (backward if COUNT is negative).
-Returns then count of paragraphs left to move, positive of negative depending
-on sign of COUNT."
-  (let ((paragraph-start    (default-value 'paragraph-start))
-        (paragraph-separate (default-value 'paragraph-separate)))
-    (hel-motion-loop (dir (or count 1))
-      (cond ((natnump dir) (forward-paragraph))
-            ((not (bobp))
-             (start-of-paragraph-text)
-             (beginning-of-line))))))
-
-(put 'hel-paragraph 'forward-op #'hel--forward-paragraph)
-
-;;;; `hel-function'
-
-(defun hel--forward-function (&optional count)
-  "Move point COUNT functions forward (backward if COUNT is negative).
-Returns then count of functions left to move, positive of negative depending
-on sign of COUNT."
-  (hel-motion-loop (dir (or count 1))
-    (if (< dir 0) (beginning-of-defun) (end-of-defun))))
-
-(put 'hel-function 'forward-op #'hel--forward-function)
-
-;;;; `hel-sexp'
-
-(defun hel--forward-sexp (&optional count)
-  "Move point COUNT sexps forward (backward if COUNT is negative).
-Returns the count of sexps left to move, positive or negative depending
-on sign of COUNT."
-  ;; Make binding only during this motion instead of global one, because some
-  ;; major-modes rely on the jump to the buffer end.
-  (let ((forward-sexp-function
-         (if (memq forward-sexp-function '(forward-sexp-default-function nil))
-             #'hel-forward-sexp-only
-           ;; Do not rebind in modes that use their own version of
-           ;; `forward-sexp-function' (`c-mode', `python-mode').
-           forward-sexp-function)))
-    (hel-motion-loop (dir (or count 1))
-      (ignore-errors
-        (forward-sexp dir)))))
-
-(put 'hel-sexp 'forward-op #'hel--forward-sexp)
-
-(defun hel-forward-sexp-only (&optional count)
-  "Move forward across COUNT balanced expressions (sexps).
-Hel binds `forward-sexp-function' to this function during its own sexp
-motions.  Unlike the default `forward-sexp' behavior, it does not move to
-the end of the buffer when there is no sexp ahead.
-
-Signal `scan-error' when there is no sexp to move over. The error
-arguments follow the format used by `forward-sexp'."
-  (or count (setq count 1))
-  (if-let* ((pos (scan-sexps (point) count)))
-      (progn
-        (goto-char pos)
-        (if (< count 0) (backward-prefix-chars)))
-    (signal 'scan-error (if (< count 0)
-                            (list "No previous sexp" (point-min) (point))
-                          (list "No next sexp" (point) (point-max))))))
-
-;;;; `hel-comment'
-
-(put 'hel-comment 'bounds-of-thing-at-point #'hel-bounds-of-comment-at-point-ppss)
-
-(defun hel-bounds-of-comment-at-point-ppss ()
-  "Return the bounds of a comment at point using Parse-Partial-Sexp Scanner."
+(cl-defun hel-line-bounds ((begin . end))
+  "Return the bounds of the whole lines from BEGIN to END.
+The range runs from the start of the line of BEGIN to the end of the line
+of END, with its line end. END must not follow a line end."
   (save-excursion
-    (let ((state (syntax-ppss)))
-      (when (nth 4 state)
-        (cons (nth 8 state)
-              (when (parse-partial-sexp
-                     (point) (point-max) nil nil state 'syntax-table)
-                (point)))))))
+    (cons (progn
+            (goto-char begin)
+            (line-beginning-position))
+          (progn
+            (goto-char end)
+            (min (1+ (line-end-position))
+                 (point-max))))))
+
+(cl-defun hel-only-text-on-lines-p ((begin . end))
+  "Return non-nil if BEGIN..END is the only text on its lines.
+Indentation and trailing whitespace do not count."
+  (save-excursion
+    (and (progn (goto-char (hel-after-blanks begin -1)) (bolp))
+         (progn (goto-char (hel-after-blanks end 1)) (eolp)))))
 
 ;;; Selection
+
+(defun hel-trimmed-selection-bounds ()
+  "Return the bounds that the structural commands start from, or nil.
+These are the bounds of the selection without the whitespace at its
+edges. Without a selection, return nil, and each command decides what to
+do then."
+  (when (use-region-p)
+    (let ((range (cons (region-beginning) (region-end))))
+      (or (hel-trim-whitespace-from-range range)
+          range))))
 
 (defun hel-expand-selection-to-full-lines (&optional direction)
   "Extend the selection so that it consists of complete lines.
@@ -852,135 +663,10 @@ line(s). With no region, select current line."
     (hel--fix-newline-at-end-of-buffer)
     t))
 
-(cl-defun hel-mark-inner-thing (thing &optional (count 1))
-  (cl-assert (/= count 0))
-  (-let (((beg . end) (hel-bounds-of-count-things-at-point thing count)))
-    (hel-select (cons beg end) (hel-sign count))))
-
-(defun hel-mark-a-thing (thing count)
-  "Select COUNT THINGs with spacing around.
-Works only with THINGs, that returns the count of steps left to move,
-such as `paragraph', `hel-function'."
-  (-let* (((thing-beg . thing-end) (hel-bounds-of-count-things-at-point thing count))
-          ((beg . end)
-           (or (progn
-                 (goto-char thing-end)
-                 (-if-let ((_ . space-end)
-                           (hel-bounds-of-complement-of-thing-at-point thing))
-                     (cons thing-beg space-end)))
-               (progn
-                 (goto-char thing-beg)
-                 (if-let* ((space-beg
-                            (car (hel-bounds-of-complement-of-thing-at-point thing))))
-                     (cons space-beg thing-end)))
-               (cons thing-beg thing-end))))
-    (hel-select (cons beg end) (hel-sign count))))
-
-(defun hel-bounds-of-count-things-at-point (thing count)
-  "Return the bounds of COUNT things at point.
-Count things forward if COUNT is positive, or backward if negative."
-  (cl-assert (/= count 0))
-  (save-excursion
-    (let* ((dir (hel-sign count))
-           (beg (-if-let ((thing-beg . thing-end) (bounds-of-thing-at-point thing))
-                    (progn
-                      (if (< dir 0) (cl-rotatef thing-beg thing-end))
-                      (prog1 thing-beg
-                        (goto-char thing-end)
-                        (cl-callf - count dir)))
-                  ;; else
-                  (forward-thing thing dir)
-                  (forward-thing thing (- dir))
-                  (point)))
-           (end (progn
-                  (setq count (forward-thing thing count))
-                  (point))))
-      (when (/= count 0)
-        (goto-char beg)
-        (forward-thing thing (- count))
-        (setq beg (point)))
-      (if (< end beg) (cl-rotatef beg end))
-      (cons beg end))))
-
-(defun hel-bounds-of-complement-of-thing-at-point (thing)
-  "Return the bounds of the gap between two THINGs at point.
-If there is a THING at point — return nil.
-
-Works only with THINGs, that returns the count of steps left to move,
-such as `hel-word', `hel-sentence', `hel-line', `paragraph'."
-  (let ((orig-point (point)))
-    (if-let* ((beg (save-excursion
-                     (and (zerop (forward-thing thing -1))
-                          (forward-thing thing))
-                     (if (<= (point) orig-point)
-                         (point))))
-              (end (save-excursion
-                     (and (zerop (forward-thing thing))
-                          (forward-thing thing -1))
-                     (if (<= orig-point (point))
-                         (point))))
-              ((and (<= beg (point) end)
-                    (< beg end))))
-        (cons beg end))))
-
-(defun hel-mark-thing-forward (thing count)
-  "Select from point to the end of the THING (or COUNT following THINGs).
-If no THING at point select COUNT following THINGs."
-  (hel-restore-selection-on-error
-    (let ((point-pos (point))
-          (dir (hel-sign count)))
-      (if (< dir 0)
-          (when (bobp) (user-error "Beginning of buffer"))
-        (when (eobp) (user-error "End of buffer")))
-      (hel-push-point point-pos)
-      (let ((start (if hel--extend-selection
-                       (mark)
-                     (when (-if-let ((thing-beg . thing-end)
-                                     (bounds-of-thing-at-point thing))
-                               ;; We are at the boundary of the THING toward
-                               ;; the motion direction.
-                               (= (point)
-                                  (if (< dir 0) thing-beg thing-end))
-                             ;; No thing at point at all.
-                             t)
-                       (hel-forward-following-thing thing dir)
-                       (forward-thing thing (- dir)))
-                     (point)))
-            (end (progn (forward-thing thing count)
-                        (point))))
-        (set-mark start)
-        (goto-char end)
-        (when (= (region-beginning) (region-end))
-          (hel-mark-thing-forward thing dir))
-        (hel-reveal-point-when-on-top)))))
-
-(defun hel--mark-a-word (thing)
-  "Inner implementation of `hel-mark-a-word' and `hel-mark-a-WORD' commands."
-  (-when-let ((thing-beg . thing-end) (bounds-of-thing-at-point thing))
-    (-let [(beg . end)
-           (or (progn
-                 (goto-char thing-end)
-                 (with-restriction
-                     (line-beginning-position) (line-end-position)
-                   (-if-let ((_ . space-end)
-                             (hel-bounds-of-complement-of-thing-at-point thing))
-                       (cons thing-beg space-end))))
-               (progn
-                 (goto-char thing-beg)
-                 (with-restriction
-                     (save-excursion (back-to-indentation) (point))
-                     (line-end-position)
-                   (if-let* ((space-beg
-                              (car (hel-bounds-of-complement-of-thing-at-point thing))))
-                       (cons space-beg thing-end))))
-               (cons thing-beg thing-end))]
-      (hel-select (cons beg end)))))
-
 ;;; Mark ring
 
-(defun hel-push-point (&optional position)
+(cl-defun hel-push-point (&optional (position (point)))
   "Push POSITION (point by default) on the `mark-ring'."
-  (or position (setq position (point)))
   ;; Don't store POSITION into mark ring if it equals to the last stored one.
   (unless (and mark-ring
                (= position (car mark-ring)))

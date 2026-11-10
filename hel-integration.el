@@ -35,6 +35,7 @@
 (require 'hel-multiple-cursors-core)
 (require 'hel-lib)
 (require 'hel-core)
+(require 'hel-text-objects)
 (require 'hel-surround)
 (require 'hel-commands)
 
@@ -207,7 +208,15 @@ in the command loop, and the fake cursors can pick up on those instead."
                      'hel-find-char-forward    ; f
                      'hel-find-char-backward   ; F
                      'hel-till-char-forward    ; t
-                     'hel-till-char-backward)) ; T
+                     'hel-till-char-backward   ; T
+                     'hel-mark-function-forward      ; ]f
+                     'hel-mark-function-backward     ; [f
+                     'hel-mark-class-forward         ; ]t
+                     'hel-mark-class-backward        ; [t
+                     'hel-mark-argument-forward      ; ]a
+                     'hel-mark-argument-backward     ; [a
+                     'hel-mark-comment-forward       ; ]c
+                     'hel-mark-comment-backward))    ; [c
 
 ;;;; Elisp (emacs-lisp-mode)
 

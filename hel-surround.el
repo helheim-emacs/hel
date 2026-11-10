@@ -35,6 +35,7 @@
 (require 'thingatpt)
 (require 'hel-vars)
 (require 'hel-lib)
+(require 'hel-text-objects)
 
 (defun hel-surround--insert (char)
   "For given CHAR according to `hel-surround-alist' `:insert' key return
@@ -122,7 +123,7 @@ or nil if nothing found."
 (defun hel-bounds-of-quoted-at-point (quote-mark)
   "Return a cons cell (BEGIN . END) with bounds of text region
 enclosed in QUOTE-MARKs."
-  (if-let* ((limits (or (bounds-of-thing-at-point 'hel-comment)
+  (if-let* ((limits (or (hel-bounds-of-comment-at (point))
                         (bounds-of-thing-at-point 'string)
                         (if (and (require 'org-table nil t)
                                  (org-at-table-p))
@@ -227,7 +228,7 @@ after RIGHT."
   (when (eq left right)
     (user-error "Left and right brackets should not be equal"))
   (if-let* ((string-or-comment-bounds
-             (or (bounds-of-thing-at-point 'hel-comment)
+             (or (hel-bounds-of-comment-at (point))
                  (bounds-of-thing-at-point 'string)))
             (bounds (hel-surround--4-bounds-at-point-1
                      (char-to-string left) (char-to-string right)
