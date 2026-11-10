@@ -170,9 +170,9 @@ Push mark at previous position, unless extending selection."
   (if num
       (progn
         (goto-char (+ (point-min)
-                      (/ (* (- (point-max) (point-min))
-                            (prefix-numeric-value num))
-                         10)))
+                      (-> (- (point-max) (point-min))
+                          (* (prefix-numeric-value num))
+                          (/ 10))))
         (forward-line 1))
     ;; else
     (goto-char (point-min))
