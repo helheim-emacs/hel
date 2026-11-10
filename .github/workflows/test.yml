@@ -1,0 +1,41 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # A failure on the development snapshot of Emacs does not fail the run.
+    continue-on-error: ${{ matrix.emacs == 'snapshot' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported release, then every later release.
+        emacs: ['29.4', '30.2', '31.1', 'snapshot']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: purcell/setup-emacs@master
+        with:
+          version: ${{ matrix.emacs }}
+
+      - name: Install the dependencies
+        run: make deps
+
+      - name: Compile and test
+        run: make -k check
+
+      # The same suites in `emacs -nw' inside a pseudo-terminal, where Emacs
+      # redisplays.  Three rows of the `motion-line' table fail there with
+      # the default `line-move-visual', see test/README.org, so this step
+      # reports its failures without failing the run.
+      - name: Test in a terminal frame
+        continue-on-error: true
+        run: make -k test-display

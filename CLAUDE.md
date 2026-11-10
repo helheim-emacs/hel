@@ -149,20 +149,59 @@ command.
   caller or to someone who writes a producer, the generic says so in a last
   paragraph that starts with "By default".
 
-## No Build System
+## Build and Test
 
-There is no Makefile, test runner, or CI. Byte-compile via the Emacs MCP
-(`mcp__emacs__eval-elisp` + `byte-compile-file`); `emacs --batch` needs every
-transitive dependency wired by hand.
+The `Makefile` runs the compile check and the tests, each in a fresh
+`emacs -Q --batch`. `test/README.org` is the full manual.
 
-- The live Emacs sets `byte-compile-warnings` to nil on purpose. Bind it to t
-  around the compile check; never change it globally.
-- `byte-compile-file` writes a `.elc` next to the source. Delete it afterward
-  (there is no build dir).
+```sh
+make check                    # compile every file, then run every suite
+make test-node                # one suite: behaviour, node, text-object,
+                              # word-motion, selection, search, surround
+make test-behaviour SELECTOR='^hel-'   # only the tests whose names match
+make -j8 compile              # byte-compile each file into build/; a warning fails
+make bench SCENARIO=insert    # time a command with 1, 100 and 1000 cursors
+make profile PROFILER=cpu     # profile the benchmark scenarios
+make deps                     # install the dependencies into .deps/
+```
+
+- Use `make` for every compile check and test run. A batch run cannot
+  disturb the user's Emacs, and it tests the files on disk.
+- The tests run the compiled files in `build/`; `COMPILED=no` runs them on
+  the sources.
+- `make compile` compiles each file in an Emacs of its own, so a missing
+  `require` shows up.
+- Never run `hel-behaviour-tests.el` in the live Emacs, and never drive
+  interactive minibuffer commands (search, select, filter) there: a prompt
+  blocks the user's active session. Under `make`, every prompt fails at once.
+- Never run `make emacs`: it opens a window on the user's screen.
+- `make test-display` runs the suites in `emacs -nw` inside a hidden
+  pseudo-terminal, where Emacs redisplays. Use it for code that depends on
+  the display: batch Emacs has no `posn-at-point`, a wrong `window-end`, and
+  visual line commands that do not move.
+- An endless loop in the code under test freezes the live Emacs. Try a new
+  loop with `make` first; `TIMEOUT` ends a batch run.
+- Every command runs once more for each fake cursor, so speed matters.
+  Before and after a change to code that runs for every cursor, run
+  `make bench` on the scenarios that use it and compare the tables.
+- `make` reads the dependencies from `.deps/` when it exists, and otherwise
+  from the Elpaca build directory. Set `HEL_TEST_DEPS` for another layout.
+- CI (`.github/workflows/test.yml`) runs `make deps` and `make -k check` on
+  Emacs 29.4, 30.2, 31.1 and the snapshot.
+
+The Emacs MCP (`mcp__emacs__eval-elisp`) is still the tool for quick
+experiments in the live Emacs:
+
+- Unit-test pure logic (overlay painting, match ranges, fold protocol) with
+  `with-temp-buffer`. Simulate folds with overlays carrying `invisible` plus
+  `isearch-open-invisible`, and a matching `buffer-invisibility-spec`.
+- The live Emacs sets `byte-compile-warnings` to nil on purpose. Never change
+  it.
+- `byte-compile-file` writes a `.elc` next to the source, and it can leave
+  stale compiler macros for `cl-defstruct` types in the session. Use
+  `make compile` instead.
 - `*Compile-Log*` is read-only: read it with `buffer-substring-no-properties`,
   never `erase-buffer`.
-- A compile check can leave stale compiler macros for `cl-defstruct` types in
-  the session. `load-file` the source again before running tests.
 
 To reload after edits (without restarting Emacs):
 
@@ -172,31 +211,6 @@ To reload after edits (without restarting Emacs):
 
 A new core file also needs `elpaca-rebuild` before an Emacs restart, because
 Elpaca links the package files one by one.
-
-## Testing
-
-The tests live in `test/`.
-
-- `hel-structural-editing-tests.el`, `hel-surround-tests.el` and
-  `hel-search-tests.el` run in the live Emacs: `load-file` the test file and
-  run `(ert "^hel-")`. The tree-sitter tests skip themselves when a grammar
-  is missing.
-- `hel-behaviour-tests.el` drives real commands and stops at minibuffer
-  prompts, so it runs only in batch, through `hel-test-setup.el`:
-
-  ```sh
-  timeout 300 emacs -Q --batch -l test/hel-test-setup.el \
-    -l test/hel-behaviour-tests.el -f ert-run-tests-batch-and-exit
-  ```
-
-Unit-test pure logic (overlay painting, match ranges, fold protocol) with
-`with-temp-buffer` via the Emacs MCP. Do NOT drive interactive minibuffer
-commands (search, select, filter) in the live Emacs: they block and disrupt
-the user's active session. Simulate folds with overlays carrying `invisible`
-plus `isearch-open-invisible`, and a matching `buffer-invisibility-spec`.
-
-An endless loop in the code under test freezes the live Emacs. Try a new loop
-in batch first.
 
 ## Extension Pattern
 
@@ -224,4 +238,6 @@ to scope bindings to specific Hel states:
   design notes under review (`open-questions.org`, `search-session.org`,
   `thing-protocol-review.org`). Not part of the package.
 - `queries/`: tree-sitter text object queries, see above.
+- `test/`: the test suites, their harness `hel-test-helpers.el`, and the
+  files that set up a batch Emacs for them, see Build and Test.
 - `CHANGELOG.org`: user-visible changes per release.
