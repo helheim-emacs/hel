@@ -160,6 +160,22 @@ are active — works like `hel-expand-line-selection-backward'."
   (interactive "p")
   (hel--mark-to-thing-edge 'WORD count :end nil))
 
+;; no key in Helix, "ge" in Vim
+(hel-define-command hel-backward-word-end (count)
+  "Move to the COUNT-th previous word end."
+  :multiple-cursors t
+  :merge-selections hel--extend-selection
+  (interactive "p")
+  (hel--mark-to-thing-edge 'word (- count) :end nil))
+
+;; no key in Helix, "gE" in Vim
+(hel-define-command hel-backward-WORD-end (count)
+  "Select from point back to the end of the COUNT-th previous WORD."
+  :multiple-cursors t
+  :merge-selections hel--extend-selection
+  (interactive "p")
+  (hel--mark-to-thing-edge 'WORD (- count) :end nil))
+
 ;; gg
 (hel-define-command hel-beginning-of-buffer (num)
   "Move point to the beginning of the buffer.

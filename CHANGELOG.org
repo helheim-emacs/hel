@@ -3,6 +3,10 @@
 
 - =mst=, =mdt=, =mrt= — surround functionality for XML/HTML tags.
 
+- ~hel-backward-word-end~ and ~hel-backward-WORD-end~ select back to the end
+  of the previous word or WORD, as =ge= and =gE= in Vim. No key is bound to
+  them.
+
 - Function, class, argument and comment text objects: =mif= / =maf=, =mit= / =mat=,
   =mia= / =maa=, =mic= / =mac=, and the jumps =]f= / =[f=, =]t= / =[t=, =]a= / =[a=, =]c= / =[c=.
   On Emacs 31 they use the tree-sitter queries of Helix, which Hel ships

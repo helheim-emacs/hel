@@ -197,6 +197,8 @@ in the command loop, and the fake cursors can pick up on those instead."
                      'hel-backward-WORD-start  ; B
                      'hel-forward-word-end     ; e
                      'hel-forward-WORD-end     ; E
+                     'hel-backward-word-end
+                     'hel-backward-WORD-end
                      'hel-first-non-blank      ; gh
                      'hel-end-of-line-command  ; gl
                      'hel-beginning-of-buffer  ; gg
