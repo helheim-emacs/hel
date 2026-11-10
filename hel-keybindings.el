@@ -164,7 +164,7 @@ use it."
   "C-;" #'hel-exchange-point-and-mark
   "M-;" #'hel-exchange-point-and-mark
   "g ;" #'hel-exchange-point-and-mark
-  "_"   #'hel-trim-whitespaces-from-selection
+  "_"   #'hel-trim-whitespace-from-selection
   "g v" #'hel-restore-cursors
 
   ;; Surround

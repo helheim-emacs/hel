@@ -210,7 +210,7 @@ Use visual line when `visual-line-mode' is active."
   (interactive)
   (hel-select-motion (point)
                      (progn (goto-char (hel-line-begin))
-                            (skip-syntax-forward " " (line-end-position))
+                            (hel-skip-blanks 1)
                             (backward-prefix-chars)
                             (point))))
 
@@ -996,16 +996,16 @@ When called interactively — toggle extending selection."
               (set-marker (mark-marker) (point)))))))))
 
 ;; _
-(hel-define-command hel-trim-whitespaces-from-selection ()
-  "Trim whitespaces and newlines from the both ends of selections."
+(hel-define-command hel-trim-whitespace-from-selection ()
+  "Trim the whitespace from both ends of the selection."
   :multiple-cursors t
   (interactive)
   (when (use-region-p)
     (let* ((dir (hel-region-direction))
-           (point (progn (hel-skip-chars " \t\r\n" (- dir))
+           (point (progn (hel-skip-whitespace (- dir))
                          (point)))
            (mark  (progn (goto-char (mark-marker))
-                         (hel-skip-chars " \t\r\n" dir)
+                         (hel-skip-whitespace dir)
                          (point))))
       (hel-select (hel-range mark point) dir))))
 
@@ -1622,7 +1622,7 @@ With linewise selection (made with %s) tags are placed on separate lines."
           (progn
             (cl-callf string-trim left)
             (cl-callf string-trim right))
-        (hel-trim-whitespaces-from-selection))
+        (hel-trim-whitespace-from-selection))
       (let ((beg (copy-marker (region-beginning)))
             (end (copy-marker (region-end) t)))
         (hel-save-selection
