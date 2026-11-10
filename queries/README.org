@@ -1,0 +1,62 @@
+#+title: Text object queries
+
+This directory holds the tree-sitter queries of the text objects of Hel:
+function, class, argument and comment. ~hel-text-objects.el~ reads them on
+Emacs 31 and later.
+
+* The files
+
+Each language has one file, =<language>/textobjects.scm=. The directory of
+a language has the name of the language of its tree-sitter parser, such as
+=c-sharp= or =tsx=. A file can inherit the patterns of other files with a
+line such as =; inherits: ecma=. So =ecma=, =_typescript= and =_jsx= serve
+JavaScript, TypeScript and TSX, and =c= serves C++.
+
+The patterns use the capture names of the queries of the [[https://github.com/helix-editor/helix][Helix]] editor:
+=@function.around=, =@function.inside=, =@class.around= and so on. The
+regex of a =#match?= predicate is an Emacs regex, as in
+="^\\(test\\|describe\\)$"=.
+
+* Where the files come from
+
+Each file derives from the file =runtime/queries/<language>/textobjects.scm=
+of Helix, at the commit in =HELIX-REVISION=. Hel changes these files in
+three ways:
+
+- Each regex is in Emacs syntax. Helix writes them in the syntax of the
+  Rust =regex= crate.
+- A comment pattern matches one comment. Helix writes =(comment)+= for
+  a run of comments. Hel builds the runs itself. Without an anchor, the
+  =+= pattern gives one match for every comment among the siblings, and
+  that makes each comment lookup slow in a large file.
+- The section "Hel's own patterns" at the end of a file gives an object
+  a larger range than the Helix patterns, such as a Python function with
+  its decorators. Such a pattern names the node that it extends with the
+  capture =@_extended=, and its match replaces the match of that node.
+
+Helix licenses its files under the Mozilla Public License 2.0, so the files
+here stay under that license. The file =LICENSE= holds its text. Section
+3.3 of MPL-2.0 allows these files to be distributed together with Hel,
+which is licensed under GPL-3.0-or-later, because none of them is marked
+"Incompatible With Secondary Licenses".
+
+* Porting the changes of Helix
+
+The script =helix-changes.sh= prints the changes of the Helix files since
+the commit in =HELIX-REVISION=. Run it by hand from any directory:
+
+#+begin_src sh
+queries/helix-changes.sh          # the master branch of Helix
+queries/helix-changes.sh <ref>    # a tag or a branch of Helix
+#+end_src
+
+Port the changes by hand, with the three rules above. Then write the commit
+that the script prints last to =HELIX-REVISION=. The script stops with an
+error when a file carries the "Incompatible With Secondary Licenses" mark.
+
+* Packaging
+
+A package recipe must include this directory, for example
+=:files (:defaults "queries")= for elpaca or MELPA. Without it, no language
+has a query, and the text objects use the things ~hel-function~ and
+~hel-comment~, as on Emacs 29 and 30.
