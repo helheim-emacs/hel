@@ -266,7 +266,7 @@ All keys available in Emacs state are also work in Normal state.
 
 - =M-;= or =g;= :: Exchange point and mark.
 
-- =_= :: Trim whitespaces and newlines from the both ends of selections.
+- =_= :: Trim the whitespace from both ends of the selection.
 
 - =J= :: Join lines inside selection.
 
