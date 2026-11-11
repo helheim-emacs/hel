@@ -7,9 +7,8 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/yaml/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-(comment) @comment.inside @comment.around
+(block_mapping_pair) @entry
 
-(block_mapping_pair
-  (_) @entry.inside) @entry.around
+(comment) @comment

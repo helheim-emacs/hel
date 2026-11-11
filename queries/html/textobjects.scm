@@ -7,14 +7,6 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/html/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-(script_element (start_tag) (_) @xml-element.inside (end_tag))  @xml-element.around
-
-(style_element (start_tag) (_) @xml-element.inside (end_tag)) @xml-element.around
-
-(element (start_tag) (_)* @xml-element.inside (end_tag))
-
-(element) @xml-element.around
-
-(comment) @comment.around
+(comment) @comment

@@ -7,6 +7,6 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/dockerfile/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-(comment) @comment.inside @comment.around
+(comment) @comment

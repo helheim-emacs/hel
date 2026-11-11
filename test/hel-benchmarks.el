@@ -102,6 +102,24 @@ of the buffer; by default, each line starts with a cursor."
   :mode emacs-lisp-mode
   :line "(foo %d (bar baz) \"qux\")")
 
+(hel-bench-define text-object-function
+  "Select the tree-sitter function under every cursor."
+  :keys "l m i f"
+  :mode python-ts-mode
+  :line "def f%d(a, b): return a + b")
+
+(hel-bench-define motion-function
+  "Select to the end of the next tree-sitter function with every cursor."
+  :keys "l ] f"
+  :mode python-ts-mode
+  :line "def f%d(a, b): return a + b")
+
+(hel-bench-define text-object-comment
+  "Select the comment under every cursor."
+  :keys "l m i c"
+  :mode python-ts-mode
+  :line "x = %d  # a comment")
+
 (hel-bench-define select-matches
   "Start with one cursor and put a cursor on every match of a regexp.
 Each line has two matches, so the scenario ends with twice as many cursors

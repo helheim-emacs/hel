@@ -1,0 +1,1179 @@
+#+title: Specification of Hel: structural editing, text objects and ranges
+#+date: 2026-11-13
+
+* Summary
+
+~hel-structural-editing.el~ and ~hel-text-objects.el~ bring the syntax-tree
+editing of Helix to Hel. They have two parts:
+
+- *Node selection.* The user expands and shrinks the selection, selects the
+  next or the previous sibling, and selects all siblings or all children.
+- *Text objects.* Word, WORD, sentence, paragraph, function, class, argument,
+  entry and comment work as =mi= / =ma= objects and as =]= / =[= motions, and
+  they all follow one set of rules ([[*One rule for every object][One rule for every object]]).
+
+Every command works in every buffer. With a tree-sitter parser the commands
+use the syntax tree; without one they use the syntax table: words, strings,
+comments, brackets, sexps and paragraphs. So =M-o=, =M-n= and =mif= work
+everywhere. Class and entry are the exception, because only a parser knows
+where they are. Without a parser, an argument is a piece of the text between
+parentheses, from one comma to the next. The code has no dependencies outside Emacs.
+
+This document holds the rules that the code must keep and the reasons for
+them. The code holds how. The tests were written from this document, so
+a disagreement between them is a bug or a gap here.
+
+* Producers and drivers
+
+Every command has two parts. A /producer/ knows where the regions of the text
+are. A /driver/ applies the selection rules to those regions, and it does not
+know which producer gave them. So the rules for a count, a repeated key, the
+direction of the selection and the history of =M-i= exist once.
+
+- *Node producers* serve expand, shrink and the node commands: tree-sitter
+  nodes with a parser, the sexps of the syntax table without one.
+- *Text object producers* serve the text objects. Four kinds exist:
+  a motion function, a tree-sitter query, the comment producer, and the
+  argument producer of the syntax table.
+
+** Choosing a producer
+
+A command chooses its producer each time it runs, at the cursor:
+
+- *Expand and the node commands* use the tree-sitter nodes when the buffer
+  has a parser, and the syntax table otherwise.
+- *A text object* is a symbol, such as ~function~. Its property
+  ~hel-thing-sources~ holds an ordered list of /sources/: functions of no
+  arguments that return a producer, or nil when they do not apply at the
+  cursor. The first producer wins. The source of a query applies when
+  ~hel-treesit-text-objects-p~ is non-nil: the buffer has a parser, the
+  language at the cursor has a query file, and Emacs is 31 or later.
+  ~function~ lists its query, then ~hel-function-motion~; ~argument~ lists
+  its query, then the syntax table. Class and entry have only a query, and
+  without it their commands keep the selection and show a message.
+
+Each cursor makes its own choice, because Hel runs a command once per
+cursor. In HTML with a =<script>= block, a cursor in the script uses the
+JavaScript query and a cursor in the markup the HTML one.
+
+The choice cannot live in the key binding. A ~menu-item~ with =:filter=
+chooses once, at the main cursor, and the fake cursors replay that choice
+even in another language. It also hides the command from ~describe-key~. So
+every key is a plain binding to one command.
+
+In a tree-sitter mode, ~treesit-major-mode-setup~ points
+~beginning-of-defun-function~ at ~treesit-beginning-of-defun~, so
+~hel-function-motion~ follows ~treesit-defun-type-regexp~. When the query
+works, the command uses only the query, so the two definitions of
+a function never mix in one buffer. The motion serves buffers without
+a parser and Emacs 29 and 30.
+
+* Commands
+** Node selection
+
+| Key | Extra | Action                                | Helix command       |
+|-----+-------+---------------------------------------+---------------------|
+| =M-o= | =C-k=   | expand to the enclosing node          | ~expand_selection~    |
+| =M-i= | =C-j=   | shrink back to the previous selection | ~shrink_selection~    |
+| =M-n= | =C-l=   | select the next sibling               | ~select_next_sibling~ |
+| =M-p= | =C-h=   | select the previous sibling           | ~select_prev_sibling~ |
+| =M-b= |       | expand, with point at the start       | ~expand_selection~    |
+| =M-e= |       | expand, with point at the end         | ~expand_selection~    |
+| =M-a= |       | select all siblings, a cursor on each | ~select_all_siblings~ |
+| =M-I= | =M-j=   | select all children, a cursor on each | ~select_all_children~ |
+
+=M-o= and =M-b= run ~hel-expand-selection-backward~, =M-e= runs
+~hel-expand-selection-forward~. The =C-hjkl= keys are bound only when
+~hel-want-C-hjkl-keys~ is non-nil; =M-j= is always bound.
+
+No command selects from point to the edge of a parent: such a selection
+holds a closing bracket without its opening one, so it cannot be copied,
+cut or surrounded.
+
+** Text objects and motions
+
+| Keys                   | Object                | Sources, in order                          |
+|------------------------+-----------------------+--------------------------------------------|
+| =mw= =miw= =maw=             | word                  | motion ~hel-word-motion~                     |
+| =mW= =miW= =maW=             | WORD                  | motion ~hel-WORD-motion~                     |
+| =m.= =mis= =mas=, =]s= =[s=      | sentence              | motion ~hel-sentence-motion~                 |
+| =mp= =mip= =map=, =]p= =[p=, ={= =}= | paragraph             | motion ~hel-paragraph-motion~                |
+| =mf= =mif= =maf=, =]f= =[f=      | function              | query =function=, motion ~hel-function-motion~ |
+| =mt= =mit= =mat=, =]t= =[t=      | class or type         | query =class=                                |
+| =mA= =mia= =maa=, =]a= =[a=      | argument or parameter | query =argument=, the syntax table           |
+| =mie= =mae=, =]e= =[e=         | entry                 | query =entry=                                |
+| =mc= =mic= =mac=, =]c= =[c=      | comment               | query =comment=, the syntax table            |
+
+Each object has four commands, such as ~hel-mark-function~,
+~hel-mark-around-function~, ~hel-mark-function-forward~ and
+~hel-mark-function-backward~. =)= and =(= run the function motions in
+~prog-mode-map~ and the sentence motions in ~text-mode-map~.
+
+=]p= and =[p= are the same commands as =}= and ={=, because two different
+pairs of paragraph motions are hard to tell apart.
+
+The word motions run the same algorithm as =]= and =[= over ~word~ and
+~WORD~, always from point: =w= to the start of the next word, =b= back to
+the start, =e= to the end, and ~hel-backward-word-end~ (=ge= in Vim) back to
+the end of the previous word, with point after its last character. A word
+motion stops at a line end, and the indentation of a line is a step of its
+own. It does not push the mark ring, because it runs on most keystrokes.
+As in Helix, =ge= is not bound, because =g e= goes to the end of the buffer.
+
+A paragraph is a run of lines between blank lines in every buffer, with
+a parser or without one. Grammars rarely have a paragraph node, and the
+ones that exist do not follow this rule. ~forward-paragraph~ reads
+~paragraph-start~ and ~paragraph-separate~, which the C-like tree-sitter
+modes set to fill comments; there a blank line still ends a paragraph, and
+a line with only =//= does not.
+
+A paragraph starts at the beginning of its first line, also when that line
+is indented. So the cursor in that indentation is inside the paragraph:
+=mip= selects it and ={= goes to the start of the same line.
+~start-of-paragraph-text~ measures from the first character of text and
+would skip the paragraph, so ~hel-paragraph-motion~ first moves to the end
+of the line and then back.
+
+** Key bindings
+
+All bindings go into ~hel-normal-state-map~ as plain bindings, so in
+a buffer without a parser =M-a=, =M-b= and =M-e= work on sexps, and the
+global ~backward-sentence~, ~backward-word~ and ~forward-sentence~ do not
+run in Normal state. The nested Hel keymaps of minor modes come first in
+~hel-mode-map-alist~, so a user's binding there wins: =]t= bound to
+~tab-next~ in the nested keymap of ~tab-bar-mode-map~ hides the class motion.
+
+* Selection rules
+
+1. *Expand starts from the whole selection.* It selects the smallest region
+   that contains the selection and is larger than it, so the first =M-o=
+   always changes the selection. Without a selection, it starts from the
+   empty range at point.
+2. *Siblings are named nodes only.* Otherwise =M-n= would stop on every
+   comma.
+3. *Shrink follows a history of selections.* Expand saves the old region and
+   =M-i= returns to it, along the exact path. When the region does not match
+   the last entry, shrink selects the first child: the first named child with
+   a parser, the first sexp inside the region without one. Without
+   a selection, it selects the first child of the node that starts at point,
+   so =M-i= in =(foo |(bar baz))= selects =bar=. With no child, the
+   selection stays. =mi= and =ma= write to the same history, so =M-i= after
+   =maf= returns to the selection before it.
+4. *Each cursor has its own history*, through ~hel-fake-cursor-variables~.
+5. *An embedded language uses the parser at point.* The commands pass no
+   parser to ~treesit-node-on~, which then uses the language at the start of
+   the range, and on Emacs 30 and later prefers a local parser.
+6. *Commands are Hel commands.* They use ~hel-define-command~ with
+   =:multiple-cursors t= and set the selection with ~hel-select~ or
+   ~hel-motion-select~.
+
+   =M-a= and =M-I= are the exception. They create fake cursors, and Hel
+   would replay a =:multiple-cursors t= command for the new cursors too:
+   a new cursor on =[3, 4]= would select =3= and =4=. So they use
+   =:multiple-cursors nil= and visit the cursors that existed before the
+   command with ~hel-with-each-cursor~.
+
+   A command pushes the old point to the mark ring only when it changes the
+   selection. The sibling commands, =mi=, =ma=, =]= and =[= push it. Expand
+   pushes it only at the start of a series of expands and shrinks, so
+   a series leaves one entry. Shrink, =M-a= and =M-I= do not push it.
+7. *The command decides the direction of the new selection.* Each choice
+   comes from use, not from one rule:
+
+   | Commands                        | Point after the command |
+   |---------------------------------+-------------------------|
+   | =M-o= =M-b=                         | at the start            |
+   | =M-e=                             | at the end              |
+   | =miw= =maw= =miW= =maW= =mis= =mas= =mia= =maa= | at the end              |
+   | =mif= =maf= =mit= =mat= =mip= =map= =mic= =mac= | at the start            |
+
+   Point at the start keeps the beginning of a large object on screen; a
+   small object fits a forward selection. =M-o= can reach any size, so it
+   follows the large objects. The property ~hel-thing-selection-direction~
+   holds this edge.
+
+   When the command adds objects, on a repeat or with a count beyond ±1,
+   point goes to the edge where they were added: a second =maf= puts point
+   at the end of the next function, and =-2 miw= on =foo b|ar= selects
+   =foo bar= with point before =foo=. Shrink, =M-a=, =M-I=, =M-n= and =M-p=
+   keep the direction, so after =mif= the =M-n= shows the header of the next
+   function. Without a selection, =M-n= gives a forward selection and =M-p=
+   a backward one. Other motions put point on their own side: =]f= at the
+   end, =[f= at the start.
+
+   *=v= works with motions*: =w=, =b=, =e=, ={=, =}=, =]f=, =M-n=, =M-p= and
+   the others keep the mark and move point. =M-n= on =(a ^b| c d)= selects
+   =b c=. A sibling command against the selection gives back its last node,
+   and at the last node it turns around: =M-p= on =(a ^b| c)= selects =a b=.
+   =mi=, =ma=, =M-o=, =M-b=, =M-e= and =M-i= create a selection, so =v= does
+   not change them.
+8. *A count repeats the command.* =3 M-o= expands three times, =3 M-n= moves
+   three siblings. A negative count reverses it: =-3 M-i= expands three
+   times. For =mi= and =ma= a count is the number of objects
+   ([[*Selecting an object][Selecting an object]]).
+9. *A selection is an object, and point without a selection is
+   a position.* The cursor of a selection is its last character in
+   a forward selection and its first character otherwise. Point lies between
+   two characters and can touch two objects. Helix has no such case, because
+   its cursor is always a one-character selection. A command with
+   a direction takes the object on its side: =M-n= and =]= look forward,
+   =M-p= and =[= backward. A command without a direction takes the object
+   after point, the one the cursor block shows, unless only the object
+   before point is a node (rule 10).
+10. *The tree commands start from the node at the selection.* With
+    a selection, this is the smallest named node that covers the region
+    without the whitespace at its edges. =w= and =x= select trailing space and
+    indentation; without trimming, the space after =filterOid= in
+    =filterOid = [&]{…}()= would make the node the whole =init_declarator=.
+    Helix uses the whole region.
+
+    Without a selection, /E/ is the smallest named node that contains point
+    strictly, not at its edge. No named child of E contains point. When E
+    has no named children it is a /leaf/, and every command starts from it.
+    Otherwise:
+
+    - =M-n= starts from the first child of E that starts at or after point,
+      =M-p= from the last child that ends at or before point.
+    - =M-o= starts from the smallest named node that starts at point, then
+      the smallest that ends at point, and otherwise from E. When point
+      touches two nodes, the one after point wins.
+    - =M-i= starts from the node that starts at point (rule 3).
+    - =M-a= and =M-I= start like =M-o=. When nothing touches point, the nodes
+      around it are the children of E: =M-a= in =(f a | b)= puts a cursor
+      on =f=, =a= and =b=.
+
+    #+begin_example
+    Point                 M-n             M-p                 M-o
+    name |(mode state)    (mode state)    name                (mode state)
+    name| (mode state)    (mode state)    name                name
+    Callback |_callback,  _callback       Callback            _callback
+    Callback _callback|,  next parameter  Callback _callback  _callback
+    _cal|lback            _callback       _callback           _callback
+    foo|(x)               (x)             foo                 (x)
+    (a| b)                b               a                   a
+    (a |b)                b               a                   b
+    (a | b)               b               a                   (a  b)
+    #+end_example
+
+    The =|= takes no space, so =(a | b)= has two spaces and point touches no
+    node: =M-o= selects the whole list at once. In =f(Callback _callback|,
+    ...)= the character after point is the comma, an anonymous node, and the
+    smallest named node around it is the whole parameter list. A rule that
+    started from the character after point would make =M-o= select every
+    parameter.
+
+    Without a parser the same rule works on sexps: the children are the
+    sexps in the innermost bracket pair around point, and a symbol or
+    a string with point in it is a leaf, so in a string =M-n= starts from
+    the whole string. The =M-o= column holds with a parser and in Lisp. In
+    other buffers without a parser the syntax producer gives smaller steps
+    ([[*The syntax producer][The syntax producer]]): in ~c-mode~, =M-o= in =_cal|lback= selects
+    =callback= before =_callback=, in =(a | b)= it selects =a  b= before
+    =(a  b)=, and in =(a| b)= it selects =a=, =a b=, then =(a b)=.
+
+The sibling and children commands follow Helix
+(~helix-core/src/object.rs~ and ~movement.rs~), except the first rule:
+
+- *A sibling command stays inside the parent.* At the last argument, =M-n=
+  keeps the selection. Helix climbs to the next sibling of the nearest
+  ancestor that has one, so from the last parameter of a C++ constructor it
+  jumps to the member initializer list. Only a parent with the same range as
+  the node counts as the node itself: the Python =assignment= in =x = 1= has
+  no siblings, but its =expression_statement= has, so =M-p= selects the
+  function before it.
+- *=M-a= climbs to the first parent with more than one named child* and puts
+  a cursor on each named child.
+- *=M-I= skips nodes that have one child with the same range*, such as
+  a Python =expression_statement= that holds only a =call=. With no named
+  children, the selection stays.
+
+** Node commands without a parser
+
+A sexp is what ~hel-forward-sexp-only~ moves over; it never moves to the
+end of the buffer when no sexp is left. The parent of a sexp is the
+innermost bracket pair around it (element 9 of ~syntax-ppss~), and
+a top-level sexp has the whole buffer as its parent, as a node has the root.
+=M-n= and =M-p= stay inside the pair, =M-a= puts a cursor on every sexp in
+the enclosing pair (every top-level form at top level), and =M-I= on every
+sexp inside the pair under the selection.
+
+* Expand and shrink
+
+Expand asks the producer for the regions around the selection as
+=(BEG . END)= pairs, keeps the ones that contain the whole selection and are
+larger, takes the smallest, and records the old selection in the cursor's
+history. The hook ~hel-node-source-functions~ chooses one producer: the Lisp
+producer in modes that call ~hel-use-lisp-nodes~, the tree-sitter producer
+with a parser, the syntax producer elsewhere. So expand with a parser uses
+nodes only, as Helix does.
+
+** The tree-sitter producer
+
+The producer starts from ~treesit-node-on~ over the selection and walks up
+with ~treesit-node-parent~, without the root. For the selection =abc, [1=
+in =return g(abc, [1, 2])= this gives =(abc, [1, 2])=, the region that
+Helix selects.
+
+** The syntax producer
+
+One ~syntax-ppss~ at the selection start describes what encloses it:
+element 9 lists all enclosing brackets, element 8 the start of the
+enclosing string or comment, and ~scan-lists~ turns each into a form. The
+producer returns:
+
+- *the word and the symbol at point*, only on a word or symbol constituent;
+  on a bracket the word is the bracket itself;
+- *the inside and the whole of the enclosing string*;
+- *the enclosing comment*, the bounds of =mic= without the indentation of
+  the first line and the line end of the last. A single line of a =//=
+  comment, or the text inside the markers, usually holds part of
+  a sentence, so neither is a step;
+- *the whole of each enclosing bracket pair, and the inside of the innermost
+  one*, without the whitespace after the opening and before the closing
+  bracket. An outer pair gives no inside, so each level costs one =M-o=;
+- *the sentence*, only in modes derived from ~text-mode~;
+- *the paragraph*.
+
+The word, the sentence and the paragraph come from their text objects, so
+expand and =mi= agree on them.
+
+The producer scans at the selection start and at the next position, because
+the cursor sits on the character after point: with the cursor on =(= or on
+an opening quote, the first =M-o= selects the whole form or string.
+
+Each =M-o= asks for the regions around the selection where the chain of
+expands began, the oldest entry of ~hel-selection-history~. So =(b + c)=
+reached by expanding from =b= gives no inside of the pair around it.
+
+~syntax-ppss~ treats a string or a comment as one unit, so inside a comment
+expand goes from the word straight to the whole comment. In ~text-mode~,
+with point on "parenthetical":
+
+#+begin_example
+First sentence here. Second one, with (a parenthetical remark) inside.
+
+M-o once:    parenthetical
+M-o twice:   a parenthetical remark
+M-o 3 times: (a parenthetical remark)
+M-o 4 times: Second one, with (a parenthetical remark) inside.
+M-o 5 times: the whole paragraph
+#+end_example
+
+The sentence step follows ~sentence-end-double-space~. When it is t, the
+Emacs default, the single space after "here." ends no sentence, and the
+step is the whole line without its newline.
+
+** Why Hel does not build on expreg
+
+The idea comes from [[https://github.com/casouri/expreg][expreg]], but tests of expreg 1.4.1 in Emacs 31.1 show
+three misfits, and together they would replace all of its logic:
+
+1. *It expands from point, not from the selection.* A candidate that only
+   partly overlaps the selection gets selected: from =abc, [1= it selects
+   =1,=, where Helix selects =(abc, [1, 2])=. In Hel, =w=, =x= and =s=
+   leave arbitrary regions, so this case is common.
+2. *All cursors share one history*, in buffer-local variables, and contract
+   does not check the region against it.
+3. *It always puts point at the start and calls ~push-mark~.*
+
+expreg also mixes nodes with syntax-table steps in a tree-sitter buffer,
+while Helix and Hel use nodes only there. Both are GPL-3.0-or-later, so Hel
+may copy parts of it with the copyright notice.
+
+* Text objects
+** Why Hel needs query files
+
+~treesit-thing-settings~ defines too few things: in Emacs 31.1,
+~python-ts-mode~ defines =defun=, =sexp=, =list=, =sentence= and =text=, and
+~rust-ts-mode~ only =list=. No mode defines an argument or a class. So the
+text objects come from Hel's query files, which derive from the
+=textobjects.scm= files of Helix:
+
+#+begin_src scheme
+(function_definition) @function
+
+(decorated_definition
+  definition: (function_definition) @_shadowed) @function
+
+(argument_list
+  (_) @argument)
+
+(comment) @comment
+#+end_src
+
+A pattern captures the object itself under its name. Hel adds the rest of
+=ma= in Lisp, so a pattern captures no commas and no blank lines. All other
+captures start with =_=: =@_shadowed= and the captures that a =#match?=
+reads. A file inherits others through a =; inherits:= line anywhere in the
+file; the inherited patterns come first, and an inherited name without
+a file counts as empty.
+
+** Grouping the captures by match
+
+Hel reads the matches with the =GROUPED= argument of
+~treesit-query-capture~, because a flat list of captures cannot be cut back
+into matches: a quantifier such as =*= changes their number. It needs the
+matches for two reasons:
+
+- *An object can span several nodes*: in C, =struct S { int x; };= is the
+  struct and the =;=; in Rust, a function is its =attribute_item= nodes and
+  the =function_item=.
+- *A shadowing pattern names the node of another match* ([[*Shadowing patterns][Shadowing patterns]]).
+
+** One rule for every object
+
+Every text object follows the rules of the word and the paragraph:
+
+- =mi= selects the object: a word, a paragraph, a function with its
+  signature.
+- =ma= selects it with the gap after it: the spaces after a word, the blank
+  lines after a paragraph or a function.
+- =]= selects from point to the end of the object under the cursor, =[= to
+  its start. When point is already there, the key selects the whole next or
+  previous object.
+
+So =maf= and =d= cut a function with its blank lines, the text around keeps
+one gap, and =p= elsewhere puts back the function with its own gap.
+
+Helix follows this rule only in part: its =mif= selects the body, and its
+=maf= selects the function without the gap, so the user fixes the blank
+lines by hand. Hel gives no key to the body of a function or a class: the
+body is rarely the unit of an edit, and a second rule for one kind of object
+would break the pattern of every other key.
+
+A bracket pair is not an object of this kind: it is a level of nesting, not
+one of a sequence. So a repeated =mi(= grows outward one level per step, and
+the bracket commands stay outside the text object protocol.
+
+** The ranges of an object
+
+Every object has two ranges, one inside the other:
+
+#+begin_example
+                   around  object
+# Header of f.       ●
+def f(x):            ●       ●
+    y = x + 1        ●       ●
+    return y         ●       ●
+                     ●
+# Header of g.
+def g(): ...
+#+end_example
+
+- *The object* is what =mi= selects; =mf= is the short form of =mif=.
+- *The around range* adds the header comment and the gap. =ma= selects it.
+
+The kinds differ in three properties:
+
+| Object    | The gap after the object  | The parent of a run          | Header comment |
+|-----------+---------------------------+------------------------------+----------------|
+| word      | blanks on the same line   | none                         | no             |
+| WORD      | blanks on the same line   | none                         | no             |
+| sentence  | blanks on the same line   | the paragraph                | no             |
+| paragraph | blank lines               | none                         | no             |
+| function  | whitespace and separators | the parent node, or brackets | yes            |
+| class     | whitespace and separators | the parent node              | yes            |
+| argument  | whitespace and separators | the parent node, or brackets | yes            |
+| entry     | whitespace and separators | the parent node              | yes            |
+| comment   | blank lines               | none                         | no             |
+
+- *A word's gap stays on its line.* =maw= on the last word of a line takes
+  the blanks before the word, not the line end. A blank is a whitespace
+  character other than a line end.
+- *A WORD leaves out the punctuation at its edges*: =,.;:!?=, brackets and
+  quotes (property ~hel-thing-trim-punctuation~). In =for ~hel-thing-owning~.=
+  =miW= selects =~hel-thing-owning~=. Punctuation inside stays, as in
+  =don't= and =std::vector=. A bracket or quote at an edge stays when its
+  pair is inside, as in =foo(bar)=, and a pair around the whole WORD goes:
+  =(foo(bar))= gives =foo(bar)=. A WORD of only punctuation, such as =...=,
+  stays whole. The motions =W=, =B= and =E= keep the punctuation, as in
+  Helix.
+- *A sentence's gap stays on its line too*, so =mas= and =d= never join two
+  lines. A sentence alone on its line has a border on both sides, so =mas=
+  selects only the sentence and =d= leaves the empty line. A count stops at
+  the end of the paragraph.
+- *A paragraph, a function, a class and a comment cover whole lines*, with
+  the last line end, so =d= leaves no empty line and no indentation. When
+  other code shares these lines, as in =foo(function () { ... }, 1);=, the
+  object covers only itself.
+- *An argument or an entry has a header comment* only when it starts its own
+  line, in a list that spans several lines.
+- *An entry is one element of a data structure*: a list or array element,
+  a key with its value, a struct field, an enum variant. A key and its value
+  are one entry, so =mae= and =d= remove both with the comma.
+
+Both kinds of producer give the same ranges, so a key selects the same text
+with a parser and without one.
+
+*** The object
+
+- *The query producer* takes all the nodes that a match captures under the
+  name of the object.
+- *The motion producer* takes the text between two stops of the motion,
+  without the whitespace at its edges.
+- *An object includes its decorators and attributes.* A Rust pattern
+  captures =(attribute_item)* @function=; a Python shadowing pattern takes
+  the =decorated_definition=. So =maf= and =d= delete the decorators, and
+  the comment above the decorators stays the header comment.
+
+*** The argument without a parser
+
+Without a query, the syntax table finds the arguments. An argument is
+a piece of the text between parentheses, and a comma at the level of the
+parentheses separates two pieces. A comma in nested brackets, in a string or
+in a comment separates nothing, so in =f(a, g(b, c), "x, y")= the arguments
+of =f= are =a=, =g(b, c)= and ="x, y"=. Other bracket shapes do not count:
+=[1, 2]= and ={a: 1}= hold entries, which only a parser tells apart from
+statements in a block.
+
+- *The whitespace and the comments at the edges* of a piece stay out of the
+  argument, as the nodes of a parser leave them out. A comment on the line
+  above is the header comment.
+- *An empty piece is no argument*: =()= holds none, and =f(a, b,)= holds
+  two.
+- *The parent of an argument is its parentheses*, so a count stays inside
+  them.
+- *The gap is the whitespace and the commas*, as the separator nodes of
+  a parser.
+- *Lisp has no such arguments*: whitespace, not a comma, separates the
+  elements of a list. So in a mode derived from ~lisp-data-mode~ the source
+  does not apply.
+
+In calls and definitions both producers give the same objects and the same
+around ranges, at every position of the cursor. They differ where a parser
+knows more: in a tuple or a generator expression the syntax table still
+sees arguments.
+
+*** The comment object
+
+A comment is the run of comment lines with no blank line between them.
+A parser and the syntax table see each line of a =//= comment as its own
+/piece/, and the comment producer joins neighbouring pieces. So =mic=
+selects all the =;;= lines in Emacs Lisp, as all the =#= lines in Python.
+Only a piece that fills its line joins the others; a piece after code, as in
+=x = 1  # note=, is a comment of its own and covers only itself.
+
+A comment of whole lines covers them as a paragraph does, with the comment
+markers and the indentation of the first line, so =[c= stops at the start
+of the line, as ={= does. =mac= adds the blank lines after it, or before it
+when none follow, whatever lies beyond them, so =mac= and =d= never leave
+a double blank line.
+
+A comment has no siblings, so a count and a repeated =mic= select the same
+comment: two comments are separate only when a blank line or code lies
+between them. It has no header comment and no range inside its markers: in
+the common style a marker starts every line, so the text without the first
+and the last marker is not a unit anyone edits.
+
+The gap of a comment after code is the blanks on its line, so =mac= and =d=
+never join the line of code to the next one. When no comment follows on the
+line, the gap is the blanks before the comment: =mac= selects =  # note=,
+and =d= leaves no trailing blanks. Only the comment takes a gap before an
+object without a sibling there. The blanks between code and the comment
+count even after an opening bracket, as in =int f() {  // note=.
+
+For both kinds of piece:
+
+- A cursor on any delimiter character is on the comment.
+- A line end and the blanks before it belong to the comment of their line,
+  so =mic= works from the end of any of its lines.
+- An unterminated =/* open= runs to the end of the buffer, and so does
+  =;; a= on a last line without a line end.
+- A cursor on a blank line finds the comment whose =mac= takes that line.
+
+Code outside the comment producer asks for a whole comment with
+~hel-bounds-of-comment-at~, which uses the producer of ~comment~ at the
+cursor. So =J= sees a =//= comment in a =<script>= of ~mhtml-ts-mode~, where
+the HTML syntax table sees none. The comment also limits the search of =mi"=
+and =mi(= (~hel-surround.el~), so a pair can span two comment lines; the
+search uses a comment only when the comment itself holds point, not through
+its gap, or a cursor in the code below a comment would search in it.
+
+*** Quotes
+
+=mi"= and =ma"= select the text between two quotes and the text with them;
+=mi'=, =ma'=, =mi`= and =ma`= do the same for their marks. They start from
+the cursor, so =ma"= then =mi"= selects the inside of the same string.
+
+A string of the major mode counts when the cursor is inside it, on a quote,
+or right after the closing quote. Where the mark is not a string quote, as
+="= in ~text-mode~, the quotes pair up from the start of the defun. Inside
+a comment, an Org table or a string of another mark, the search takes the
+nearest quote on each side, and a cursor on the opening quote or right
+after the closing one finds nothing. Python's ="""text"""= is three strings
+for the syntax table, so =ma"= in the text selects it with one quote on
+each side, and on the first quote it selects the empty string =""=.
+
+*** The around range
+
+The around range adds the header comment, for the kinds that have one, and
+the gap.
+
+The /header comment/ is the comment lines directly above the object, with no
+blank line between. A comment after code on the line above does not count.
+Above an object at a line start, such as an indented method, it starts at
+the start of its first line, so =maf= and =d= leave no indentation; above an
+object after the indentation, such as an argument, it starts at the comment
+text. It belongs to the around range of its object and never to a gap.
+~beginning-of-defun~ does not see it, so both producers find it by this one
+rule.
+
+The /gap/ is the separating text that the table above allows. With a parser,
+a separator is an anonymous node, such as a comma. Without a parser,
+punctuation next to a motion object belongs to the object, as the period to
+its sentence. When the object fills its lines, the gap is whole lines and
+leaves the indentation of the text after it in place.
+
+The around range takes the gap after the object; when that gap does not
+count, the gap before it; otherwise no gap. A gap does not count when it is
+empty, or when it ends at a /border/, which closes the run of objects:
+
+- every kind stops at the edge of the buffer and at a bracket: a closing one
+  after the object, an opening one before it;
+- a word, a WORD and a sentence also stop at a line end.
+
+So deleting the around range never leaves a separator or a blank line
+before a border. Nothing else changes the rule: =maf= takes the blank lines
+before a detached comment, a =;;; Section= line or other code, and the gap
+stops at the first comment.
+
+#+begin_example
+f(a, b, c)
+  a,         ◄── maa on a: a and the gap ", " after it
+      , c    ◄── maa on c: ")" is a border, so the gap before c
+#+end_example
+
+So =maa= and =d= leave a clean list from any argument; Helix leaves
+=f(a, b, )=. In Emacs Lisp, =maf= on a ~defun~ takes its header comment and
+the blank lines after it, and stops before the header comment of the next
+~defun~. On the last function of a file, the gap after it ends at the buffer
+end, so =maf= takes the blank lines before the header comment instead.
+
+*** Several objects
+
+N objects run from the start of the first to the end of the last, with
+everything between. Their around range runs from the header comment of the
+first to the end of the last, plus the gap after the last, or the gap
+before the first when nothing follows.
+
+** Selecting an object
+
+=mi= and =ma= start from the cursor: they leave out the whitespace at the
+edges of the selection and take its last character in a forward selection,
+its first in a backward one. So =miw= on =two three= selects =three=, and
+=mif= on a selection over two functions selects the one with the cursor.
+Helix also starts from ~range.cursor~ but keeps the whitespace; Hel drops it
+so that =w= then =miw= selects the word, not the space. Without a region an
+object holds point when point is inside it or on its edge. Only =M-o= looks
+at the whole selection.
+
+The producer gives candidates and the driver, ~hel-thing-owning~, chooses.
+
+~hel-thing-at~ returns the innermost object that holds the character under
+the cursor, or, when none does, the innermost object that ends at the
+cursor. ~hel-thing-next~ returns the nearest object in a direction
+([[*Moving to the edge of an object][Moving to the edge of an object]]). By default the candidates are these
+three: the object at the cursor and its two neighbours. The query producer
+gives its own candidates instead: one query over the whitespace, the
+separators and the comments around the cursor, one character wider on each
+side to catch the objects that only touch it. One query costs less than
+three searches: inside a long function the search for a neighbour grows
+large, and a measurement there showed the default five times slower. The
+query never runs over the whole buffer, as evil-textobj-tree-sitter does.
+
+The driver chooses in three steps:
+
+1. It keeps the candidates whose object or around range holds the cursor.
+2. It drops every candidate that contains another kept one, so of nested
+   objects the innermost stays.
+3. It takes the candidate whose object holds the cursor. When none does, the
+   cursor is in a gap or on a header comment, and it takes the candidate
+   that ends last before the cursor, or else the first one after it.
+
+Size cannot decide between neighbours: on a blank line between a long
+function and a short one after it, both around ranges hold the cursor, and
+the rules below want the function above. What this means for the user:
+
+- *A cursor in a gap* finds the object that owns the gap. On the comma in
+  =f(a, b)=, =mia= selects =a=; on a blank line between two functions, =mif=
+  selects the one above; on the space between two words, =miw= selects the
+  word before. On the indentation of a line no word owns the blanks, so
+  =miw= selects nothing, as in Helix.
+- *A cursor on a header comment* finds the function under it. =mic= there
+  still selects the comment.
+- *When two around ranges hold the cursor, the object before wins*: on the
+  comma after =b= in =f(a, b, c)=, =mia= selects =b=.
+- *When point touches two objects, the one after point wins*, as for =M-o=:
+  in =foo|.=, =miw= selects the period.
+- *On the =def= line* of a Python function, =mif= selects the function.
+  Helix selects the smallest capture that contains the cursor, the body,
+  and does nothing there.
+- *On the blank line after a function whose last statement is a nested
+  function*, =maf= selects the nested one: both end at that line, and the
+  innermost wins.
+
+Then the driver applies the same rules to every producer:
+
+- *A count is the number of objects.* =2 mif= selects the function and the
+  next one; =-2 mia= on =b= in =f(a, b, c)= selects =a, b=.
+- *The objects stay inside the parent of the first one*, as a sibling
+  command does. With a parser, the parent is the nearest node above all the
+  nodes of the first object, so =2 maf= on the last method of a class
+  selects only that method. For the function motion it is the innermost
+  bracket pair, or the whole buffer at top level. The parent of a sentence
+  is its paragraph, so =3 mis= on the last sentence selects only it. Words,
+  paragraphs and comments have no parent.
+- *When fewer objects exist, the driver selects the ones that exist.*
+- *The selection is one range*, with everything between the objects: in
+  Emacs Lisp, =2 mf= selects two ~defun~ forms and the blank line between;
+  on =a= in =f(a, b, c)=, =2 maa= selects =a, b= and the gap after =b=.
+- *A repeated key adds the next objects.* When the selection is exactly
+  what the previous =mi= or =ma= selected, the key adds COUNT more objects,
+  after the last one or, with a negative count, before the first. =M-i=
+  removes what the last press added. Functions rarely nest, so a second
+  press does not go to the enclosing function; =M-o= does.
+- *Selections of several cursors merge* (=:merge-selections t=).
+- *The driver pushes the old point to the mark ring* and writes the old
+  selection to the history of =M-i=. *When no object is found, the
+  selection and the mark ring stay as they are.*
+
+** Moving to the edge of an object
+
+=]= and =[= select from point to an edge of an object:
+
+- *Inside an object*, =]f= selects to the end of the innermost object under
+  the cursor, and =[f= to its start.
+- *At that edge, or outside every object*, =]f= selects the whole next
+  object and =[f= the whole previous one. Forward, the next object is the one
+  that starts first after the cursor; backward, the one that ends last at or
+  before it. Of two that start, or end, at the same place, the larger wins.
+- *A count adds whole objects*, with everything between them; with fewer
+  objects, the motion stops at the last one.
+
+#+begin_example
+def f():
+    x = 1          ◄── cursor on x; ]f: "x = 1 … return x", to the end of f
+    return x
+
+def g():           ◄── ]f again: "def g(): …", the whole function g
+    ...
+#+end_example
+
+On the =class= line no function holds the cursor, so =]f= selects the first
+method. The motion uses the objects of =mi=: =]a= selects an argument
+without its comma, =]f= a decorated function with its decorators, and in
+=x = 1  # a= followed by =# b= and =# c=, =]c= selects =# a=, then the
+comment of =# b= and =# c=. The motion ignores parents, so =]s= with
+a count passes the end of a paragraph, while =mis= stops there.
+
+={= and =}= go to the start of a paragraph and always select from point,
+never the whole object: =}= to the start of the next paragraph, with the
+blank lines before it; ={= to the start of the paragraph under the cursor,
+or of the previous one when point is there. With no paragraph left they
+select to the buffer edge. At the edge the selection stays and the echo area
+says "End of buffer" or "Beginning of buffer"; the message stays out of
+=*Messages*=, and a keyboard macro goes on.
+
+After =v= every motion extends the selection. Point goes to the side of the
+motion. The search grows from the cursor, so its cost depends on the
+distance to the next object, not on the size of the file.
+
+** Emacs 29 and 30
+
+The =GROUPED= argument exists only in Emacs 31, so on Emacs 29 and 30 every
+text object uses its next source: =mif= uses ~hel-function-motion~, =mic=
+and =mia= the syntax table, and =mit= and =mie= show a message. A language
+without a query file, such as Markdown, behaves the same. The file still
+byte-compiles there: the six-argument call sits in
+~with-suppressed-warnings~. Node selection works on every version.
+
+** Predicates
+
+The query files use =#match?=, which Emacs 31 accepts. Its regex is an
+Emacs regex: =\\(=, =\\)= and =\\|= group and alternate, plain =(=, =)= and
+=|= are literal. Helix writes Rust regexes, the other way round, and such
+a regex matches nothing in Emacs without an error: =^(def|defp)$= gives no
+capture, =^\\(def\\|defp\\)$= gives one. So every regex from Helix is
+rewritten.
+
+** Query files and grammar versions
+
+One unknown node type makes a whole query fail, and a user's grammar may be
+older or newer than the one a pattern was written for. So
+~hel-treesit--query~ compiles each top-level pattern alone and keeps the
+ones that compile. ~hel-treesit--query-patterns~ splits a file with
+a syntax table where =;= starts a comment and ="= delimits a string; the
+quantifiers and captures after a pattern belong to it, even on the next
+line.
+
+A file with unbalanced brackets cannot be split: the language gets no query,
+a message names it, and the text objects use their next sources. The query
+code must never signal: every text object command calls it to choose its
+producer, and an error would break the function and comment objects of that
+language although their other sources work.
+
+** Where the query files come from
+
+=queries/<language>/textobjects.scm= derives from the Helix file of the same
+path at the commit that its header names. Hel maintains the files on its
+own. They differ from Helix in five ways:
+
+1. *A pattern captures only the object*, as =@function=, not
+   =.inside= / =.around=, and argument patterns capture no comma.
+2. *Shadowing patterns* add the syntax around an object.
+3. *Each regex is in Emacs syntax.*
+4. *A comment pattern matches one comment*: =(comment) @comment=, not
+   =(comment)+=. Without an anchor the =+= gives one match per comment among
+   the siblings: in =xdisp.c= one lookup returned 321 matches and =maf= took
+   18 ms, against 1.4 ms with one comment per match. Hel joins the pieces
+   itself.
+5. *The files hold only the objects that Hel binds*: function, class,
+   argument, entry and comment.
+
+The files stay under MPL-2.0, as Helix's, and the rest of Hel under
+GPL-3.0; MPL-2.0 section 3.3 allows this, since no Helix file is marked
+"Incompatible With Secondary Licenses". =queries/LICENSE= and
+=queries/README.org= say so. A pattern that does not compile is skipped, so
+Hel needs no per-grammar renames, unlike evil-textobj-tree-sitter.
+
+** Shadowing patterns
+
+Some objects hold syntax around a smaller object: Python decorators,
+=export= in JavaScript, =template <...>= in C++. The smaller node still
+matches its own pattern, and a query cannot say "a =function_definition=
+not inside a =decorated_definition=": tree-sitter has no condition on the
+parent, and Emacs supports only =#eq?=, =#match?= and =#pred?=. So the
+larger pattern marks the smaller node with =@_shadowed=, and Hel drops each
+match that has a =@_shadowed= node of another match among its nodes.
+Without this, the smaller match, without the decorators, would win as the
+innermost. The rule compares nodes, not positions, so a nested function
+that ends where its outer function ends stays a separate object.
+
+- *An object is all of its nodes*, and any of them can be the =@_shadowed=
+  node of another match.
+- *Every =@_shadowed= node counts*: a pattern may mark several.
+- *Shadowing can chain*: in =export const f = () => 1=, the =export=
+  statement shadows the =const= declaration, which shadows the arrow
+  function, and only the =export= stays.
+- *A match never drops itself*: in C, =struct S { int x; };= marks its own
+  struct node, and drops only the match of the struct alone.
+- *Shadowing patterns inherit with their file*: =ecma= serves JavaScript,
+  TypeScript and TSX, and =c= serves C++.
+
+The step is linear in the number of captures: an index from each
+=@_shadowed= node to the matches that mark it, hashed by node bounds and
+compared with ~treesit-node-eq~. Listing the allowed parents of the smaller
+object works in Python but not for a JavaScript arrow function, which can
+stand in almost any expression. A =#pred?= function would keep the rule in
+two places, and a mismatch would hide an object without an error.
+
+An audit of all 23 languages ran =maf= and =mat= on decorated, annotated,
+exported and templated definitions. The shadowing patterns add:
+
+| File                        | The object holds                                       |
+|-----------------------------+--------------------------------------------------------|
+| =python/textobjects.scm=      | the decorators                                         |
+| =ecma/textobjects.scm=        | =export= and =default=; =const f == of a named function      |
+| =_typescript/textobjects.scm= | =export= of a TypeScript kind                            |
+| =rust/textobjects.scm=        | the attributes of a struct, enum, union, trait or impl |
+| =c/textobjects.scm=           | the =;= after a struct, enum or union; the whole =typedef= |
+| =cpp/textobjects.scm=         | the =;= after a class; the =template <...>= line           |
+| =ruby/textobjects.scm=        | a visibility modifier, as in =private def m=             |
+
+In C and C++ a forward declaration such as =class C;= is a class object too:
+the pattern with the =;= matches a specifier with or without a body, and its
+anchor keeps out =struct stat b;=, where a declarator stands before the =;=.
+A function passed as an argument, as in =foo(() => 1)=, stays an object
+without the call. C#, Java, PHP, Go, Lua and Bash need no shadowing: their
+definitions already hold their attributes.
+
+* The protocol of structural selection
+
+Every command runs one algorithm over one kind of /thing/. The word comes
+from Emacs: in ~thingatpt~ and ~treesit-thing-next~, "thing" names both
+a kind, such as ~word~, and a piece of text of that kind. "Text object"
+stays the name of the =mi= and =ma= keys.
+
+** Two questions, two arguments
+
+Every operation answers one of two questions:
+
+- *How are the things found?* That depends on the /producer/: a query,
+  a motion, a comment finder, a parser, the syntax table.
+- *What rules hold for this kind?* That depends on the /thing/.
+
+So every run operation takes the thing and the producer, and each method
+specializes the argument that its answer depends on:
+
+| Operation                                   | Specializes        | Example                                          |
+|---------------------------------------------+--------------------+--------------------------------------------------|
+| ~hel-thing-at~, ~hel-thing-next~                | producer           | a query finds functions and classes the same way |
+| ~hel-thing-candidates~                        | producer           | a query takes the gap around the cursor at once  |
+| ~hel-thing-after-gap~                         | producer           | a query skips separator nodes, such as commas    |
+| ~hel-node-parent~ and the tree                | producer           | the parent of a tree-sitter node                 |
+| ~hel-thing-owns-header-comment-p~             | property of thing  | functions and classes own the comment above them |
+| ~hel-thing-maybe-expand-bounds-to-full-lines~ | property of thing  | a paragraph covers whole lines                   |
+| ~hel-thing-after-gap~                         | property of thing  | a line end is a border for a word or a sentence  |
+| ~hel-thing-after-gap~                         | thing              | a comment after code keeps its gap on its line   |
+| ~hel-thing-jump-p~                            | property of thing  | a word motion does not push the mark ring        |
+| ~hel-thing-selection-direction~               | property of thing  | =mif= puts point at the start of the function      |
+| ~hel-thing-parent~                            | thing and producer | a sentence stays in its paragraph                |
+| ~hel-thing-motion-range~                      | producer           | a word motion does not cross a line end          |
+
+A fixed fact of a kind is a symbol property; a rule that computes is
+a method with an ~(eql 'SYMBOL)~ specializer. The finding operations take
+the thing too, because a producer builds things by their rules: the motion
+producer builds a paragraph from whole lines. A producer holds no settings
+about kinds of things.
+
+A rule on how a word motion steps belongs to ~hel-word-motion-producer~,
+which serves both ~word~ and ~WORD~: a method on the thing would need one
+copy per symbol.
+
+** Things and sources
+
+A thing that has no source in a mode does not exist there: in Org mode,
+=mit= reports that no class is here. ~function~, ~comment~ and ~argument~
+have two sources each.
+
+A node is not a thing, because no operation dispatches on a kind of node.
+The hook ~hel-node-source-functions~ finds the node producer; a major mode
+adds its own source with a buffer-local ~add-hook~, which runs before the
+global ones. ~hel-use-lisp-nodes~ does this in the Lisp modes.
+
+** The found thing
+
+A run producer returns a ~hel-thing-instance~: the bounds and the producer's
+own ~data~. The bounds are the value: two instances with equal bounds are
+the same thing, and only the methods of the producer read ~data~. The query
+producer keeps the captured nodes there.
+
+The rules of a thing fix the edges of the bounds that a producer found,
+through ~hel-thing-apply-rules~: first the punctuation of
+~hel-thing-trim-punctuation~ goes, then a linewise thing takes its whole
+lines when it is the only text on them. A producer applies the rules before
+it compares bounds with a position, because the user sees the fixed bounds.
+So a ~WORD~ trims its punctuation whichever producer found it.
+
+The instance is a struct and not a plist, so a wrong value fails at once
+with ~wrong-type-argument~. It is not an EIEIO class: creating one takes
+about 3400 ns against 19 ns, and the query producer creates one per match.
+The kind of a thing stays a symbol, because the finding operations need the
+kind before any instance exists.
+
+** The finding operations have two levels
+
+#+begin_example
+┌────────────────────────────────────────────────────────────────────┐
+│ Run    at, candidates, next, sibling, after-gap,                   │
+│        parent, around, edge, owning                                │
+│        value:      hel-thing-instance, the same for every producer │
+│        producers:  motion, query, comment, syntax argument         │
+│        things:     word, WORD, sentence, paragraph, function,      │
+│                    class, argument, entry, comment                 │
+│        keys:       mi, ma, w, e, b, ]f, [f and the others          │
+│                                                                    │
+│ Tree   on, bounds, parent, children, sibling, enclosing,           │
+│        enclosing-leaf, touching, side-child, expand-steps          │
+│        value:      node, of a type that each producer chooses      │
+│        producers:  tree-sitter, sexp, Lisp                         │
+│        keys:       M-o, M-i, M-n, M-p, M-b, M-e, M-a, M-I          │
+└────────────────────────────────────────────────────────────────────┘
+#+end_example
+
+A /run producer/ gives things one after another; its operations are the
+~hel-thing-*~ generics, and they take the thing and the producer. A /tree
+producer/ knows the parent and the children of a node; its operations are
+the ~hel-node-*~ generics, and they take only the producer, because a tree
+of any kind is a tree of nodes.
+
+The levels do not overlap, and neither refines the other. No tree producer
+gives the next thing. A run producer knows the parent of a thing only as
+a label, a node, a position or nil, and only compares labels to find
+siblings. The text object keys use only run operations, and the node keys
+only tree operations.
+
+A run producer returns the same struct for every thing, because the run
+algorithms compare things from one producer. A tree producer returns a node
+of its own type, a tree-sitter node or a sexp range, and a tree algorithm
+hands it back to the same producer, as an iterator owns its value type in
+C++.
+
+~hel-thing-candidates~ is an algorithm over ~hel-thing-at~ and
+~hel-thing-next~, with a default method that a producer may replace when it
+can do the same work faster. The laws, checked on every model:
+
+- ~hel-thing-at~ returns an object R with =begin(R) <= POS <= end(R)=, and
+  it holds the character at POS whenever some object does.
+- ~hel-thing-next~ forward returns an object that starts after POS, and
+  backward one that ends at or before POS.
+- The backward sibling of the forward sibling is the object itself.
+- ~hel-thing-after-gap~ moves in its direction, and a second call from its
+  own result returns nil.
+
+~hel-thing-sibling~ by default takes the next thing and compares parents.
+The query producer replaces it, because query things nest: between two
+top-level functions, the nearest function may be a method of a class, and
+the search stays inside the parent node instead.
+
+Three tree operations have default methods that follow from the others:
+a leaf is an enclosing node without children, the side child is the first
+child after point or the last before it, and the expand steps are the node
+and its parents without the root. The sexp producer replaces all three:
+a leaf is a symbol, a string or a whole comment, and the expand steps come
+from the syntax table. The Lisp producer replaces only the expand steps,
+with the leaf and the lists around it; with only =(= selected, =M-o=
+selects the whole list.
+
+** The comment producers
+
+A model of the comment producer finds /pieces/ and the producer joins them.
+A model needs two operations: ~hel--comment-piece-under~, the piece that
+holds the character at a position, and ~hel--comment-piece-next~, the next
+piece in a direction. A piece is plain bounds, not a thing. Their laws:
+
+- The piece under a position starts at or before it and ends after it.
+- At the start of a piece that ~hel--comment-piece-next~ returned,
+  ~hel--comment-piece-under~ returns the same piece.
+- Backward, the piece ends at or before the position, so from inside
+  a piece the answer is the piece before it. The caller still rejects
+  a comment that does not lie past the position and searches again, because
+  a comment built from an earlier piece can hold the position.
+
+The methods of ~hel-thing-at~ and ~hel-thing-next~ sit on the base struct
+~hel-comment-producer~, so a new way of finding comments is one struct and
+two methods, and it gets the comments, the motions and the header comments
+for nothing. A test model that reads pieces from a list shows this. The two
+operations are methods and not function slots, because they vary together
+and only between named models; a motion producer, by contrast, takes any
+motion function as data.
+
+** Each level lives in its own file
+
+The run level is ~hel-text-objects.el~, with the motions over words,
+sentences and paragraphs and what both levels share. The tree level is
+~hel-structural-editing.el~, which loads after it. The dependency goes one
+way: the syntax producer of the tree level takes the word, the sentence and
+the paragraph from their run producers.
+
+A name starts with what it is about: ~hel-tree-~ for producers and
+functions about the whole tree, ~hel-node-~ for a question about one node,
+~hel-thing-~ for the run level.
+
+** Commands are thin
+
+An algorithm takes its parameters: the thing, the direction, the edge,
+whether the range holds the whole thing. Each command is written out, with
+no macro, and picks one value for each:
+
+#+begin_src emacs-lisp
+(hel-define-command hel-mark-function (count)
+  "Select the function at the cursor, or COUNT functions."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (hel-mark-text-object 'function :inner count))
+#+end_src
+
+So =M-.= shows the code and ~describe-function~ a real docstring.
+~hel-mark-to-thing-edge~ holds what every motion shares: the mark ring,
+=v= and showing point. ~hel-mark-text-object~ does the same for =mi= and
+=ma=. Both are public, for extensions.
+
+** Five ways to extend
+
+| What changes                         | Where it goes                            |
+|--------------------------------------+------------------------------------------|
+| A new thing, such as an Org headline | a thing with its sources                 |
+| A new mode for a thing               | one more source in the list of the thing |
+| A new way to find things             | a producer type with its finding methods |
+| A rule about one kind of thing       | a property or a method of the thing      |
+| A new key, such as =ge=                | a small command that calls the algorithm |
+
+~hel-paredit~ shows the second and the third: it adds a source of ~WORD~
+whose producer leaves out brackets, and it has no WORD commands of its own.
+
+* Ranges as values
+
+Point and mark are an object with state, and fake cursors replay each
+command on them. So commands read the selection once, compute with values,
+and commit once. Algorithms take and return values; leaf motions move point
+inside ~save-excursion~, because Emacs motions read the buffer only by
+moving.
+
+- A /range/ is a half-open cons ~(begin . end)~ with ~begin <= end~, compared
+  with ~equal~. ~hel-range~ builds one from two positions in any order.
+- A /direction/ is 1 or -1, a separate argument.
+- A /selection/ is ~(RANGE DIRECTION)~, the arguments of ~hel-select~, and
+  not ~(anchor . head)~, which looks like a range but has no order. A chain
+  that began without a selection keeps point as the oldest history entry.
+- "Selection" means a selection as a value, "range" any range, and "region"
+  a function that reads point and mark, as in Emacs.
+- ~hel-motion-loop~ checks point after each step, because Emacs motions
+  return different values or nothing.
+- A blank is a whitespace character other than a line end.
+  ~hel-whitespace-chars~ names the line ends, because their syntax differs
+  by mode. Word motions stop at logical lines; ~forward-word~ stays their
+  base for CJK categories.
+
+Accepted limits: the query cache lasts the session, so editing a query file
+needs a restart. A cycle of =inherits:= lines signals
+~excessive-lisp-nesting~, which ~hel-treesit--query~ catches. The sexp
+parent scans every enclosing level, 2 ms at depth 16.
+
+* Package layout
+
+- ~hel-commands.el~ holds the commands; the two machinery files define
+  none.
+- Hel registers nothing with thingatpt. The property ~hel-thing-sources~
+  carries the =hel-= prefix, so putting it on ~word~ or ~function~ collides
+  with nothing: thingatpt reads only ~forward-op~, ~beginning-op~, ~end-op~
+  and ~bounds-of-thing-at-point~.
+- *A package recipe must include the =queries= directory*:
+  =:files (:defaults "queries")= for elpaca and MELPA. Without it no
+  language has a query.
+- *Hel has query files for the tree-sitter modes built into Emacs 31.1*:
+  Bash, C, C++, C#, CMake, CSS, Dockerfile, Elixir, Go, HEEx, HTML, Java,
+  JavaScript, JSON, Lua, PHP, Python, Ruby, Rust, TOML, TSX, TypeScript and
+  YAML, plus the shared =ecma=, =_typescript= and =c= files. Go module, Go
+  workspace and Markdown have none, as in Helix.
+- *The language name selects the directory*, as ~treesit-parser-language~
+  reports it (=c-sharp=, =cpp=, =tsx=), so no mapping table exists.
+- *Emacs 29.1 is the minimum.* Node selection works there; the class,
+  entry and query comment objects need Emacs 31.
+
+* Out of scope
+
+- *Structural edits* such as raise, slurp and barf. In Lisp every list is
+  one bracket pair, so moving a bracket is meaningful; in C++ or Python most
+  nodes have no bracket pair, and grammar-correct edits need far more:
+  tree-edit needs forked grammars.
+- *Insert-state bindings*: ~electric-pair-mode~ and =ms= cover them.
+
+* Tests
+
+The tests live in ~test/hel-node-tests.el~, ~test/hel-text-object-tests.el~,
+~test/hel-word-motion-tests.el~, ~test/hel-selection-tests.el~ and
+~test/hel-surround-tests.el~. Many were written from this document alone,
+and their docstrings name the section they check. The protocol laws run on
+the sentence motion, the Python query, and the comments of the syntax
+table. The harness binds ~hel-treesit-queries-directory~ to the =queries=
+directory of the repository, so a package build without it does not make
+the tests skip.
+
+* References
+
+- Helix keymap: https://docs.helix-editor.com/keymap.html
+- Helix query files: https://github.com/helix-editor/helix/tree/master/runtime/queries
+- expreg: https://github.com/casouri/expreg
+- evil-textobj-tree-sitter: https://github.com/meain/evil-textobj-tree-sitter
+  (Helix query files for 152 languages; queries the whole buffer)
+- tree-edit: https://github.com/ethan-leba/tree-edit (edits checked against
+  the grammar; needs forked grammars; inactive)
+- fingertip: https://github.com/manateelazycat/fingertip (the Insert-state
+  half of paredit for tree-sitter; no node selection, no text objects)
+- Karthik Chikmagalur, "A consistent structural editing interface":
+  https://karthinks.com/software/a-consistent-structural-editing-interface/
+  (the reason Hel uses the keys of ~hel-paredit~)
+- Stepanov A., McJones P. /Elements of Programming/, 2009; Stepanov A.,
+  Rose D. /From Mathematics to Generic Programming/, 2014.

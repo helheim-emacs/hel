@@ -44,10 +44,11 @@ hel-keybindings.el            default key bindings
 
 `hel-text-objects.el` reads the tree-sitter queries of its text objects from
 `queries/<language>/textobjects.scm`. These files derive from the Helix files
-and stay under MPL-2.0. Their regexes are in Emacs syntax, and Hel's own
-patterns sit in a section at the end of each file. `queries/HELIX-REVISION`
-records the Helix commit they match, and `queries/helix-changes.sh` shows the
-Helix changes to port by hand. See `queries/README.org`.
+and stay under MPL-2.0, but Hel maintains them on its own. A pattern
+captures the object itself under the name of the object (`@function`,
+`@class`, `@argument`, `@entry`, `@comment`), and a shadowing pattern marks
+the node of the smaller object that it replaces with `@_shadowed`. Their
+regexes are in Emacs syntax. See `queries/README.org`.
 
 ### Specification
 
@@ -112,6 +113,12 @@ command.
   `-at-point` or `-point` always use point and never take it
 - `pos` and `dir` are the argument names, not `position` and `direction`
 - A direction is the number 1 or -1, never a keyword like `:forward`
+- `dir` is the direction of a motion. `side`, also 1 or -1, says on which
+  side of a position something lies, or at which end of a selection point
+  goes: `hel-node-touching`, `hel--tree-expand`
+- A function that takes one step takes `dir`. A function that goes over
+  COUNT things takes a signed `count`, as Emacs motions do, and computes
+  `dir` inside: `hel-thing-motion-range`
 - `hel-fake-cursor-*` for cursor manipulation functions
 - `-p` for a predicate function, including a local one in `cl-flet`, and `?`
   for a local variable that holds a flag: `forward?`, `extend?`

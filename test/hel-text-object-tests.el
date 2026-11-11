@@ -51,12 +51,12 @@ def last():
 (ert-deftest hel-function-object ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return g")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-function 1)
+    (hel-mark-function 1)
     (should (equal (hel-test-selection)
                    "    def f(self, a, b):\n        return g(a, b)\n"))
     (should (= (point) (region-beginning)))
     (hel-test-goto "return g")
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
                    "    def f(self, a, b):\n        return g(a, b)\n\n"))
     (should (= (point) (region-beginning)))))
@@ -66,17 +66,17 @@ def last():
 leaves out the header comment of the next one."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return x")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
                    "# Header of top.\ndef top(x):\n    return x\n\n")))
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "def h")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
-                   "\n    def h(self):\n        pass\n")))
+                   "    def h(self):\n        pass\n\n")))
   (hel-test-with #'python-ts-mode (hel-test-mark "# Header of f.\ndef f():\n    pass\n\n# Header of g.\ndef g():\n    pass\n" "pass")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
                    "# Header of f.\ndef f():\n    pass\n\n"))))
 
@@ -95,57 +95,59 @@ class C:
 (ert-deftest hel-function-object-decorated ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--decorated "def f")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
-                   "# Header.\n@dec\ndef f():\n    def inner():\n        pass\n"))
+                   "# Header.\n@dec\ndef f():\n    def inner():\n        pass\n\n"))
     (hel-test-goto "class C")
-    (hel-mark-a-class 1)
-    (should (equal (hel-test-selection) "@dec\nclass C:\n    pass\n"))))
+    (hel-mark-around-class 1)
+    (should (equal (hel-test-selection) "\n@dec\nclass C:\n    pass\n"))))
 
 (ert-deftest hel-function-object-nested ()
   "A nested function that ends where its outer function ends is a separate
 object, also when the outer function is decorated."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--decorated "pass")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-function 1)
+    (hel-mark-function 1)
     (should (equal (hel-test-selection)
                    "    def inner():\n        pass\n")))
   (hel-test-with #'python-ts-mode (hel-test-mark "def f():\n    def inner():\n        pass\n" "pass")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-function 1)
+    (hel-mark-function 1)
     (should (equal (hel-test-selection)
                    "    def inner():\n        pass\n"))))
 
 (ert-deftest hel-object-in-gaps ()
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b)\n" ", b")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-argument 1)
+    (hel-mark-argument 1)
     (should (equal (hel-test-selection) "a")))
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b, c)\n" ", c")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-argument 1)
+    (hel-mark-argument 1)
     (should (equal (hel-test-selection) "b")))
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "\n\n    def h")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-function 1)
+    (hel-mark-function 1)
     (should (equal (hel-to--first-line) "def f(self, a, b):"))))
 
 (ert-deftest hel-object-on-header-comment ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "Header of top")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-function 1)
+    (hel-mark-function 1)
     (should (equal (hel-to--first-line) "def top(x):"))
     (hel-test-goto "Header of top")
-    (hel-mark-a-comment 1)
-    (should (equal (hel-test-selection) "# Header of top.\n"))
+    ;; No blank line follows the header comment, so `mac' takes the one
+    ;; before it.
+    (hel-mark-around-comment 1)
+    (should (equal (hel-test-selection) "\n# Header of top.\n"))
     (hel-test-goto "Header of top")
-    (hel-mark-inner-comment 1)
+    (hel-mark-comment 1)
     (should (equal (hel-test-selection) "# Header of top.\n"))))
 
 (ert-deftest hel-function-object-on-signature ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "def f")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-function 1)
+    (hel-mark-function 1)
     (should (equal (hel-to--first-line) "def f(self, a, b):"))))
 
 (ert-deftest hel-object-push-point ()
@@ -155,50 +157,50 @@ object, also when the outer function is decorated."
     (let ((pushes 0))
       (cl-letf (((symbol-function 'hel-push-point)
                  (lambda (&rest _) (cl-incf pushes))))
-        (hel-mark-inner-argument 1)
+        (hel-mark-argument 1)
         (should (= pushes 0))
         (should (eq (hel-test-selection) nil))
         (hel-test-goto "self, a")
-        (hel-mark-a-argument 1)
+        (hel-mark-around-argument 1)
         (should (= pushes 1))
         (should (equal (hel-test-selection) "self, "))))))
 
 (ert-deftest hel-class-object ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return g")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-class 1)
+    (hel-mark-class 1)
     (should (equal (hel-to--first-line) "class A:"))))
 
 (ert-deftest hel-argument-object ()
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b, c)\n" "a,")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-a-argument 1)
+    (hel-mark-around-argument 1)
     (should (equal (hel-test-selection) "a, "))
     (hel-test-goto "c)")
-    (hel-mark-a-argument 1)
+    (hel-mark-around-argument 1)
     (should (equal (hel-test-selection) ", c"))
     (dolist (arg '("a" "b" "c"))
       (hel-test-goto (if (equal arg "c") "c)" (concat arg ",")))
-      (hel-mark-inner-argument 1)
+      (hel-mark-argument 1)
       (should (equal (hel-test-selection) arg)))))
 
 (ert-deftest hel-comment-object ()
   "A comment of whole lines covers them as a paragraph does."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "first")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-a-comment 1)
-    (should (equal (hel-test-selection) "# first\n# second\n"))
+    (hel-mark-around-comment 1)
+    (should (equal (hel-test-selection) "# first\n# second\n\n"))
     (hel-test-goto "second")
-    (hel-mark-inner-comment 1)
+    (hel-mark-comment 1)
     (should (equal (hel-test-selection) "# first\n# second\n"))))
 
 (ert-deftest hel-comment-object-gap ()
   "`mac' takes the blank lines up to the next comment."
   (hel-test-with #'emacs-lisp-mode (hel-test-mark ";; a\n;; b\n\n;; c\n" "a")
-    (hel-mark-a-comment 1)
+    (hel-mark-around-comment 1)
     (should (equal (hel-test-selection) ";; a\n;; b\n\n"))
     (hel-test-goto "c")
-    (hel-mark-a-comment 1)
+    (hel-mark-around-comment 1)
     (should (equal (hel-test-selection) "\n;; c\n"))))
 
 (ert-deftest hel-comment-object-found-from-position ()
@@ -206,10 +208,13 @@ object, also when the outer function is decorated."
   (pcase-dolist (`(,mode ,text ,positions ,inner ,around)
                  `(;; The line ends of a run.
                    (emacs-lisp-mode ";; a\n;; b\n\n(c)\n" (5 10)
-                                    ";; a\n;; b\n" ";; a\n;; b\n")
+                                    ";; a\n;; b\n" ";; a\n;; b\n\n")
                    ;; The blank line at the end edge of a run.
                    (emacs-lisp-mode ";; a\n;; b\n\n(c)\n" (11)
-                                    ";; a\n;; b\n" ";; a\n;; b\n")
+                                    ";; a\n;; b\n" ";; a\n;; b\n\n")
+                   ;; The blank lines between a comment and code.
+                   (emacs-lisp-mode ";; a\n\n\n(c)\n" (6 7)
+                                    ";; a\n" ";; a\n\n\n")
                    ;; The blank lines of the gap between two runs.
                    (emacs-lisp-mode ";; a\n\n\n;; c\n" (5 6 7)
                                     ";; a\n" ";; a\n\n\n")
@@ -227,11 +232,11 @@ object, also when the outer function is decorated."
       (ert-info ((format "%S at %d" text position))
         (hel-test-with mode (hel-test-mark text "")
           (goto-char position)
-          (hel-mark-inner-comment 1)
+          (hel-mark-comment 1)
           (should (equal (hel-test-selection) inner))
           (deactivate-mark)
           (goto-char position)
-          (hel-mark-a-comment 1)
+          (hel-mark-around-comment 1)
           (should (equal (hel-test-selection) around)))))))
 
 (ert-deftest hel-comment-object-not-found ()
@@ -239,13 +244,11 @@ object, also when the outer function is decorated."
   (pcase-dolist (`(,text ,position)
                  '(("(a)\n\n(c)\n" 4)
                    ("(a)\n\n(c)\n" 2)
-                   (";; a\n(c)\n" 7)
-                   ;; No comment follows, so these blank lines are no gap.
-                   (";; a\n\n\n(c)\n" 7)))
+                   (";; a\n(c)\n" 7)))
     (ert-info ((format "%S at %d" text position))
       (hel-test-with #'emacs-lisp-mode (hel-test-mark text "")
         (goto-char position)
-        (hel-mark-inner-comment 1)
+        (hel-mark-comment 1)
         (should-not (use-region-p))))))
 
 (ert-deftest hel-comment-object-line-end-with-parser ()
@@ -253,7 +256,7 @@ object, also when the outer function is decorated."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "first")
     (skip-unless (hel-treesit-text-objects-p))
     (end-of-line)
-    (hel-mark-inner-comment 1)
+    (hel-mark-comment 1)
     (should (equal (hel-test-selection) "# first\n# second\n"))))
 
 (ert-deftest hel-comment-motion-from-line-end ()
@@ -281,20 +284,30 @@ object, also when the outer function is decorated."
       (let ((producer (hel-syntax-comment-source)))
         (pcase-dolist (`(,position ,range) cases)
           (ert-info ((format "%S at %d" text position))
-            (should (equal (hel-comment-piece-under producer position)
+            (should (equal (hel--comment-piece-under producer position)
                            range))))))))
 
-(ert-deftest hel-comment-runs-need-equal-parents ()
-  "`2 mic' joins two comments only when they have the same parent.
-The syntax-table model gives a comment the bracket pair around it."
+(ert-deftest hel-syntax-comment-piece-next-backward-skips-piece-at-pos ()
+  "Backward, the next piece ends at or before POS, so the piece that holds
+POS is skipped."
+  (hel-test-with #'python-mode (hel-test-mark "x = 1  # first\ny = 2  # second\n" "")
+    (let ((producer (hel-syntax-comment-source)))
+      (should (equal (hel--comment-piece-next producer 26 -1) '(8 . 15)))
+      (should (equal (hel--comment-piece-next producer 31 -1) '(23 . 31))))))
+
+(ert-deftest hel-comment-count-selects-one-comment ()
+  "`2 mic' and a repeated `mic' select the same comment as `mic'."
   (pcase-dolist (`(,text ,selection)
                  '(("(defun f ()\n  ;; a\n  x)\n;; b\n" "  ;; a\n")
-                   (";; a\n(x)\n;; b\n" ";; a\n(x)\n;; b\n")
-                   ("(f\n ;; a\n x\n ;; b\n )\n" " ;; a\n x\n ;; b\n")))
-    (hel-test-with #'emacs-lisp-mode (hel-test-mark text ";; a")
-      (ert-info (text)
-        (hel-mark-inner-comment 2)
-        (should (equal (hel-test-selection) selection))))))
+                   (";; a\n(x)\n;; b\n" ";; a\n")
+                   (";; a\n\n;; b\n" ";; a\n")))
+    (ert-info (text)
+      (hel-test-with #'emacs-lisp-mode (hel-test-mark text ";; a")
+        (hel-mark-comment 2)
+        (should (equal (hel-test-selection) selection)))
+      (hel-test-with #'emacs-lisp-mode (hel-test-mark text ";; a")
+        (should (equal (hel-test-steps #'hel-mark-comment 2)
+                       (list selection selection)))))))
 
 (ert-deftest hel-comment-joins-a-multiline-piece ()
   "A `/* */' piece over two lines and a `//' line below it form one comment.
@@ -309,7 +322,7 @@ tree-sitter query."
         (dolist (start '("one" "two" "three"))
           (hel-test-with mode (hel-test-mark text start)
             (ert-info ((format "%s from %s" mode start))
-              (hel-mark-inner-comment 1)
+              (hel-mark-comment 1)
               (should (equal (hel-test-selection)
                              "/* one\n   two */\n// three\n")))))))))
 
@@ -343,16 +356,16 @@ tree-sitter query."
   "Each kind of thing has its own direction of selection."
   (pcase-dolist (`(,dir ,mode ,text ,start ,commands)
                  `((1 text-mode "foo bar baz\n" "bar"
-                      (hel-mark-inner-word hel-mark-a-word
-                                           hel-mark-inner-WORD hel-mark-a-WORD))
+                      (hel-mark-word hel-mark-around-word
+                                           hel-mark-WORD hel-mark-around-WORD))
                    (1 text-mode "One two.  Three four.\n" "two"
-                      (hel-mark-inner-sentence hel-mark-a-sentence))
+                      (hel-mark-sentence hel-mark-around-sentence))
                    (-1 text-mode "aaa\nbbb\n\nccc\n" "bbb"
-                       (hel-mark-inner-paragraph hel-mark-a-paragraph))
+                       (hel-mark-paragraph hel-mark-around-paragraph))
                    (-1 emacs-lisp-mode "(defun a ()\n  1)\n\n(defun b ()\n  2)\n" "1"
-                       (hel-mark-inner-function hel-mark-a-function))
+                       (hel-mark-function hel-mark-around-function))
                    (-1 emacs-lisp-mode ";; a\n;; b\n\n;; c\n" "b"
-                       (hel-mark-inner-comment hel-mark-a-comment))))
+                       (hel-mark-comment hel-mark-around-comment))))
     (dolist (command commands)
       (ert-info ((symbol-name command))
         (hel-test-with mode (hel-test-mark text start)
@@ -365,17 +378,17 @@ tree-sitter query."
   (let ((sentence-end-double-space nil))
     (pcase-dolist (`(,mode ,text ,mark ,point ,command ,expected)
                    '(;; Forward: the cursor is the last character.
-                     (text-mode "one two three four\n" 5 14 hel-mark-inner-word "three")
+                     (text-mode "one two three four\n" 5 14 hel-mark-word "three")
                      ;; Backward: the cursor is the first character.
-                     (text-mode "one two three four\n" 14 5 hel-mark-inner-word "two")
+                     (text-mode "one two three four\n" 14 5 hel-mark-word "two")
                      ;; The whitespace at the edges does not count.
-                     (text-mode "one two three\n" 1 5 hel-mark-inner-word "one")
-                     (text-mode "One two. Three four.\n" 1 15 hel-mark-inner-sentence
+                     (text-mode "one two three\n" 1 5 hel-mark-word "one")
+                     (text-mode "One two. Three four.\n" 1 15 hel-mark-sentence
                                 "Three four.")
                      (text-mode "aaa bbb\nccc\n\nddd eee\n\nfff\n" 5 18
-                                hel-mark-inner-paragraph "ddd eee\n")
+                                hel-mark-paragraph "ddd eee\n")
                      (emacs-lisp-mode "(defun a ()\n  1)\n\n(defun b ()\n  2)\n" 3 30
-                                      hel-mark-inner-function "(defun b ()\n  2)\n")))
+                                      hel-mark-function "(defun b ()\n  2)\n")))
       (ert-info ((format "%S on %d..%d" command mark point))
         (hel-test-with mode (hel-test-mark text "")
           (set-mark mark)
@@ -462,35 +475,35 @@ tree-sitter query."
 (ert-deftest hel-object-count ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return g")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-function 2)
+    (hel-mark-function 2)
     (should (equal (hel-test-selection)
                    "    def f(self, a, b):\n        return g(a, b)\n\n    def h(self):\n        pass\n"))
     (hel-test-goto "pass")
-    (hel-mark-a-function 2)
-    (should (equal (hel-to--first-line) ""))
+    (hel-mark-around-function 2)
+    (should (equal (hel-to--first-line) "def h(self):"))
     (should (equal (string-trim (hel-test-selection))
                    "def h(self):\n        pass")))
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b, c)\n" "a,")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-inner-argument 2)
+    (hel-mark-argument 2)
     (should (equal (hel-test-selection) "a, b"))
     (hel-test-goto "a,")
-    (hel-mark-a-argument 2)
+    (hel-mark-around-argument 2)
     (should (equal (hel-test-selection) "a, b, "))
     (hel-test-goto "b,")
-    (hel-mark-inner-argument -2)
+    (hel-mark-argument -2)
     (should (equal (hel-test-selection) "a, b"))))
 
 (ert-deftest hel-object-repeated-key ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return g")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (let ((one (hel-test-selection)))
-      (hel-mark-a-function 1)
+      (hel-mark-around-function 1)
       (let ((two (hel-test-selection)))
         (should (string-prefix-p one two))
-        (should (string-match-p "def h(self):\n        pass\n\\'" two))
-        (hel-mark-a-function 1)
+        (should (string-match-p "def h(self):\n        pass\n\n\\'" two))
+        (hel-mark-around-function 1)
         (should (equal (hel-test-selection) two))
         (hel-shrink-selection 1)
         (should (equal (hel-test-selection) one))))))
@@ -500,7 +513,7 @@ tree-sitter query."
     (skip-unless (hel-treesit-text-objects-p))
     (set-mark (point))
     (forward-char 6)
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (hel-shrink-selection 1)
     (should (equal (hel-test-selection) "return"))))
 
@@ -508,7 +521,7 @@ tree-sitter query."
   "The TypeScript file inherits the function object from `ecma'."
   (hel-test-with #'typescript-ts-mode (hel-test-mark "function f(a: number) {\n  return a;\n}\n" "return")
     (skip-unless (hel-treesit-text-objects-p))
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (should (equal (hel-to--first-line) "function f(a: number) {"))))
 
 (ert-deftest hel-object-other-languages ()
@@ -525,21 +538,22 @@ tree-sitter query."
         (skip-unless (hel-treesit-text-objects-p))
         (goto-char (point-max))
         (search-backward "a")
-        (hel-mark-a-function 1)
-        (should (equal (hel-to--first-line) (nth 2 spec)))))))
+        (hel-mark-around-function 1)
+        (should (string-prefix-p (nth 2 spec)
+                                 (string-trim-left (hel-test-selection))))))))
 
 (ert-deftest hel-treesit-argument-is-built-as-argument ()
-  "A tree-sitter argument is an instance of `argument', not of its capture.
-The query names the capture \"parameter\", and the thing is `argument'."
+  "A tree-sitter argument is an instance of the thing `argument'."
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b)\n" "a,")
     (skip-unless (hel-treesit-text-objects-p))
     (let (things)
-      (cl-letf* ((create (symbol-function 'hel-thing-instance-create))
-                 ((symbol-function 'hel-thing-instance-create)
-                  (lambda (thing &rest args)
+      (cl-letf* ((expand #'hel-thing-maybe-expand-bounds-to-full-lines)
+                 (original (symbol-function expand))
+                 ((symbol-function expand)
+                  (lambda (thing range)
                     (push thing things)
-                    (apply create thing args))))
-        (hel-mark-inner-argument 1))
+                    (funcall original thing range))))
+        (hel-mark-argument 1))
       (should (equal (hel-test-selection) "a"))
       (should things)
       (should (equal (-uniq things) '(argument))))))
@@ -553,17 +567,17 @@ The query names the capture \"parameter\", and the thing is `argument'."
     (treesit-update-ranges)
     (skip-unless (hel-treesit-text-objects-p))
     (should (eq 'javascript (treesit-language-at (point))))
-    (hel-mark-inner-function 1)
+    (hel-mark-function 1)
     (should (equal (hel-to--first-line) "function f(a) {"))
     (hel-test-goto "text")
     (should (eq 'html (treesit-language-at (point))))
     ;; The HTML query has no function object, so the markup keeps the
     ;; selection, and its comment object works.
-    (hel-mark-inner-function 1)
+    (hel-mark-function 1)
     (should (eq (hel-test-selection) nil))
     (hel-test-goto "note")
     (should (eq 'html (treesit-language-at (point))))
-    (hel-mark-a-comment 1)
+    (hel-mark-around-comment 1)
     (should (equal (hel-test-selection) "<!-- note -->\n"))))
 
 ;;; Text objects without a parser
@@ -584,24 +598,24 @@ The query names the capture \"parameter\", and the thing is `argument'."
 
 (ert-deftest hel-elisp-function-object ()
   (hel-test-with #'emacs-lisp-mode (hel-test-mark hel-to--elisp "1)")
-    (hel-mark-inner-function 1)
+    (hel-mark-function 1)
     (should (equal (hel-test-selection) "(defun a ()\n  1)\n"))
     (hel-test-goto "1)")
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
                    ";; Header of a.\n;; Second line.\n(defun a ()\n  1)\n\n"))
     (hel-test-goto "3)")
-    (hel-mark-a-function 1)
+    (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
                    "\n(defun c ()\n  3)\n"))))
 
 (ert-deftest hel-elisp-function-count ()
   (hel-test-with #'emacs-lisp-mode (hel-test-mark hel-to--elisp "2)")
-    (hel-mark-inner-function 2)
+    (hel-mark-function 2)
     (should (equal (hel-test-selection)
                    "(defun b ()\n  2)\n\n(defun c ()\n  3)\n"))
     (hel-test-goto "1)")
-    (hel-mark-a-function 2)
+    (hel-mark-around-function 2)
     (should (equal (hel-test-selection)
                    ";; Header of a.\n;; Second line.\n(defun a ()\n  1)\n\n;; Header of b.\n(defun b ()\n  2)\n\n"))))
 
@@ -619,11 +633,11 @@ The query names the capture \"parameter\", and the thing is `argument'."
 
 (ert-deftest hel-elisp-comment-object ()
   (hel-test-with #'emacs-lisp-mode (hel-test-mark hel-to--elisp "Second")
-    (hel-mark-a-comment 1)
+    (hel-mark-around-comment 1)
     (should (equal (hel-test-selection)
                    ";; Header of a.\n;; Second line.\n"))
     (hel-test-goto "Second")
-    (hel-mark-inner-comment 1)
+    (hel-mark-comment 1)
     (should (equal (hel-test-selection)
                    ";; Header of a.\n;; Second line.\n"))
     (hel-test-goto "1)")
@@ -631,8 +645,8 @@ The query names the capture \"parameter\", and the thing is `argument'."
     (should (equal (hel-test-selection) ";; Header of b.\n"))))
 
 (ert-deftest hel-treesit-comment-jumps-select-runs ()
-  "The Helix pattern `(comment)+' joins a comment after code with the
-comment lines below it. A jump selects comments of whole lines instead."
+  "A comment after code and the comment lines below it are separate
+comments. A jump selects comments of whole lines."
   (hel-test-with #'python-ts-mode (hel-test-mark "x = 1  # a\n# b\n# c\n\ny = 2\n# d\n" "x =")
     (skip-unless (hel-treesit-text-objects-p))
     (should (equal (cl-loop repeat 3
@@ -645,12 +659,136 @@ comment lines below it. A jump selects comments of whole lines instead."
                             collect (hel-test-selection))
                    '("# b\n# c\n" "# a")))))
 
+;;; Arguments without a parser
+
+(defconst hel-to--call "f(a, g(b, c), \"x, y\", [1, 2], d)\n")
+
+(ert-deftest hel-syntax-argument-object ()
+  "Without a parser, a comma at the level of the parentheses separates
+the arguments, and a comma in nested brackets or in a string does not."
+  (hel-test-with #'python-mode (hel-test-mark hel-to--call "a,")
+    (should (hel-syntax-argument-producer-p (hel-thing-producer 'argument)))
+    (dolist (case '(("a," "a")
+                    ("g(" "g(b, c)")
+                    ("(b" "g(b, c)")
+                    ("b," "b")
+                    ("c)" "c")
+                    ("), \"" "c")
+                    ("y\"" "\"x, y\"")
+                    ("2]" "[1, 2]")
+                    ("d)" "d")))
+      (hel-test-goto (car case))
+      (hel-mark-argument 1)
+      (should (equal (list (car case) (hel-test-selection)) case)))))
+
+(ert-deftest hel-syntax-argument-around ()
+  "The gap of an argument is the whitespace and the comma after it, or
+before it on the last argument."
+  (hel-test-with #'python-mode (hel-test-mark hel-to--call "a,")
+    (hel-mark-around-argument 1)
+    (should (equal (hel-test-selection) "a, "))
+    (hel-test-goto "c)")
+    (hel-mark-around-argument 1)
+    (should (equal (hel-test-selection) ", c"))
+    (hel-test-goto "d)")
+    (hel-mark-around-argument 1)
+    (should (equal (hel-test-selection) ", d"))))
+
+(ert-deftest hel-syntax-argument-count ()
+  "A count selects the next arguments with the same parentheses."
+  (hel-test-with #'python-mode (hel-test-mark hel-to--call "a,")
+    (hel-mark-argument 2)
+    (should (equal (hel-test-selection) "a, g(b, c)"))
+    (hel-test-goto "c)")
+    (hel-mark-argument 2)
+    (should (equal (hel-test-selection) "c"))
+    (hel-test-goto "d)")
+    (hel-mark-argument -2)
+    (should (equal (hel-test-selection) "[1, 2], d"))))
+
+(ert-deftest hel-syntax-argument-jumps ()
+  (hel-test-with #'python-mode (hel-test-mark "def f(self, a, b):\n    pass\n" "self")
+    (should (equal (cl-loop repeat 3
+                            do (hel-mark-argument-forward 1)
+                            collect (hel-test-selection))
+                   '("self" "a" "b"))))
+  (hel-test-with #'python-mode (hel-test-mark "f(a,b)\n" "b")
+    (hel-mark-argument-backward 1)
+    (should (equal (hel-test-selection) "a"))))
+
+(ert-deftest hel-syntax-argument-comments ()
+  "A comma in a comment separates nothing, the comments at the edges of
+an argument stay out of it, and a comment on the line above is its
+header comment."
+  (hel-test-with #'c-mode (hel-test-mark "f(a /* x, y */, b);\n" "b)")
+    (hel-mark-argument -1)
+    (should (equal (hel-test-selection) "b"))
+    (hel-test-goto "a ")
+    (hel-mark-argument 1)
+    (should (equal (hel-test-selection) "a")))
+  (hel-test-with #'c-mode (hel-test-mark "f(\n  // first\n  a,\n  b);\n" "a,")
+    (hel-mark-around-argument 1)
+    (should (equal (hel-test-selection) "// first\n  a,\n  "))))
+
+(ert-deftest hel-syntax-argument-empty ()
+  "Empty parentheses and a trailing comma give no argument."
+  (hel-test-with #'python-mode (hel-test-mark "f(a, b,)\ng()\n" "b,")
+    (hel-mark-around-argument 1)
+    (should (equal (hel-test-selection) ", b"))
+    (hel-test-goto ")\ng(")
+    (should-not (hel-thing-at 'argument (hel-thing-producer 'argument)
+                              (point)))
+    (let ((inhibit-message t))
+      (hel-test-goto "()")
+      (forward-char)
+      (hel-mark-argument 1)
+      (should (eq (hel-test-selection) nil)))))
+
+(ert-deftest hel-syntax-argument-search-in-growing-ranges ()
+  "A search in small ranges finds the same arguments as one search over
+the whole buffer, from every position and in both directions."
+  (hel-test-with #'python-mode (hel-test-mark hel-to--search-text "def first")
+    (let* ((producer (hel-thing-producer 'argument))
+           (results (lambda ()
+                      (cl-loop for pos from (point-min) to (point-max)
+                               append (cl-loop for dir in '(1 -1)
+                                               collect (-some->
+                                                           (hel-thing-next 'argument producer pos dir)
+                                                         (hel-thing-instance-bounds))))))
+           (whole (let ((hel--search-range-size (buffer-size)))
+                    (funcall results)))
+           (small (let ((hel--search-range-size 16))
+                    (funcall results))))
+      (should (hel-syntax-argument-producer-p producer))
+      (should (cl-some #'identity whole))
+      (should (equal small whole)))))
+
+(ert-deftest hel-syntax-argument-agrees-with-query ()
+  "In calls and definitions, the syntax table and the query find the same
+arguments, with the same around ranges."
+  (hel-test-with #'python-ts-mode
+      (hel-test-mark "def f(self, a, b=[1, 2],\n      c=None):\n    return g(a, h(b, c), \"x, y\")\n" "def")
+    (skip-unless (hel-treesit-text-objects-p))
+    (let ((query (hel-treesit-query-producer--create))
+          (syntax (hel-syntax-argument-producer--create)))
+      (cl-flet ((ranges (producer)
+                  (cl-loop for pos from (point-min) below (point-max)
+                           for instance = (hel-thing-owning 'argument producer pos)
+                           collect (and instance
+                                        (list (hel-thing-instance-bounds instance)
+                                              (hel-thing-around 'argument producer
+                                                                instance instance))))))
+        (let ((expected (ranges query)))
+          (should (cl-some #'identity expected))
+          (should (equal (ranges syntax) expected)))))))
+
 (ert-deftest hel-no-parser-class-and-argument ()
-  "Without a query, the class and argument objects keep the selection."
+  "In Lisp without a query, the class and argument objects keep the
+selection."
   (hel-test-with #'emacs-lisp-mode (hel-test-mark hel-to--elisp "defun a")
     (let ((inhibit-message t))
-      (hel-mark-inner-argument 1)
-      (hel-mark-a-class 1))
+      (hel-mark-argument 1)
+      (hel-mark-around-class 1))
     (should (eq (hel-test-selection) nil))))
 
 ;;; Prose objects
@@ -661,39 +799,82 @@ comment lines below it. A jump selects comments of whole lines instead."
 (ert-deftest hel-word-object ()
   "The gap of a word holds only spaces and tabs."
   (hel-test-with #'text-mode (hel-test-mark "foo bar baz\n  qux" "bar")
-    (hel-mark-a-word 1)
+    (hel-mark-around-word 1)
     (should (equal (hel-test-selection) "bar "))
     (hel-test-goto "baz")
-    (hel-mark-a-word 1)
+    (hel-mark-around-word 1)
     (should (equal (hel-test-selection) " baz"))
     (hel-test-goto "bar")
-    (hel-mark-inner-word 2)
+    (hel-mark-word 2)
     (should (equal (hel-test-selection) "bar baz"))))
 
 (ert-deftest hel-word-object-before-punctuation ()
-  "A word right before punctuation takes the gap before it."
+  "A word right before punctuation takes the gap before it. So does
+a WORD, because the punctuation at its edges is not part of it."
   (hel-test-with #'text-mode (hel-test-mark hel-to--prose-paragraphs "bar")
-    (hel-mark-a-word 1)
+    (hel-mark-around-word 1)
     (should (equal (hel-test-selection) " bar"))
     (hel-test-goto "bar")
-    (hel-mark-a-WORD 1)
-    (should (equal (hel-test-selection) "bar.  "))))
+    (hel-mark-around-WORD 1)
+    (should (equal (hel-test-selection) " bar"))))
+
+(ert-deftest hel-WORD-object-trims-punctuation ()
+  (hel-test-with #'text-mode (hel-test-mark "used only for ~hel-thing-owning~.\n" "thing")
+    (hel-mark-WORD 1)
+    (should (equal (hel-test-selection) "~hel-thing-owning~"))
+    (hel-test-goto "thing")
+    (hel-mark-around-WORD 1)
+    (should (equal (hel-test-selection) " ~hel-thing-owning~")))
+  (hel-test-with #'text-mode (hel-test-mark "review it against /generic-programming-design.\n" "programming")
+    (hel-mark-WORD 1)
+    (should (equal (hel-test-selection) "/generic-programming-design"))
+    (hel-test-goto "programming")
+    (hel-mark-around-WORD 1)
+    (should (equal (hel-test-selection) " /generic-programming-design"))))
+
+(ert-deftest hel-trim-punctuation ()
+  "Brackets and quotes stay when their pair is inside the WORD, a pair
+that wraps the whole WORD goes, and a WORD of only punctuation stays."
+  (dolist (case '(("foo." "foo")
+                  ("(foo" "foo")
+                  ("foo)," "foo")
+                  ("(foo)" "foo")
+                  ("foo(bar)" "foo(bar)")
+                  ("foo(bar)," "foo(bar)")
+                  ("(foo(bar))" "foo(bar)")
+                  ("(a)(b)" "(a)(b)")
+                  ("\"quoted\"" "quoted")
+                  ("dogs'" "dogs")
+                  ("'tis" "tis")
+                  ("don't" "don't")
+                  ("std::vector," "std::vector")
+                  ("hel-text-objects.el." "hel-text-objects.el")
+                  ("..." "...")
+                  ("()" "()")))
+    (with-temp-buffer
+      (insert (car case))
+      (should (equal (-let [(begin . end)
+                            (hel-trim-punctuation-from-range
+                             (cons (point-min) (point-max))
+                             (get 'WORD 'hel-thing-trim-punctuation))]
+                       (buffer-substring begin end))
+                     (cadr case))))))
 
 (ert-deftest hel-sentence-object ()
-  "The gap of a sentence crosses lines but not paragraphs."
+  "The gap of a sentence stays on its line."
   (hel-test-with #'text-mode (hel-test-mark hel-to--prose-paragraphs "Baz")
-    (hel-mark-inner-sentence 1)
+    (hel-mark-sentence 1)
     (should (equal (hel-test-selection) "Baz qux."))
     (hel-test-goto "Baz")
-    (hel-mark-a-sentence 1)
-    (should (equal (hel-test-selection) "Baz qux.\n"))
+    (hel-mark-around-sentence 1)
+    (should (equal (hel-test-selection) "  Baz qux."))
     (hel-test-goto "More")
-    (hel-mark-a-sentence 1)
-    (should (equal (hel-test-selection) "\nMore here."))))
+    (hel-mark-around-sentence 1)
+    (should (equal (hel-test-selection) "More here."))))
 
 (ert-deftest hel-sentence-count-stays-in-paragraph ()
   (hel-test-with #'text-mode (hel-test-mark hel-to--prose-paragraphs "Baz")
-    (hel-mark-inner-sentence 5)
+    (hel-mark-sentence 5)
     (should (equal (hel-test-selection) "Baz qux.\nMore here."))))
 
 (ert-deftest hel-sentence-motions ()
@@ -708,21 +889,31 @@ comment lines below it. A jump selects comments of whole lines instead."
 (ert-deftest hel-paragraph-object ()
   "A paragraph covers whole lines."
   (hel-test-with #'text-mode (hel-test-mark hel-to--prose-paragraphs "two")
-    (hel-mark-inner-paragraph 1)
+    (hel-mark-paragraph 1)
     (should (equal (hel-test-selection)
                    "  Second para.\nline two.\n"))
     (hel-test-goto "two")
-    (hel-mark-a-paragraph 1)
+    (hel-mark-around-paragraph 1)
     (should (equal (hel-test-selection)
                    "  Second para.\nline two.\n\n\n"))
     (hel-test-goto "Third")
-    (hel-mark-a-paragraph 1)
+    (hel-mark-around-paragraph 1)
     (should (equal (hel-test-selection) "\n\nThird.\n"))))
+
+(ert-deftest hel-paragraph-object-from-indentation ()
+  "From the indentation of the first line, `mip' selects that paragraph."
+  (hel-test-with #'text-mode (hel-test-mark hel-to--prose-paragraphs "Second")
+    (dolist (pos (list (line-beginning-position) (1+ (line-beginning-position))))
+      (hel-test-goto "Second")
+      (goto-char pos)
+      (hel-mark-paragraph 1)
+      (should (equal (hel-test-selection)
+                     "  Second para.\nline two.\n")))))
 
 (ert-deftest hel-word-object-no-header-comment ()
   "A comment line above a word stays out of the selection."
   (hel-test-with #'emacs-lisp-mode (hel-test-mark ";; note\nfoo bar\n" "foo")
-    (hel-mark-a-word 1)
+    (hel-mark-around-word 1)
     (should (equal (hel-test-selection) "foo "))))
 
 ;;; Search in growing ranges
@@ -761,23 +952,23 @@ def last(*args, **kwargs):
 The list holds the next function, the next argument and the next comment
 from each position in both directions, and the sibling of each function
 and argument in both directions."
-  (let* ((function-producer (hel-treesit-query-producer-create :capture "function"))
-         (argument-producer (hel-treesit-query-producer-create :capture "parameter"))
-         (known (->> `((function ,function-producer "function")
-                       (argument ,argument-producer "parameter"))
+  (let* ((function-producer (hel-treesit-query-producer--create))
+         (argument-producer (hel-treesit-query-producer--create))
+         (known (->> `((function ,function-producer)
+                       (argument ,argument-producer))
                      (-mapcat
-                      (-lambda ((thing producer capture))
+                      (-lambda ((thing producer))
                         (-map (lambda (instance) (list thing producer instance))
                               (hel-treesit--capture-things
-                               thing capture (point-min) (point-max))))))))
+                               thing (point-min) (point-max))))))))
     (append
      (cl-loop for pos from (point-min) to (point-max)
               append (cl-loop for dir in '(1 -1)
                               collect (list pos dir
                                             (hel-thing-next 'function function-producer pos dir)
                                             (hel-thing-next 'argument argument-producer pos dir)
-                                            (-some-> (hel-comment-piece-next
-                                                      (hel-treesit-comment-producer-create)
+                                            (-some-> (hel--comment-piece-next
+                                                      (hel-treesit-comment-producer--create)
                                                       pos dir)
                                               (car)))))
      (cl-loop for (thing producer instance) in known
@@ -790,9 +981,9 @@ and argument in both directions."
 scan, from every position and in both directions."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--search-text "def first")
     (skip-unless (hel-treesit-text-objects-p))
-    (let ((whole (let ((hel-treesit--search-range-size (buffer-size)))
+    (let ((whole (let ((hel--search-range-size (buffer-size)))
                    (hel-to--search-results)))
-          (small (let ((hel-treesit--search-range-size 16))
+          (small (let ((hel--search-range-size 16))
                    (hel-to--search-results))))
       ;; The text must give answers, or the comparison proves nothing.
       (should (cl-some #'caddr whole))
@@ -826,24 +1017,99 @@ scan, from every position and in both directions."
 (ert-deftest hel-treesit-broken-pattern ()
   "A query file with a broken pattern keeps its other patterns."
   (hel-to--with-query-file
-      "(no_such_node) @function.around\n(function_definition) @function.around\n"
+      "(no_such_node) @function\n(function_definition) @function\n"
     (hel-test-with #'python-ts-mode (hel-test-mark "def f():\n    return 1\n" "return")
       (skip-unless (hel-treesit-text-objects-p))
-      (hel-mark-a-function 1)
+      (hel-mark-around-function 1)
       (should (equal (hel-to--first-line) "def f():")))))
+
+;;;; The things of a match
+
+(defun hel-to--capture-types (thing)
+  "Return the node types of each THING in the buffer, one list per thing."
+  (->> (hel-treesit--capture-things thing (point-min) (point-max))
+       (-map (lambda (instance)
+               (-map #'treesit-node-type (hel-thing-instance-data instance))))))
+
+(ert-deftest hel-treesit-node-hash-test ()
+  "Two lookups of the same node find the same key of a `hel-treesit-node'
+table, and another node does not."
+  (hel-test-with #'python-ts-mode "|def f(a, b):\n    return a\n"
+    (let ((table (make-hash-table :test 'hel-treesit-node)))
+      (puthash (treesit-node-at 7) 'a table)
+      (should (eq 'a (gethash (treesit-node-at 7) table)))
+      (should (null (gethash (treesit-node-at 10) table))))))
+
+(ert-deftest hel-treesit-common-ancestor-laws ()
+  "The common ancestor is idempotent, commutative and associative, and nil
+stands above the root."
+  (hel-test-with #'python-ts-mode "|def f(a, b):\n    return a\n"
+    (let* ((a (treesit-node-at 7))
+           (b (treesit-node-at 10))
+           (return (treesit-node-parent (treesit-node-at 25)))
+           (root (treesit-buffer-root-node)))
+      (cl-flet ((ancestor (x y) (hel-treesit--common-ancestor x y)))
+        (should (treesit-node-eq (ancestor a a) a))
+        (should (treesit-node-eq (ancestor a b) (ancestor b a)))
+        (should (equal (treesit-node-type (ancestor a b)) "parameters"))
+        (should (treesit-node-eq (ancestor (ancestor a b) return)
+                                 (ancestor a (ancestor b return))))
+        (should (equal (treesit-node-type (ancestor a return))
+                       "function_definition"))
+        (should (treesit-node-eq (ancestor a root) root))
+        (should (null (ancestor a nil)))
+        (should (null (ancestor nil a)))))))
+
+(ert-deftest hel-treesit-shadowed-node-not-largest ()
+  "A match is shadowed through any of its nodes, not only its largest one."
+  (hel-to--with-query-file
+      (concat "((comment) @function . (function_definition) @function)\n"
+              "(module (function_definition) @_shadowed) @function\n")
+    (hel-test-with #'python-ts-mode
+        "|# A comment that is longer than the function after it.\ndef f(): pass\n"
+      (should (equal (hel-to--capture-types 'function) '(("module")))))))
+
+(ert-deftest hel-treesit-shadowed-nodes-all-count ()
+  "A pattern that marks two nodes as shadowed drops the matches of both."
+  (hel-to--with-query-file
+      (concat "(function_definition) @function\n"
+              "(module (function_definition) @_shadowed\n"
+              "        .\n"
+              "        (function_definition) @_shadowed) @function\n")
+    (hel-test-with #'python-ts-mode "|def f(): pass\ndef g(): pass\n"
+      (should (equal (hel-to--capture-types 'function) '(("module")))))))
+
+(ert-deftest hel-treesit-parent-of-several-nodes ()
+  "The parent of a thing is the nearest node above all of its nodes: the
+parent of siblings, and the parent of the outer node when the nodes nest."
+  (hel-to--with-query-file
+      (concat "((comment) @function . (function_definition) @function)\n"
+              "(class_definition\n"
+              "  body: (block (function_definition name: (identifier) @function)\n"
+              "               @function))\n")
+    (hel-test-with #'python-ts-mode
+        "|# f\ndef f(): pass\nclass C:\n    def m(self): pass\n"
+      (let ((producer (hel-treesit-query-producer--create)))
+        (should (equal (->> (hel-treesit--capture-things 'function
+                                                         (point-min) (point-max))
+                            (-map (lambda (instance)
+                                    (treesit-node-type
+                                     (hel-thing-parent 'function producer
+                                                       instance)))))
+                       '("module" "block")))))))
 
 (ert-deftest hel-treesit-unbalanced-query-file ()
   "A query file that cannot be split gives no query and no error, and the
 function object comes from `hel-function'."
   (hel-to--with-query-file
-      "(function_definition) @function.around\n(class_definition\n"
+      "(function_definition) @function\n(class_definition\n"
     (hel-test-with #'python-ts-mode (hel-test-mark "def f():\n    return 1\n" "return")
       (should-not (hel-treesit-text-objects-p))
-      (hel-mark-inner-function 1)
+      (hel-mark-function 1)
       (should (equal (hel-test-selection)
                      "def f():\n    return 1\n")))))
 
-;;; Hel's own patterns
+;;; The patterns of each language
 
 (defun hel-to--object-text (language text needle object)
   "Return the text of the innermost OBJECT at NEEDLE in TEXT, or nil.
@@ -851,8 +1117,8 @@ TEXT is parsed as LANGUAGE, with the queries of the repository."
   (hel-test-with #'fundamental-mode (hel-test-mark text needle)
     (treesit-parser-create language)
     (let ((pos (point)))
-      (-some->> (hel-treesit--thing-matches object (point-min) (point-max))
-        (-map (-partial #'hel-treesit--match-thing (intern object)))
+      (-some->> (hel-treesit--capture-things (intern object)
+                                             (point-min) (point-max))
         (-filter (lambda (o)
                    (<= (hel-thing-instance-begin o) pos (hel-thing-instance-end o))))
         (-min-by (-on #'> (-compose #'hel-range-length
@@ -868,7 +1134,7 @@ Skip the test when LANGUAGE has no grammar or Emacs has no GROUPED
 captures."
   (declare (indent 1))
   `(progn
-     (skip-unless (and hel-treesit--grouped-capture-p
+     (skip-unless (and (<= 31 emacs-major-version)
                        (treesit-language-available-p ',language)))
      ,@(mapcar (pcase-lambda (`(,text ,needle ,object ,expected))
                  `(should (equal (hel-to--object-text
@@ -876,7 +1142,7 @@ captures."
                                  ,expected)))
                cases)))
 
-(ert-deftest hel-own-patterns-elixir ()
+(ert-deftest hel-language-patterns-elixir ()
   "The Elixir patterns, whose regexes use alternation, find objects."
   (hel-to--objects-should elixir
     ("defmodule M do\n  def f() do\n    1\n  end\nend\n" "f()" "function"
@@ -884,7 +1150,7 @@ captures."
     ("defmodule M do\n  def f() do\n    1\n  end\nend\n" "M " "class"
      "defmodule M do\n  def f() do\n    1\n  end\nend")))
 
-(ert-deftest hel-own-patterns-javascript ()
+(ert-deftest hel-language-patterns-javascript ()
   (hel-to--objects-should javascript
     ("export function f() {}\n" "f(" "function" "export function f() {}")
     ("export default class { m() {} }\n" "m(" "class"
@@ -893,7 +1159,7 @@ captures."
     ("export const e = () => 1;\n" "=>" "function" "export const e = () => 1;")
     ("foo(() => 1);\n" "=>" "function" "() => 1")))
 
-(ert-deftest hel-own-patterns-typescript ()
+(ert-deftest hel-language-patterns-typescript ()
   (hel-to--objects-should typescript
     ("export abstract class A { }\n" "A " "class" "export abstract class A { }")
     ("export interface I { x: number }\n" "I " "class"
@@ -901,32 +1167,50 @@ captures."
     ("declare function d(): void;\n" "d(" "function"
      "declare function d(): void;")))
 
-(ert-deftest hel-own-patterns-rust ()
+(ert-deftest hel-language-patterns-rust ()
   (hel-to--objects-should rust
     ("#[derive(Debug)]\npub struct S { x: i32 }\n" "S " "class"
      "#[derive(Debug)]\npub struct S { x: i32 }")
     ("struct P { x: i32 }\n" "P " "class" "struct P { x: i32 }")))
 
-(ert-deftest hel-own-patterns-c ()
+(ert-deftest hel-language-patterns-c ()
   (hel-to--objects-should c
     ("struct S { int x; };\n" "S " "class" "struct S { int x; };")
     ("typedef struct S { int x; } S;\n" "S {" "class"
-     "typedef struct S { int x; } S;")))
+     "typedef struct S { int x; } S;")
+    ("struct F;\n" "F;" "class" "struct F;")
+    ("void f() { struct stat b; }\n" "stat" "class" nil)))
 
-(ert-deftest hel-own-patterns-cpp ()
+(ert-deftest hel-language-patterns-cpp ()
   "C++ reads Hel's C patterns through its inheritance, and its own."
   (hel-to--objects-should cpp
     ("struct P { int y; };\n" "P " "class" "struct P { int y; };")
     ("class C { int x; };\n" "C " "class" "class C { int x; };")
     ("template <typename T>\nclass D { T x; };\n" "D " "class"
      "template <typename T>\nclass D { T x; };")
+    ("class F;\n" "F;" "class" "class F;")
+    ("template <typename T>\nclass G;\n" "G;" "class"
+     "template <typename T>\nclass G;")
+    ("class H {\n  class I;\n};\n" "I;" "class" "class I;")
+    ("void f() { class A *p; }\n" "A " "class" nil)
     ("template <typename T>\nT f(T x) { return x; }\n" "f(" "function"
      "template <typename T>\nT f(T x) { return x; }")))
 
-(ert-deftest hel-own-patterns-ruby ()
+(ert-deftest hel-language-patterns-ruby ()
   (hel-to--objects-should ruby
     ("class K\n  private def m\n    1\n  end\nend\n" "m\n" "function"
      "private def m\n    1\n  end")))
+
+(ert-deftest hel-language-patterns-entries ()
+  "An entry is an element, a key with its value, or a field."
+  (hel-to--objects-should json
+    ("{\"a\": 1, \"b\": [2, 3]}\n" "\"b\"" "entry" "\"b\": [2, 3]")
+    ("{\"a\": 1, \"b\": [2, 3]}\n" "3" "entry" "3"))
+  (hel-to--objects-should rust
+    ("struct S { x: i32, y: i32 }\n" "y:" "entry" "y: i32")
+    ("let v = vec![1, 2];\n" "2]" "entry" "2"))
+  (hel-to--objects-should javascript
+    ("const o = {a: 1, b: 2};\n" "b:" "entry" "b: 2")))
 
 ;;; Bindings
 
@@ -938,8 +1222,8 @@ captures."
     (hel-update-active-keymaps)
     (should (equal (-map (lambda (key) (key-binding (kbd key)))
                          '("m f" "] f" "m i a" "M-n" "M-o" "M-a"))
-                   '(hel-mark-inner-function hel-mark-function-forward
-                                             hel-mark-inner-argument hel-select-next-sibling
+                   '(hel-mark-function hel-mark-function-forward
+                                             hel-mark-argument hel-select-next-sibling
                                              hel-expand-selection-backward hel-select-all-siblings)))))
 
 ;;; Text objects: helpers
@@ -1074,6 +1358,32 @@ Return the objects that the check used."
           (should (equal (list pos dir (-some-> next (hel-to--key)))
                          (list pos dir (-some-> (hel-to--nearest objects pos dir)
                                          hel-to--key)))))))
+    ;; `hel-thing-at' returns the innermost object that holds the character
+    ;; at POS, and when none holds it, the innermost object that ends at POS.
+    ;; Objects of the same size that overlap are equally innermost.
+    (dolist (pos positions)
+      (cl-flet ((innermost (pred)
+                  (when-let* ((matching (-filter pred objects))
+                              (size (->> matching
+                                         (-map #'hel-thing-instance-bounds)
+                                         (-map #'hel-range-length)
+                                         (-min))))
+                    (->> matching
+                         (-filter (lambda (object)
+                                    (= size (hel-range-length
+                                             (hel-thing-instance-bounds object)))))
+                         (-map #'hel-to--key)))))
+        (let ((expected
+               (or (innermost (lambda (object)
+                                (and (<= (hel-thing-instance-begin object) pos)
+                                     (< pos (hel-thing-instance-end object)))))
+                   (innermost (lambda (object)
+                                (= pos (hel-thing-instance-end object))))))
+              (at (-some-> (hel-thing-at thing producer pos) hel-to--key)))
+          (should (equal (list pos (if expected
+                                       (and (member at expected) t)
+                                     (null at)))
+                         (list pos t))))))
     ;; Siblings are inverse in the two directions.
     (dolist (object objects)
       (when-let* ((sibling (hel-thing-sibling thing producer object 1)))
@@ -1082,15 +1392,17 @@ Return the objects that the check used."
                              (-some-> (hel-thing-sibling thing producer sibling -1)
                                hel-to--key))
                        (list (hel-to--key object) (hel-to--key object))))))
-    (should (< 0 siblings))
-    ;; `hel-thing-after-gap' never moves against DIR, and a second call
-    ;; from its own result returns that result again.
+    ;; A comment has no siblings: a count selects one comment.
+    (unless (eq thing 'comment)
+      (should (< 0 siblings)))
+    ;; `hel-thing-after-gap' moves in DIR, and from its own result the gap
+    ;; is empty, so a second call returns nil.
     (dolist (pos positions)
       (dolist (dir '(1 -1))
         (when-let* ((end (hel-thing-after-gap thing producer pos dir)))
           (should (equal (list pos dir t)
-                         (list pos dir (if (< 0 dir) (<= pos end) (<= end pos)))))
-          (should (equal (list pos dir end)
+                         (list pos dir (if (< 0 dir) (< pos end) (< end pos)))))
+          (should (equal (list pos dir nil)
                          (list pos dir (hel-thing-after-gap thing producer end dir)))))))
     objects))
 
@@ -1185,7 +1497,7 @@ Return the objects that the check used."
                    '("self" "a" "b")))))
 
 ;; Section "Moving to the edge of an object": without a parser, `]f' runs
-;; through `hel--forward-function'. Inside a `defun' it selects to its end,
+;; through `hel-function-motion'. Inside a `defun' it selects to its end,
 ;; and the next `]f' selects the next `defun' without its header comment.
 (ert-deftest hel-to-elisp-function-edges ()
   (hel-test-with #'emacs-lisp-mode (hel-test-mark hel-to--elisp "1)")
@@ -1298,10 +1610,10 @@ Return the objects that the check used."
 ;; range has no gap." A tab is a gap of a word, as a space is.
 (ert-deftest hel-to-word-gap-stays-on-line ()
   (hel-test-with #'text-mode (hel-test-mark "foo\nbar baz\n" "foo")
-    (hel-mark-a-word 1)
+    (hel-mark-around-word 1)
     (should (equal (hel-test-selection) "foo")))
   (hel-test-with #'text-mode (hel-test-mark "one\ttwo\nthree\n" "two")
-    (hel-mark-a-word 1)
+    (hel-mark-around-word 1)
     (should (equal (hel-test-selection) "\ttwo"))))
 
 ;; Section "The ranges of an object": a word has no header comment, so
@@ -1309,38 +1621,55 @@ Return the objects that the check used."
 ;; The word starts its line and ends it, so it has no gap either.
 (ert-deftest hel-to-word-ignores-comment-above ()
   (hel-test-with #'emacs-lisp-mode (hel-test-mark ";; note\nfoo\n" "foo")
-    (hel-mark-a-word 1)
+    (hel-mark-around-word 1)
     (should (equal (hel-test-selection) "foo"))))
 
-;; Section "The ranges of an object": "A sentence's gap crosses line ends,
-;; but not the end of the paragraph." `mas' takes the whitespace after a
-;; sentence, across a line end, and the whitespace before the last
-;; sentence of a paragraph.
+;; Section "The ranges of an object": "A sentence's gap stays on its line."
+;; `mas' takes the blanks after a sentence, and the blanks before the last
+;; sentence of a line.
 (ert-deftest hel-to-sentence-around ()
   (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "One")
     (setq-local sentence-end-double-space nil)
-    (hel-mark-a-sentence 1)
+    (hel-mark-around-sentence 1)
     (should (equal (hel-test-selection) "One two. "))
     (should (= (point) (region-end)))
     (hel-test-goto "Three")
-    (hel-mark-a-sentence 1)
-    (should (equal (hel-test-selection) "Three four.\n"))
+    (hel-mark-around-sentence 1)
+    (should (equal (hel-test-selection) " Three four."))
     (hel-test-goto "Five")
-    (hel-mark-a-sentence 1)
-    (should (equal (hel-test-selection) "\nFive six."))
+    (hel-mark-around-sentence 1)
+    (should (equal (hel-test-selection) "Five six."))
     (hel-test-goto "Nine")
-    (hel-mark-a-sentence 1)
+    (hel-mark-around-sentence 1)
     (should (equal (hel-test-selection) " Nine ten."))))
 
-;; Section "The ranges of an object": "mas and d never join two
-;; paragraphs."
+;; Section "The ranges of an object": "mas and d never join two lines."
 (ert-deftest hel-to-sentence-around-delete ()
-  (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "Five")
+  (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "Three")
     (setq-local sentence-end-double-space nil)
-    (hel-mark-a-sentence 1)
+    (hel-mark-around-sentence 1)
     (delete-region (region-beginning) (region-end))
     (should (equal (buffer-string)
-                   "One two. Three four.\n\nSeven eight. Nine ten.\n"))))
+                   "One two.\nFive six.\n\nSeven eight. Nine ten.\n"))))
+
+;; Section "The around range": a gap counts unless it is empty or ends at
+;; a border, the edge of the buffer or a bracket.
+(ert-deftest hel-to-around-gap-and-border ()
+  ;; The blank line after a function counts before code of another kind.
+  (hel-test-with #'python-ts-mode (hel-test-mark "def f():\n    pass\n\nx = 1\n" "pass")
+    (skip-unless (hel-treesit-text-objects-p))
+    (hel-mark-around-function 1)
+    (should (equal (hel-test-selection) "def f():\n    pass\n\n")))
+  ;; The blank line before a closing bracket does not.
+  (when (treesit-language-available-p 'javascript)
+    (hel-test-with #'js-ts-mode (hel-test-mark "class A {\n  f() {}\n\n  g() {}\n\n}\n" "g()")
+      (skip-unless (hel-treesit-text-objects-p))
+      (hel-mark-around-function 1)
+      (should (equal (hel-test-selection) "\n  g() {}\n"))))
+  ;; The blanks before a comment after code count even after a bracket.
+  (hel-test-with #'c-mode (hel-test-mark "int f() {  // note\n}\n" "note")
+    (hel-mark-around-comment 1)
+    (should (equal (hel-test-selection) "  // note"))))
 
 ;; Section "Selecting an object": "The parent of a sentence is its
 ;; paragraph, so 3 mis on the last sentence of a paragraph selects only that
@@ -1349,10 +1678,10 @@ Return the objects that the check used."
 (ert-deftest hel-to-sentence-count-stops-at-paragraph ()
   (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "Five")
     (setq-local sentence-end-double-space nil)
-    (hel-mark-inner-sentence 3)
+    (hel-mark-sentence 3)
     (should (equal (hel-test-selection) "Five six."))
     (hel-test-goto "Seven")
-    (hel-mark-inner-sentence 3)
+    (hel-mark-sentence 3)
     (should (equal (hel-test-selection) "Seven eight. Nine ten."))))
 
 ;; Section "The ranges of an object": "A paragraph covers whole lines ...
@@ -1360,12 +1689,12 @@ Return the objects that the check used."
 ;; after the paragraph.
 (ert-deftest hel-to-paragraph-delete ()
   (hel-test-with #'text-mode (hel-test-mark "A.\n\nB b.\nb2.\n\nC.\n" "b2")
-    (hel-mark-inner-paragraph 1)
+    (hel-mark-paragraph 1)
     (should (equal (hel-test-selection) "B b.\nb2.\n"))
     (delete-region (region-beginning) (region-end))
     (should (equal (buffer-string) "A.\n\n\nC.\n")))
   (hel-test-with #'text-mode (hel-test-mark "A.\n\nB b.\nb2.\n\nC.\n" "b2")
-    (hel-mark-a-paragraph 1)
+    (hel-mark-around-paragraph 1)
     (should (equal (hel-test-selection) "B b.\nb2.\n\n"))
     (delete-region (region-beginning) (region-end))
     (should (equal (buffer-string) "A.\n\nC.\n"))))
@@ -1378,10 +1707,10 @@ Return the objects that the check used."
 (ert-deftest hel-to-paragraph-in-gap-and-count ()
   (hel-test-with #'text-mode (hel-test-mark "A.\n\nB.\n" "A.")
     (hel-to--goto-blank-line "B.")
-    (hel-mark-inner-paragraph 1)
+    (hel-mark-paragraph 1)
     (should (equal (hel-test-selection) "A.\n"))
     (hel-test-goto "A.")
-    (hel-mark-inner-paragraph 2)
+    (hel-mark-paragraph 2)
     (should (equal (hel-test-selection) "A.\n\nB.\n"))))
 
 ;;; Sources and the definition of an object
@@ -1401,11 +1730,11 @@ Return the objects that the check used."
       (should (= (length sources) 2))
       (should-not (funcall (car sources)))
       (should (funcall (cadr sources))))
-    ;; The class and the argument objects have only a query.
+    ;; The class object has only a query, and the syntax source of the
+    ;; argument object does not apply in Lisp.
+    (should (= 1 (length (get 'class 'hel-thing-sources))))
     (dolist (object '(class argument))
-      (let ((sources (get object 'hel-thing-sources)))
-        (should (= (length sources) 1))
-        (should-not (-some #'funcall sources))))))
+      (should-not (-some #'funcall (get object 'hel-thing-sources))))))
 
 ;; Section "Choosing a producer": the source of a Helix query applies when
 ;; `hel-treesit-text-objects-p' returns non-nil at the cursor.
@@ -1421,7 +1750,7 @@ Return the objects that the check used."
   (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "Three")
     (setq-local sentence-end-double-space nil)
     (dolist (object '(word WORD sentence paragraph))
-      (should (hel-producer object)))))
+      (should (hel-thing-producer object)))))
 
 ;; Section "Sources and the definition of an object": "A user adds a source
 ;; with (push SOURCE (get 'function 'hel-thing-sources))." "The first source
@@ -1430,11 +1759,11 @@ Return the objects that the check used."
   (let ((sources (get 'function 'hel-thing-sources)))
     (unwind-protect
         (progn
-          (push (hel-motion-source #'hel--forward-sentence)
+          (push (hel-motion-source #'hel-sentence-motion)
                 (get 'function 'hel-thing-sources))
           (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "Three")
             (setq-local sentence-end-double-space nil)
-            (hel-mark-inner-function 1)
+            (hel-mark-function 1)
             (should (equal (hel-test-selection) "Three four."))))
       (put 'function 'hel-thing-sources sources))))
 
@@ -1446,7 +1775,7 @@ Return the objects that the check used."
         (progn
           (push (lambda () nil) (get 'word 'hel-thing-sources))
           (hel-test-with #'text-mode (hel-test-mark "foo bar baz\n" "bar")
-            (hel-mark-a-word 1)
+            (hel-mark-around-word 1)
             (should (equal (hel-test-selection) "bar "))))
       (put 'word 'hel-thing-sources sources))))
 
@@ -1470,9 +1799,10 @@ Return the objects that the check used."
                      (hel-to--key five)))
       (should-not (hel-thing-sibling thing producer five 1)))))
 
-;; Section "The ranges of an object": the gap of a sentence is whitespace,
-;; across line ends. Section "The finding operations have two levels": `hel-thing-after-gap'
-;; returns the position where the gap from POS in direction DIR ends.
+;; Section "The ranges of an object": the gap of a sentence is the blanks
+;; on its line, and a line end is a border. Section "The finding operations
+;; have two levels": `hel-thing-after-gap' returns the position after the
+;; gap from POS in direction DIR, or nil when no gap separates sentences.
 (ert-deftest hel-to-after-gap-sentence ()
   (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "One")
     (setq-local sentence-end-double-space nil)
@@ -1480,11 +1810,10 @@ Return the objects that the check used."
           (producer (hel-to--producer 'sentence))
           (end-of-one (progn (search-forward "two.") (point)))
           (three (progn (hel-test-goto "Three") (point)))
-          (end-of-three (progn (search-forward "four.") (point)))
-          (five (progn (hel-test-goto "Five") (point))))
+          (end-of-three (progn (search-forward "four.") (point))))
       (should (equal (hel-thing-after-gap thing producer end-of-one 1) three))
       (should (equal (hel-thing-after-gap thing producer three -1) end-of-one))
-      (should (equal (hel-thing-after-gap thing producer end-of-three 1) five)))))
+      (should-not (hel-thing-after-gap thing producer end-of-three 1)))))
 
 ;; Section "The finding operations have two levels" and "Tests": the laws of the protocol on the
 ;; Python query, for functions.
@@ -1542,28 +1871,28 @@ Return the objects that the check used."
   "A comment producer that reads the comment pieces from a list of ranges."
   ranges)
 
-(cl-defmethod hel-comment-piece-under ((producer hel-test-list-comment-producer)
-                                       pos)
+(cl-defmethod hel--comment-piece-under ((producer hel-test-list-comment-producer)
+                                        pos)
   (-when-let ((begin . end)
               (-first (-lambda ((begin . end)) (and (<= begin pos) (< pos end)))
                       (hel-test-list-comment-producer-ranges producer)))
     (cons begin end)))
 
-(cl-defmethod hel-comment-piece-next ((producer hel-test-list-comment-producer)
-                                      pos dir)
+(cl-defmethod hel--comment-piece-next ((producer hel-test-list-comment-producer)
+                                       pos dir)
   (let* ((ranges (hel-test-list-comment-producer-ranges producer))
          (found (if (< 0 dir)
                     (-first (lambda (range) (<= pos (car range))) ranges)
-                  (-last (lambda (range) (< (car range) pos)) ranges))))
+                  (-last (lambda (range) (<= (cdr range) pos)) ranges))))
     (when found
-      (hel-comment-piece-under producer (car found)))))
+      (hel--comment-piece-under producer (car found)))))
 
 (ert-deftest hel-comments-need-only-the-two-piece-operations ()
   "A third model of the comment producer gets the comments for nothing."
   (hel-test-with #'fundamental-mode "# a\n# b\n\n# c\n|"
     (let ((producer (hel-test-list-comment-producer-create
                      :ranges '((1 . 4) (5 . 8) (10 . 13)))))
-      (should (equal (hel--bounds-of-comment-at producer 2) '(1 . 9)))
+      (should (equal (hel--comment-run-at producer 2) '(1 . 8)))
       (should (equal (hel-thing-instance-bounds
                       (hel-thing-next 'comment producer 1 1))
                      '(10 . 14)))
@@ -1571,6 +1900,29 @@ Return the objects that the check used."
                       (hel-thing-next 'comment producer 12 -1))
                      '(1 . 9))))))
 
+
+(ert-deftest hel-comment-piece-under-at-start-of-next-piece ()
+  "The piece under the start of a piece that `hel--comment-piece-next'
+returns is that same piece, on all three models. `hel-thing-next' builds
+the comment from that start."
+  (cl-flet ((check (producer)
+              (cl-loop for pos from (point-min) to (point-max)
+                       do (dolist (dir '(1 -1))
+                            (when-let* ((piece (hel--comment-piece-next
+                                                producer pos dir)))
+                              (should (equal (hel--comment-piece-under
+                                              producer (car piece))
+                                             piece)))))))
+    (let ((text "int a; // one\n// two\n/* three\n   four */\nint b; /* five */ // six\n|"))
+      (hel-test-with #'c-mode text
+        (check (hel-syntax-comment-source)))
+      (when (treesit-language-available-p 'c)
+        (hel-test-with #'c-ts-mode text
+          (when (hel-treesit-text-objects-p)
+            (check (hel-treesit-comment-producer--create))))))
+    (hel-test-with #'fundamental-mode "# a\n# b\n\n# c\n|"
+      (check (hel-test-list-comment-producer-create
+              :ranges '((1 . 4) (5 . 8) (10 . 13)))))))
 (ert-deftest hel-to-laws-syntax-comments ()
   (hel-test-with #'emacs-lisp-mode (hel-test-mark hel-to--elisp-comments "(x)")
     (let* ((thing 'comment)
@@ -1587,7 +1939,8 @@ Return the objects that the check used."
       (dolist (pos (number-sequence (point-min) (point-max)))
         (unless (save-excursion (goto-char pos) (bolp))
           (dolist (dir '(1 -1))
-            (let ((gap-end (hel-thing-after-gap thing producer pos dir)))
+            (let ((gap-end (or (hel-thing-after-gap thing producer pos dir)
+                               pos)))
               (should-not (string-search
                            "\n" (buffer-substring-no-properties
                                  (min pos gap-end) (max pos gap-end)))))))))))
@@ -1599,10 +1952,10 @@ Return the objects that the check used."
   (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "Three")
     (setq-local sentence-end-double-space nil)
     (dolist (object '(word WORD sentence paragraph))
-      (should-not (hel-thing-header-comment-p object))))
+      (should-not (hel-thing-owns-header-comment-p object))))
   (hel-test-with #'emacs-lisp-mode (hel-test-mark hel-to--elisp "1)")
-    (should (hel-thing-header-comment-p 'function))
-    (should-not (hel-thing-header-comment-p 'comment))))
+    (should (hel-thing-owns-header-comment-p 'function))
+    (should-not (hel-thing-owns-header-comment-p 'comment))))
 
 ;; Section "The ranges of an object", the table of objects: function, class
 ;; and argument have a header comment, and comment has none.
@@ -1610,8 +1963,8 @@ Return the objects that the check used."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python "return g")
     (skip-unless (hel-treesit-text-objects-p))
     (dolist (object '(function class argument))
-      (should (hel-thing-header-comment-p object)))
-    (should-not (hel-thing-header-comment-p 'comment))))
+      (should (hel-thing-owns-header-comment-p object)))
+    (should-not (hel-thing-owns-header-comment-p 'comment))))
 
 ;; Section "Five ways to extend": a new thing needs only its sources, and
 ;; its commands call the algorithms.
@@ -1619,13 +1972,13 @@ Return the objects that the check used."
   (unwind-protect
       (progn
         (put 'hel-to-probe 'hel-thing-sources
-             (list (hel-motion-source #'hel--forward-sentence)))
+             (list (hel-motion-source #'hel-sentence-motion)))
         (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "Three")
           (setq-local sentence-end-double-space nil)
-          (hel--mark-text-object 'hel-to-probe :inner 1)
+          (hel-mark-text-object 'hel-to-probe :inner 1)
           (should (equal (hel-test-selection) "Three four."))
           (hel-test-goto "four")
-          (hel--mark-to-thing-edge 'hel-to-probe 1 :end t)
+          (hel-mark-to-thing-edge 'hel-to-probe 1 :end t)
           (should (equal (hel-test-selection) "four."))))
     (put 'hel-to-probe 'hel-thing-sources nil)))
 
@@ -1633,13 +1986,14 @@ Return the objects that the check used."
 
 (ert-deftest hel-thing-sources ()
   "Section Things and sources: function and comment have more than one
-source.  Section Choosing a producer: class and argument have only a query.
-An extension may add a source of WORD, as hel-paredit does, so its count is
-not checked."
+source.  Section Choosing a producer: class has only a query, and argument
+has a query and the syntax table.  An extension may add a source of WORD,
+as hel-paredit does, so its count is not checked."
   (should (= 2 (length (get 'function 'hel-thing-sources))))
   (should (= 2 (length (get 'comment 'hel-thing-sources))))
+  (should (= 2 (length (get 'argument 'hel-thing-sources))))
   (should (= 2 (length (default-value 'hel-node-source-functions))))
-  (dolist (thing '(word sentence paragraph class argument))
+  (dolist (thing '(word sentence paragraph class))
     (should (= 1 (length (get thing 'hel-thing-sources))))))
 
 (ert-deftest hel-class-has-no-source-in-text-mode ()
@@ -1647,7 +2001,7 @@ not checked."
 leaves the selection as it is."
   (hel-test-with #'text-mode "foo |bar\n"
     (should-not (hel-to--producer 'class))
-    (hel-test-run #'hel-mark-inner-class)
+    (hel-test-run #'hel-mark-class)
     (should (equal (hel-test-render) "foo |bar\n"))
     (should (null mark-ring))))
 
@@ -1662,28 +2016,39 @@ text-mode."
     (should-not (hel-treesit-text-objects-p))))
 
 (ert-deftest hel-thing-rules ()
-  "Section Two questions, two arguments: header-p and linewise-p are
-rules of the thing (table of section The ranges of an object)."
-  (should (hel-thing-header-comment-p 'function))
-  (should (hel-thing-header-comment-p 'class))
-  (should (hel-thing-header-comment-p 'argument))
-  (should-not (hel-thing-header-comment-p 'word))
-  (should-not (hel-thing-header-comment-p 'sentence))
-  (should-not (hel-thing-header-comment-p 'comment))
-  (should (hel-thing-linewise-p 'paragraph))
-  (should-not (hel-thing-linewise-p 'word))
+  "Section Two questions, two arguments: owning the header comment and
+covering whole lines are rules of the thing (table of section The ranges
+of an object)."
+  (should (hel-thing-owns-header-comment-p 'function))
+  (should (hel-thing-owns-header-comment-p 'class))
+  (should (hel-thing-owns-header-comment-p 'argument))
+  (should-not (hel-thing-owns-header-comment-p 'word))
+  (should-not (hel-thing-owns-header-comment-p 'sentence))
+  (should-not (hel-thing-owns-header-comment-p 'comment))
+  (with-temp-buffer
+    (insert "foo\n  bar  \nbaz")
+    ;; `bar' is the only text on its line.
+    (should (equal '(5 . 13)
+                   (hel-thing-maybe-expand-bounds-to-full-lines
+                    'paragraph '(7 . 10))))
+    (should (equal '(7 . 10)
+                   (hel-thing-maybe-expand-bounds-to-full-lines
+                    'word '(7 . 10)))))
   (should (= -1 (hel-thing-selection-direction 'function)))
   (should (= 1 (hel-thing-selection-direction 'word))))
 
 ;;; Laws of the protocol
 
 (defun hel-to--after-gap-idempotent (thing pos)
-  "Check that a second after-gap of THING from its result returns it."
-  (let ((producer (hel-to--producer thing)))
+  "Check that a gap of THING lies next to POS, and that none follows its end."
+  (let ((producer (hel-to--producer thing))
+        (gaps 0))
     (should producer)
     (dolist (dir '(1 -1))
-      (let ((once (hel-thing-after-gap thing producer pos dir)))
-        (should (equal once (hel-thing-after-gap thing producer once dir)))))))
+      (when-let* ((once (hel-thing-after-gap thing producer pos dir)))
+        (cl-incf gaps)
+        (should-not (hel-thing-after-gap thing producer once dir))))
+    (should (< 0 gaps))))
 
 (ert-deftest hel-law-after-gap-sentence ()
   "Tests of the protocol: a second after-gap from its own result returns
@@ -1713,8 +2078,8 @@ comment holds no line end."
            (end 14)                     ; after "; note"
            (start 8))                   ; before "; note"
       (should producer)
-      (let ((after (hel-thing-after-gap 'comment producer end 1))
-            (before (hel-thing-after-gap 'comment producer start -1)))
+      (let ((after (or (hel-thing-after-gap 'comment producer end 1) end))
+            (before (or (hel-thing-after-gap 'comment producer start -1) start)))
         (should-not (string-search "\n" (buffer-substring end after)))
         (should-not (string-search "\n" (buffer-substring before start)))))))
 
@@ -1755,14 +2120,14 @@ With NEEDLE2, also put MARKER2 before it.  NEEDLE2 must come after NEEDLE."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode
       "class A:\n    def f(self):\n        |pass\n\n    def g(self):\n        pass\n"
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-selection) "    def f(self):\n        pass\n"))))
 
 (ert-deftest hel-mit-whole-lines ()
   "`mit' selects the whole lines of a class."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "class A:\n    |x = 1\n\ny = 2\n"
-    (hel-test-run #'hel-mark-inner-class)
+    (hel-test-run #'hel-mark-class)
     (should (equal (hel-test-selection) "class A:\n    x = 1\n"))))
 
 (ert-deftest hel-mif-shares-line ()
@@ -1770,7 +2135,7 @@ With NEEDLE2, also put MARKER2 before it.  NEEDLE2 must come after NEEDLE."
   (hel-test-need-queries 'c)
   (hel-test-with #'c-ts-mode
       "int a(void) { |return 1; } int b(void) { return 2; }\n"
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-selection) "int a(void) { return 1; }"))))
 
 (ert-deftest hel-brace-last-paragraph ()
@@ -1812,22 +2177,22 @@ With NEEDLE2, also put MARKER2 before it.  NEEDLE2 must come after NEEDLE."
   "On the indentation of a line, `miw' selects nothing."
   (dolist (input '("foo\n|  bar baz\n" "foo\n |  bar baz\n" "|  bar baz\n"))
     (hel-test-with #'text-mode input
-      (hel-test-run #'hel-mark-inner-word)
+      (hel-test-run #'hel-mark-word)
       (should (equal (hel-test-render) input)))))
 
 (ert-deftest hel-miw-on-blanks-in-line ()
   "On the blanks between two words, `miw' selects the word before them."
   (hel-test-with #'text-mode "foo |  bar"
-    (hel-test-run #'hel-mark-inner-word)
+    (hel-test-run #'hel-mark-word)
     (should (equal (hel-test-render) "^foo|   bar"))))
 
 (ert-deftest hel-negative-count-point-at-start ()
   "A negative count puts point at the start for every text object."
   (hel-test-with #'text-mode "foo b|ar baz qux"
-    (hel-test-run #'hel-mark-inner-word -2)
+    (hel-test-run #'hel-mark-word -2)
     (should (equal (hel-test-render) "|foo bar^ baz qux")))
   (hel-test-with #'text-mode "aa\n\nb|b\n\ncc\n"
-    (hel-test-run #'hel-mark-inner-paragraph -1)
+    (hel-test-run #'hel-mark-paragraph -1)
     (should (equal (hel-test-render) "aa\n\n|bb\n^\ncc\n"))))
 
 (ert-deftest hel-side-keys-are-unbound ()
@@ -1840,7 +2205,7 @@ With NEEDLE2, also put MARKER2 before it.  NEEDLE2 must come after NEEDLE."
 start (sections One rule for every object, rule 7)."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-to--class-at "a\n\n" "|")
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
                    (hel-to--class-at "    def m1" "|" "\n    def m2" "^")))))
 
@@ -1849,7 +2214,7 @@ start (sections One rule for every object, rule 7)."
 at the start.  The gap runs up to the next object."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode (hel-to--class-at "a\n\n" "|")
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    (hel-to--class-at "    def m1" "|" "    def m2" "^")))))
 
@@ -1858,7 +2223,7 @@ at the start.  The gap runs up to the next object."
 maf takes the blank line after the function and not the one before it."
   (hel-test-with #'emacs-lisp-mode
       "(defun a ())\n\n(defun b ()\n  |1)\n\n;;; Head\n\n(defun c ())\n"
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    "(defun a ())\n\n|(defun b ()\n  1)\n\n^;;; Head\n\n(defun c ())\n"))))
 
@@ -1866,7 +2231,7 @@ maf takes the blank line after the function and not the one before it."
   "A function with section comments on both sides takes the gap after."
   (hel-test-with #'emacs-lisp-mode
       ";;; One\n\n(defun b ()\n  |1)\n\n;;; Two\n\n(defun c ())\n"
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    ";;; One\n\n|(defun b ()\n  1)\n\n^;;; Two\n\n(defun c ())\n"))))
 
@@ -1876,7 +2241,7 @@ indentation."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode
       "class A:\n    def m(self):\n        |pass\n\n    # Section\n\n    def n(self):\n        pass\n"
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    "class A:\n|    def m(self):\n        pass\n\n^    # Section\n\n    def n(self):\n        pass\n"))))
 
@@ -1885,7 +2250,7 @@ indentation."
 maf takes the gap before the function."
   (hel-test-with #'emacs-lisp-mode
       "(defun a ())\n\n(defun b ()\n  |1)\n;;; Head\n\n(defun c ())\n"
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    "(defun a ())\n|\n(defun b ()\n  1)\n^;;; Head\n\n(defun c ())\n"))))
 
@@ -1893,17 +2258,17 @@ maf takes the gap before the function."
   "Mic on the indentation of a comment line selects the comment."
   (hel-test-with #'emacs-lisp-mode
       "(defun f ()\n  ;; before\n  (g)\n    ;; one\n  |  ;; two\n    ;; three\n    a)\n"
-    (hel-test-run #'hel-mark-inner-comment)
+    (hel-test-run #'hel-mark-comment)
     (should (equal (hel-test-render)
                    "(defun f ()\n  ;; before\n  (g)\n|    ;; one\n    ;; two\n    ;; three\n^    a)\n"))))
 
 (ert-deftest hel-backward-comment-from-indentation ()
-  "[c on the indentation stops on the first delimiter of the comment."
+  "[c on the indentation stops at the start of the first line of the comment."
   (hel-test-with #'emacs-lisp-mode
       "(defun f ()\n  ;; before\n  (g)\n    ;; one\n  |  ;; two\n    ;; three\n    a)\n"
     (hel-test-run #'hel-mark-comment-backward)
     (should (equal (hel-test-render)
-                   "(defun f ()\n  ;; before\n  (g)\n    |;; one\n  ^  ;; two\n    ;; three\n    a)\n"))))
+                   "(defun f ()\n  ;; before\n  (g)\n|    ;; one\n  ^  ;; two\n    ;; three\n    a)\n"))))
 
 (ert-deftest hel-backward-comment-from-first-delimiter-of-a-line ()
   "[c on the delimiter of a later line stays in the comment."
@@ -1911,21 +2276,29 @@ maf takes the gap before the function."
       "(defun f ()\n  ;; before\n  (g)\n    ;; one\n    |;; two\n    ;; three\n    a)\n"
     (hel-test-run #'hel-mark-comment-backward)
     (should (equal (hel-test-render)
-                   "(defun f ()\n  ;; before\n  (g)\n    |;; one\n    ^;; two\n    ;; three\n    a)\n"))))
+                   "(defun f ()\n  ;; before\n  (g)\n|    ;; one\n    ^;; two\n    ;; three\n    a)\n"))))
 
-(ert-deftest hel-backward-comment-at-start-goes-to-previous ()
-  "[c at the start of a comment selects the previous comment."
+(ert-deftest hel-backward-comment-from-first-delimiter ()
+  "[c on the first delimiter of a comment stops at the start of its line."
   (hel-test-with #'emacs-lisp-mode
       "(defun f ()\n  ;; before\n  (g)\n    |;; one\n    ;; two\n    a)\n"
     (hel-test-run #'hel-mark-comment-backward)
     (should (equal (hel-test-render)
-                   "(defun f ()\n  |;; before\n^  (g)\n    ;; one\n    ;; two\n    a)\n"))))
+                   "(defun f ()\n  ;; before\n  (g)\n|    ^;; one\n    ;; two\n    a)\n"))))
+
+(ert-deftest hel-backward-comment-at-start-goes-to-previous ()
+  "[c at the start of a comment selects the previous comment."
+  (hel-test-with #'emacs-lisp-mode
+      "(defun f ()\n  ;; before\n  (g)\n|    ;; one\n    ;; two\n    a)\n"
+    (hel-test-run #'hel-mark-comment-backward)
+    (should (equal (hel-test-render)
+                   "(defun f ()\n|  ;; before\n^  (g)\n    ;; one\n    ;; two\n    a)\n"))))
 
 (ert-deftest hel-mif-def-line ()
   "Mif on the def line selects that function."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-to--class-at "f m1" "|")
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
                    (hel-to--class-at "    def m1" "|" "\n    def m2" "^")))))
 
@@ -1933,7 +2306,7 @@ maf takes the gap before the function."
   "`2 mif' on the first method selects both methods."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode (hel-to--class-at "a\n\n" "|")
-    (hel-test-run #'hel-mark-inner-function 2)
+    (hel-test-run #'hel-mark-function 2)
     (should (equal (hel-test-render)
                    (hel-to--class-at "    def m1" "^" "\n\ndef top" "|")))))
 
@@ -1942,7 +2315,7 @@ maf takes the gap before the function."
 objects stay inside the parent of the first one."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode (hel-to--class-at "2\n" "|")
-    (hel-test-run #'hel-mark-a-function 2)
+    (hel-test-run #'hel-mark-around-function 2)
     (should (use-region-p))
     (should (string-search "def m2(self):\n        return 2" (hel-test-selection)))
     (should (<= (hel-to--class-pos "\n\n    def m2") (region-beginning)))
@@ -1953,22 +2326,22 @@ objects stay inside the parent of the first one."
 third one adds nothing, because the class holds no more methods."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode (hel-to--class-at "a\n\n" "|")
-    (hel-test-run #'hel-mark-a-function)
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (= (region-beginning) (hel-to--class-pos "    def m1")))
     (should (string-search "return 2" (hel-test-selection)))
     (should (<= (region-end) (hel-to--class-pos "def top")))
     (let ((second (hel-test-render)))
-      (hel-test-run #'hel-mark-a-function)
+      (hel-test-run #'hel-mark-around-function)
       (should (equal (hel-test-render) second)))))
 
 (ert-deftest hel-maf-repeated-then-shrink ()
   "M-i after the second maf returns to the first method."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-to--class-at "a\n\n" "|")
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (let ((first (hel-test-render)))
-      (hel-test-run #'hel-mark-a-function)
+      (hel-test-run #'hel-mark-around-function)
       (hel-test-run #'hel-shrink-selection)
       (should (equal (hel-test-render) first)))))
 
@@ -1977,7 +2350,7 @@ third one adds nothing, because the class holds no more methods."
   (hel-test-need 'python)
   (let ((text (hel-to--class-at "a\n\n" "|")))
     (hel-test-with #'python-ts-mode text
-      (hel-test-run #'hel-mark-a-function)
+      (hel-test-run #'hel-mark-around-function)
       (hel-test-run #'hel-shrink-selection)
       (should-not (use-region-p))
       (should (equal (hel-test-render) text)))))
@@ -1987,7 +2360,7 @@ third one adds nothing, because the class holds no more methods."
 mark ring."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-to--class-at "a\n\n" "|")
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (= 1 (length mark-ring)))))
 
 (defconst hel-to--headers
@@ -2018,10 +2391,26 @@ added to the index of NEEDLE."
 header comment, and leaves out the header comment of the next function."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-to--headers-at '("1\n" "|" 0))
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    (hel-to--headers-at '("# Header of f" "|" 0)
                                        '("# Header of g" "^" 0))))))
+
+(ert-deftest hel-maf-header-comment-indented ()
+  "The header comment of an indented method starts at its line start, so
+deleting the method leaves the next method with its own indentation. The
+header comment of an argument starts at its text."
+  (hel-test-need 'python)
+  (hel-test-with #'python-ts-mode "class A:\n    def e(self):\n        pass\n\n    # Header of f.\n    def f(self):\n        pa|ss\n\n    def h(self):\n        pass\n"
+    (hel-mark-around-function 1)
+    (should (equal (hel-test-selection)
+                   "    # Header of f.\n    def f(self):\n        pass\n\n"))
+    (delete-region (region-beginning) (region-end))
+    (should (equal (buffer-string)
+                   "class A:\n    def e(self):\n        pass\n\n    def h(self):\n        pass\n")))
+  (hel-test-with #'python-ts-mode "f(\n    # note\n    |a,\n    b)\n"
+    (hel-mark-around-argument 1)
+    (should (equal (hel-test-selection) "# note\n    a,\n    "))))
 
 (ert-deftest hel-maf-header-comment-embedded ()
   "Maf takes the header comment that the parser of an embedded
@@ -2031,7 +2420,7 @@ language finds, although the syntax table of the buffer does not see it."
       (concat "<script>\n// Header of f.\nfunction f() {\n  return |1;\n}\n\n"
               "// Header of g.\nfunction g() {\n  return 2;\n}\n</script>\n")
     (treesit-update-ranges)
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    (concat "<script>\n|// Header of f.\nfunction f() {\n  return 1;\n}\n\n"
                            "^// Header of g.\nfunction g() {\n  return 2;\n}\n</script>\n")))))
@@ -2045,7 +2434,7 @@ comment."
       (concat "<script>\n// Header |of g.\nfunction g() {\n  return 2;\n}\n"
               "</script>\n")
     (treesit-update-ranges)
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
                    (concat "<script>\n// Header of g.\n|function g() {\n"
                            "  return 2;\n}\n^</script>\n")))))
@@ -2054,7 +2443,7 @@ comment."
   "Mif on a header comment selects the function under it."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-to--headers-at '("Header of f" "|" 3))
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
                    (hel-to--headers-at '("def f" "|" 0)
                                        '("1\n" "^" 2))))))
@@ -2064,7 +2453,7 @@ comment."
 with its line end."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-to--headers-at '("Header of f" "|" 3))
-    (hel-test-run #'hel-mark-inner-comment)
+    (hel-test-run #'hel-mark-comment)
     (should (equal (hel-test-render)
                    (hel-to--headers-at '("# Header of f" "|" 0)
                                        '("def f" "^" 0))))))
@@ -2074,18 +2463,18 @@ with its line end."
 above it."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-to--headers-at '("1\n\n" "|" 3))
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
                    (hel-to--headers-at '("def f" "|" 0)
                                        '("1\n" "^" 2))))))
 
 (ert-deftest hel-maf-decorated-function ()
   "Maf on a decorated function selects its header comment, its
-decorators and the function (section The object; Hel's own patterns)."
+decorators and the function (section The object; Shadowing patterns)."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode
       "# Header of f.\n@deco\ndef f():\n    pa|ss\n\n\ndef g():\n    pass\n"
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    "|# Header of f.\n@deco\ndef f():\n    pass\n\n\n^def g():\n    pass\n"))))
 
@@ -2095,7 +2484,7 @@ decorators and the class."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode
       "# Header of K.\n@deco\nclass K:\n    pa|ss\n\n\nclass L:\n    pass\n"
-    (hel-test-run #'hel-mark-a-class)
+    (hel-test-run #'hel-mark-around-class)
     (should (equal (hel-test-render)
                    "|# Header of K.\n@deco\nclass K:\n    pass\n\n\n^class L:\n    pass\n"))))
 
@@ -2105,7 +2494,7 @@ a separate object."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode
       "def outer():\n    def inner():\n        return |1\n"
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
                    "def outer():\n|    def inner():\n        return 1\n^"))))
 
@@ -2115,7 +2504,7 @@ is decorated (the replacement compares nodes, not positions)."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode
       "@deco\ndef outer():\n    def inner():\n        return |1\n"
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
                    "@deco\ndef outer():\n|    def inner():\n        return 1\n^"))))
 
@@ -2126,7 +2515,7 @@ is decorated (the replacement compares nodes, not positions)."
 the object that the gap belongs to)."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(a|, b)\n"
-    (hel-test-run #'hel-mark-inner-argument)
+    (hel-test-run #'hel-mark-argument)
     (should (equal (hel-test-render) "f(^a|, b)\n"))))
 
 (ert-deftest hel-mia-on-comma-after-b ()
@@ -2134,21 +2523,21 @@ the object that the gap belongs to)."
 around ranges contain the cursor, the object before it wins)."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(a, b|, c)\n"
-    (hel-test-run #'hel-mark-inner-argument)
+    (hel-test-run #'hel-mark-argument)
     (should (equal (hel-test-render) "f(a, ^b|, c)\n"))))
 
 (ert-deftest hel-mia-nothing-here ()
   "Mia with no argument around the cursor leaves the selection and
 the mark ring as they are."
   (hel-test-need-queries 'python)
-  (should (hel-test-unchanged-p #'hel-mark-inner-argument "|x = 1\n"
+  (should (hel-test-unchanged-p #'hel-mark-argument "|x = 1\n"
                                 #'python-ts-mode)))
 
 (ert-deftest hel-maa-on-self-pushes-once ()
   "Maa on self pushes point once."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "def m(se|lf, a):\n    pass\n"
-    (hel-test-run #'hel-mark-a-argument)
+    (hel-test-run #'hel-mark-around-argument)
     (should (equal (hel-test-render) "def m(^self, |a):\n    pass\n"))
     (should (= 1 (length mark-ring)))))
 
@@ -2157,7 +2546,7 @@ the mark ring as they are."
 `, ' after it."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(|a, b, c)\n"
-    (hel-test-run #'hel-mark-a-argument)
+    (hel-test-run #'hel-mark-around-argument)
     (should (equal (hel-test-render) "f(^a, |b, c)\n"))))
 
 (ert-deftest hel-maa-last ()
@@ -2165,7 +2554,7 @@ the mark ring as they are."
 argument."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(a, b, |c)\n"
-    (hel-test-run #'hel-mark-a-argument)
+    (hel-test-run #'hel-mark-around-argument)
     (should (equal (hel-test-render) "f(a, b^, c|)\n"))))
 
 (ert-deftest hel-mia-each-argument ()
@@ -2175,7 +2564,7 @@ argument."
                   ("f(a, |b, c)\n" . "f(a, ^b|, c)\n")
                   ("f(a, b, |c)\n" . "f(a, b, ^c|)\n")))
     (hel-test-with #'python-ts-mode (car case)
-      (hel-test-run #'hel-mark-inner-argument)
+      (hel-test-run #'hel-mark-argument)
       (should (equal (hel-test-render) (cdr case))))))
 
 (ert-deftest hel-maa-delete-first-and-last ()
@@ -2185,7 +2574,7 @@ without a stray comma."
   (dolist (case '(("f(|a, b, c)\n" . "f(b, c)\n")
                   ("f(a, b, |c)\n" . "f(a, b)\n")))
     (hel-test-with #'python-ts-mode (car case)
-      (hel-test-run #'hel-mark-a-argument)
+      (hel-test-run #'hel-mark-around-argument)
       (delete-region (region-beginning) (region-end))
       (should (equal (buffer-string) (cdr case))))))
 
@@ -2193,29 +2582,89 @@ without a stray comma."
   "On a in f(a, b, c), `2 mia' selects `a, b'."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(|a, b, c)\n"
-    (hel-test-run #'hel-mark-inner-argument 2)
+    (hel-test-run #'hel-mark-argument 2)
     (should (equal (hel-test-render) "f(^a, b|, c)\n"))))
 
 (ert-deftest hel-2maa ()
   "On a in f(a, b, c), `2 maa' selects `a, b' and the gap after b."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(|a, b, c)\n"
-    (hel-test-run #'hel-mark-a-argument 2)
+    (hel-test-run #'hel-mark-around-argument 2)
     (should (equal (hel-test-render) "f(^a, b, |c)\n"))))
 
 (ert-deftest hel-negative-2mia ()
   "On b in f(a, b, c), `-2 mia' selects `a, b' with point at the start."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(a, |b, c)\n"
-    (hel-test-run #'hel-mark-inner-argument -2)
+    (hel-test-run #'hel-mark-argument -2)
     (should (equal (hel-test-render) "f(|a, b^, c)\n"))))
+
+(ert-deftest hel-mie-each-entry ()
+  "Mie selects one element of a list, a key with its value in
+a dictionary, and the innermost entry in nested structures."
+  (hel-test-need-queries 'python)
+  (dolist (case '(("x = [1, |2, 3]\n" . "x = [1, ^2|, 3]\n")
+                  ("d = {\"a\": 1, \"b\": |2}\n" . "d = {\"a\": 1, ^\"b\": 2|}\n")
+                  ("d = {\"a\": [1, |2]}\n" . "d = {\"a\": [1, ^2|]}\n")))
+    (hel-test-with #'python-ts-mode (car case)
+      (hel-test-run #'hel-mark-entry)
+      (should (equal (hel-test-render) (cdr case))))))
+
+(ert-deftest hel-mae-first-and-last ()
+  "Mae takes the separator after an entry, and before the last one."
+  (hel-test-need-queries 'python)
+  (dolist (case '(("x = [|1, 2, 3]\n" . "x = [^1, |2, 3]\n")
+                  ("x = [1, 2, |3]\n" . "x = [1, 2^, 3|]\n")))
+    (hel-test-with #'python-ts-mode (car case)
+      (hel-test-run #'hel-mark-around-entry)
+      (should (equal (hel-test-render) (cdr case))))))
+
+(ert-deftest hel-mae-delete-first-and-last ()
+  "Mae and d on the first and on the last entry leave a list without
+a stray comma."
+  (hel-test-need-queries 'python)
+  (dolist (case '(("x = [|1, 2, 3]\n" . "x = [2, 3]\n")
+                  ("x = [1, 2, |3]\n" . "x = [1, 2]\n")))
+    (hel-test-with #'python-ts-mode (car case)
+      (hel-test-run #'hel-mark-around-entry)
+      (delete-region (region-beginning) (region-end))
+      (should (equal (buffer-string) (cdr case))))))
+
+(ert-deftest hel-2mie ()
+  "On 1 in [1, 2, 3], `2 mie' selects `1, 2'."
+  (hel-test-need-queries 'python)
+  (hel-test-with #'python-ts-mode "x = [|1, 2, 3]\n"
+    (hel-test-run #'hel-mark-entry 2)
+    (should (equal (hel-test-render) "x = [^1, 2|, 3]\n"))))
+
+(ert-deftest hel-entry-jumps ()
+  "]e selects to the end of the entry, then the whole next entry; [e
+does the same backward."
+  (hel-test-need-queries 'python)
+  (dolist (case '((hel-mark-entry-forward "x = [|1, 2]\n" "x = [^1|, 2]\n")
+                  (hel-mark-entry-forward "x = [1|, 2]\n" "x = [1, ^2|]\n")
+                  (hel-mark-entry-backward "x = [1, 2|]\n" "x = [1, |2^]\n")
+                  (hel-mark-entry-backward "x = [1, |2]\n" "x = [|1^, 2]\n")))
+    (pcase-let ((`(,command ,input ,expected) case))
+      (hel-test-with #'python-ts-mode input
+        (hel-test-run command)
+        (should (equal (hel-test-render) expected))))))
+
+(ert-deftest hel-mie-nothing ()
+  "Mie with no entry around the cursor, or without a parser, leaves the
+selection as it is."
+  (hel-test-need-queries 'python)
+  (should (hel-test-unchanged-p #'hel-mark-entry "|x = 1\n"
+                                #'python-ts-mode))
+  (should (hel-test-unchanged-p #'hel-mark-entry "(list 1 |2)\n"
+                                #'emacs-lisp-mode)))
 
 (ert-deftest hel-count-more-than-exist ()
   "Section Selecting an object: when fewer objects exist, the driver
 selects the ones that exist."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(a, |b, c)\n"
-    (hel-test-run #'hel-mark-inner-argument 5)
+    (hel-test-run #'hel-mark-argument 5)
     (should (equal (hel-test-render) "f(a, ^b, c|)\n"))))
 
 ;;; Comments
@@ -2225,14 +2674,14 @@ selects the ones that exist."
 line end."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "x = 1\n\n\n# one\n# t|wo\n\n# three\n"
-    (hel-test-run #'hel-mark-inner-comment)
+    (hel-test-run #'hel-mark-comment)
     (should (equal (hel-test-render) "x = 1\n\n\n|# one\n# two\n^\n# three\n"))))
 
 (ert-deftest hel-mac-run ()
   "Mac adds the blank lines up to the next comment."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "x = 1\n\n\n# one\n# t|wo\n\n# three\n"
-    (hel-test-run #'hel-mark-a-comment)
+    (hel-test-run #'hel-mark-around-comment)
     (should (equal (hel-test-render) "x = 1\n\n\n|# one\n# two\n\n^# three\n"))))
 
 (ert-deftest hel-mic-after-code ()
@@ -2240,7 +2689,7 @@ line end."
 comment."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "x = 1  # no|te\ny = 2\n"
-    (hel-test-run #'hel-mark-inner-comment)
+    (hel-test-run #'hel-mark-comment)
     (should (equal (hel-test-render) "x = 1  |# note^\ny = 2\n"))))
 
 (ert-deftest hel-mac-after-code ()
@@ -2248,7 +2697,7 @@ comment."
 gap stays on the line: here the spaces before it."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "x = 1  # no|te\ny = 2\n"
-    (hel-test-run #'hel-mark-a-comment)
+    (hel-test-run #'hel-mark-around-comment)
     (should (equal (hel-test-render) "x = 1|  # note^\ny = 2\n"))))
 
 ;;; Other languages and embedded languages
@@ -2256,7 +2705,7 @@ gap stays on the line: here the spaces before it."
 (defun hel-to--maf-check (mode text expected)
   "Check that maf in MODE turns TEXT into EXPECTED."
   (hel-test-with mode text
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render) expected))))
 
 (ert-deftest hel-maf-typescript ()
@@ -2310,12 +2759,12 @@ section Choosing a producer)."
     (hel-test-with #'mhtml-ts-mode
         (replace-regexp-in-string "return" "re|turn" text)
       (treesit-update-ranges)
-      (hel-test-run #'hel-mark-inner-function)
+      (hel-test-run #'hel-mark-function)
       (should (equal (hel-test-selection) "function foo() { return 1; }\n")))
     (hel-test-with #'mhtml-ts-mode
         (replace-regexp-in-string "note" "no|te" text)
       (treesit-update-ranges)
-      (hel-test-run #'hel-mark-inner-comment)
+      (hel-test-run #'hel-mark-comment)
       (should (string-prefix-p "<!-- note -->" (hel-test-selection))))))
 
 ;;; The ] and [ motions
@@ -2450,77 +2899,78 @@ to the start of the previous paragraph."
 (ert-deftest hel-maw-spaces-after ()
   "Maw selects a word with the spaces after it."
   (hel-test-with #'text-mode "foo |bar  baz\n"
-    (hel-test-run #'hel-mark-a-word)
+    (hel-test-run #'hel-mark-around-word)
     (should (equal (hel-test-render) "foo ^bar  |baz\n"))))
 
 (ert-deftest hel-maw-last-word-of-line ()
   "Maw on the last word of a line takes the spaces before it, not
 the line end."
   (hel-test-with #'text-mode "foo  b|ar\nbaz\n"
-    (hel-test-run #'hel-mark-a-word)
+    (hel-test-run #'hel-mark-around-word)
     (should (equal (hel-test-render) "foo^  bar|\nbaz\n"))))
 
 (ert-deftest hel-maw-before-period ()
   "Maw on a word before a period takes the spaces before it."
   (hel-test-with #'text-mode "foo b|ar.\n"
-    (hel-test-run #'hel-mark-a-word)
+    (hel-test-run #'hel-mark-around-word)
     (should (equal (hel-test-render) "foo^ bar|.\n"))))
 
 (ert-deftest hel-miw-in-gap ()
   "Section Selecting an object: on the space between two words, miw
 selects the word before it."
   (hel-test-with #'text-mode "foo | bar\n"
-    (hel-test-run #'hel-mark-inner-word)
+    (hel-test-run #'hel-mark-word)
     (should (equal (hel-test-render) "^foo|  bar\n"))))
 
 (ert-deftest hel-miw-bare-point-touches-two ()
   "Section Selecting an object: when a bare point touches two objects, the
 object after point wins.  In `foo|.' miw selects the period."
   (hel-test-with #'text-mode "foo|.\n"
-    (hel-test-run #'hel-mark-inner-word)
+    (hel-test-run #'hel-mark-word)
     (should (equal (hel-test-render) "foo^.|\n"))))
 
 (ert-deftest hel-miw-bare-point-before-space ()
   "Section Selecting an object: in `foo| bar' miw selects foo, because
 nothing else touches point."
   (hel-test-with #'text-mode "foo| bar\n"
-    (hel-test-run #'hel-mark-inner-word)
+    (hel-test-run #'hel-mark-word)
     (should (equal (hel-test-render) "^foo| bar\n"))))
 
 (ert-deftest hel-miw-repeated ()
   "Section Selecting an object: a repeated key adds the next objects."
   (hel-test-with #'text-mode "|foo bar baz\n"
-    (hel-test-run #'hel-mark-inner-word)
+    (hel-test-run #'hel-mark-word)
     (should (equal (hel-test-render) "^foo| bar baz\n"))
-    (hel-test-run #'hel-mark-inner-word)
+    (hel-test-run #'hel-mark-word)
     (should (equal (hel-test-render) "^foo bar| baz\n"))))
 
 (ert-deftest hel-2miw ()
   "Rule 8: in mi, a count is the number of objects."
   (hel-test-with #'text-mode "|foo bar baz\n"
-    (hel-test-run #'hel-mark-inner-word 2)
+    (hel-test-run #'hel-mark-word 2)
     (should (equal (hel-test-render) "^foo bar| baz\n"))))
 
 (ert-deftest hel-mas-whitespace-after ()
   "Mas selects a sentence with the whitespace after it."
   (let ((sentence-end-double-space nil))
     (hel-test-with #'text-mode "One. Tw|o three. Four.\n"
-      (hel-test-run #'hel-mark-a-sentence)
+      (hel-test-run #'hel-mark-around-sentence)
       (should (equal (hel-test-render) "One. ^Two three. |Four.\n")))))
 
-(ert-deftest hel-mas-across-line-end ()
-  "The gap of a sentence crosses a line end."
+(ert-deftest hel-mas-at-line-end ()
+  "The gap of a sentence stops at a line end, so `mas' on the last sentence
+of a line takes the blanks before it."
   (let ((sentence-end-double-space nil))
     (hel-test-with #'text-mode "One. Tw|o three.\nFour five.\n"
-      (hel-test-run #'hel-mark-a-sentence)
-      (should (equal (hel-test-render) "One. ^Two three.\n|Four five.\n")))))
+      (hel-test-run #'hel-mark-around-sentence)
+      (should (equal (hel-test-render) "One.^ Two three.|\nFour five.\n")))))
 
 (ert-deftest hel-mas-last-sentence ()
   "Mas on the last sentence of a paragraph takes the whitespace
 before it, so it never joins two paragraphs."
   (let ((sentence-end-double-space nil))
     (hel-test-with #'text-mode "One. Tw|o.\n\nThree.\n"
-      (hel-test-run #'hel-mark-a-sentence)
+      (hel-test-run #'hel-mark-around-sentence)
       (should (equal (hel-test-render) "One.^ Two.|\n\nThree.\n")))))
 
 (ert-deftest hel-3mis-last-sentence ()
@@ -2528,33 +2978,33 @@ before it, so it never joins two paragraphs."
 sentence (the paragraph is the parent of its sentences)."
   (let ((sentence-end-double-space nil))
     (hel-test-with #'text-mode "One. Tw|o.\n\nThree. Four.\n"
-      (hel-test-run #'hel-mark-inner-sentence 3)
+      (hel-test-run #'hel-mark-sentence 3)
       (should (equal (hel-test-render) "One. ^Two.|\n\nThree. Four.\n")))))
 
 (ert-deftest hel-mip ()
   "Mip selects whole lines with the indentation of the first line
 and the last line end."
   (hel-test-with #'text-mode "x\n\n  first line\nsec|ond\n\nnext\n"
-    (hel-test-run #'hel-mark-inner-paragraph)
+    (hel-test-run #'hel-mark-paragraph)
     (should (equal (hel-test-render) "x\n\n|  first line\nsecond\n^\nnext\n"))))
 
 (ert-deftest hel-map ()
   "Map adds the blank lines after the paragraph."
   (hel-test-with #'text-mode "x\n\n  first line\nsec|ond\n\nnext\n"
-    (hel-test-run #'hel-mark-a-paragraph)
+    (hel-test-run #'hel-mark-around-paragraph)
     (should (equal (hel-test-render) "x\n\n|  first line\nsecond\n\n^next\n"))))
 
 (ert-deftest hel-map-last-paragraph ()
   "Map on the last paragraph adds the blank lines before it."
   (hel-test-with #'text-mode "aaa\n\n\nbb|b\n"
-    (hel-test-run #'hel-mark-a-paragraph)
+    (hel-test-run #'hel-mark-around-paragraph)
     (should (equal (hel-test-render) "aaa\n|\n\nbbb\n^"))))
 
 (ert-deftest hel-maw-elisp-comment-above ()
   "Maw in an Emacs Lisp buffer leaves out a comment line above the
 word."
   (hel-test-with #'emacs-lisp-mode ";; comment\n|foo\n"
-    (hel-test-run #'hel-mark-a-word)
+    (hel-test-run #'hel-mark-around-word)
     (should (equal (hel-test-render) ";; comment\n^foo|\n"))))
 
 ;;; Emacs Lisp: functions and comments without a parser
@@ -2569,7 +3019,7 @@ word."
 header comment."
   (hel-test-with #'emacs-lisp-mode
       (replace-regexp-in-string "  1)" "  |1)" hel-to--elisp-headers)
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
                    (concat ";; Header of a.\n|(defun a ()\n  1)\n^\n"
                            ";; Header of b.\n(defun b ()\n  2)\n")))))
@@ -2579,7 +3029,7 @@ header comment."
 after it, and leaves out the header comment of the next defun."
   (hel-test-with #'emacs-lisp-mode
       (replace-regexp-in-string "  1)" "  |1)" hel-to--elisp-headers)
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    (concat "|;; Header of a.\n(defun a ()\n  1)\n\n"
                            "^;; Header of b.\n(defun b ()\n  2)\n")))))
@@ -2589,7 +3039,7 @@ after it, and leaves out the header comment of the next defun."
 before it, its header comment and the defun."
   (hel-test-with #'emacs-lisp-mode
       (replace-regexp-in-string "  2)" "  |2)" hel-to--elisp-headers)
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    (concat ";; Header of a.\n(defun a ()\n  1)\n|\n"
                            ";; Header of b.\n(defun b ()\n  2)\n^")))))
@@ -2599,7 +3049,7 @@ before it, its header comment and the defun."
 forms and the blank line between them."
   (hel-test-with #'emacs-lisp-mode
       "(defun a ()\n  |1)\n\n(defun b ()\n  2)\n"
-    (hel-test-run #'hel-mark-inner-function 2)
+    (hel-test-run #'hel-mark-function 2)
     (should (equal (hel-test-render)
                    "^(defun a ()\n  1)\n\n(defun b ()\n  2)\n|"))))
 
@@ -2608,7 +3058,7 @@ forms and the blank line between them."
 gap after the second."
   (hel-test-with #'emacs-lisp-mode
       "(defun a ()\n  |1)\n\n(defun b ()\n  2)\n\n(defun c ()\n  3)\n"
-    (hel-test-run #'hel-mark-a-function 2)
+    (hel-test-run #'hel-mark-around-function 2)
     (should (equal (hel-test-render)
                    "^(defun a ()\n  1)\n\n(defun b ()\n  2)\n\n|(defun c ()\n  3)\n"))))
 
@@ -2617,10 +3067,10 @@ gap after the second."
 the selection."
   (hel-test-with #'emacs-lisp-mode
       "(defun a ()\n  1)\n\n(defun b ()\n  |2)\n\n(defun c ()\n  3)\n"
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    "(defun a ()\n  1)\n\n|(defun b ()\n  2)\n\n^(defun c ()\n  3)\n"))
-    (hel-test-run #'hel-mark-a-function -1)
+    (hel-test-run #'hel-mark-around-function -1)
     (should (equal (hel-test-render)
                    "|(defun a ()\n  1)\n\n(defun b ()\n  2)\n\n^(defun c ()\n  3)\n"))))
 
@@ -2629,16 +3079,16 @@ the selection."
 `maf' adds the next function with point at the end, where it grew."
   (hel-test-with #'emacs-lisp-mode
       "(defun a ()\n  |1)\n\n(defun b ()\n  2)\n\n(defun c ()\n  3)\n"
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    "|(defun a ()\n  1)\n\n^(defun b ()\n  2)\n\n(defun c ()\n  3)\n"))
-    (hel-test-run #'hel-mark-a-function)
+    (hel-test-run #'hel-mark-around-function)
     (should (equal (hel-test-render)
                    "^(defun a ()\n  1)\n\n(defun b ()\n  2)\n\n|(defun c ()\n  3)\n"))))
 
 (ert-deftest hel-elisp-forward-function ()
   "In a buffer without a parser, ]f selects functions through
-`hel--forward-function'."
+`hel-function-motion'."
   (hel-test-with #'emacs-lisp-mode
       "(defun a ()\n  |1)\n\n(defun b ()\n  2)\n"
     (hel-test-run #'hel-mark-function-forward)
@@ -2652,20 +3102,20 @@ the selection."
   "In a buffer without a parser, mic selects the `;;' lines with no
 blank line between them as one comment."
   (hel-test-with #'emacs-lisp-mode ";; one\n;; t|wo\n(foo)\n"
-    (hel-test-run #'hel-mark-inner-comment)
+    (hel-test-run #'hel-mark-comment)
     (should (equal (hel-test-render) "|;; one\n;; two\n^(foo)\n"))))
 
 (ert-deftest hel-elisp-mia-nothing ()
   "In a buffer without a parser, mia leaves the selection as it is."
-  (should (hel-test-unchanged-p #'hel-mark-inner-argument
+  (should (hel-test-unchanged-p #'hel-mark-argument
                                 "(foo |a b)\n" #'emacs-lisp-mode)))
 
 (ert-deftest hel-c-mode-mif ()
   "In a buffer without a parser, mif selects a function through
-`hel--forward-function'."
+`hel-function-motion'."
   (hel-test-with #'c-mode
       "int a(void)\n{\n  return |1;\n}\n\nint b(void)\n{\n  return 2;\n}\n"
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
                    "|int a(void)\n{\n  return 1;\n}\n^\nint b(void)\n{\n  return 2;\n}\n"))))
 
@@ -2676,44 +3126,47 @@ blank line between them as one comment."
 its other pattern (section Query files and grammar versions)."
   (hel-test-need-queries 'python)
   (hel-to--with-query-file
-      (concat "(no_such_node_type) @parameter.around\n\n"
+      (concat "(no_such_node_type) @argument\n\n"
               "(argument_list\n"
-              "  ((_) @parameter.inside . \",\"? @parameter.around)"
-              " @parameter.around)\n")
+              "  (_) @argument)\n")
     (hel-test-with #'python-ts-mode "f(|a, b)\n"
-      (hel-test-run #'hel-mark-inner-argument)
+      (hel-test-run #'hel-mark-argument)
       (should (equal (hel-test-render) "f(^a|, b)\n")))))
 
 (ert-deftest hel-query-unbalanced ()
   "A query file with unbalanced brackets gives no query and signals
 no error, and mif then selects the function through
-`hel--forward-function'.  The argument object has no other source."
+`hel-function-motion', and mia selects the argument through the syntax
+table."
   (hel-test-need-queries 'python)
   (hel-to--with-query-file "(function_definition\n  body: (block\n"
     (hel-test-with #'python-ts-mode "def f(a, b):\n    return |1\n"
-      (hel-test-run #'hel-mark-inner-function)
+      (hel-test-run #'hel-mark-function)
       (should (equal (hel-test-render) "|def f(a, b):\n    return 1\n^")))
-    (should (hel-test-unchanged-p #'hel-mark-inner-argument
-                                  "def f(|a, b):\n    return 1\n"
-                                  #'python-ts-mode))))
+    (hel-test-with #'python-ts-mode "def f(|a, b):\n    return 1\n"
+      (hel-test-run #'hel-mark-argument)
+      (should (equal (hel-test-selection) "a")))))
 
-;;; The range of `hel-thing-edge'
+;;; `hel-thing-motion-range'
 
-(ert-deftest hel-thing-edge-returns-a-range ()
+(ert-deftest hel-thing-motion-range-of-words ()
   "A backward edge gives a range with its begin before its end."
   (hel-test-with #'fundamental-mode "one two three|"
-    (let ((word (hel-producer 'word)))
-      (should (equal (hel-thing-edge 'word word 9 1 1 :begin nil) (cons 9 14)))
-      (should (equal (hel-thing-edge 'word word 9 -1 1 :begin nil) (cons 5 9)))
-      (should (equal (hel-thing-edge 'word word 9 -1 1 :end nil) (cons 8 9))))))
+    (let ((word (hel-thing-producer 'word)))
+      (should (equal (hel-thing-motion-range 'word word 9 1 :begin nil)
+                     (cons 9 14)))
+      (should (equal (hel-thing-motion-range 'word word 9 -1 :begin nil)
+                     (cons 5 9)))
+      (should (equal (hel-thing-motion-range 'word word 9 -1 :end nil)
+                     (cons 8 9))))))
 
-(ert-deftest hel-thing-edge-default-method-returns-a-range ()
+(ert-deftest hel-thing-motion-range-default-method ()
   (hel-test-with #'fundamental-mode "One. Two. Three.|"
     (let ((sentence-end-double-space nil)
-          (sentence (hel-producer 'sentence)))
-      (should (equal (hel-thing-edge 'sentence sentence 7 1 1 :end nil)
+          (sentence (hel-thing-producer 'sentence)))
+      (should (equal (hel-thing-motion-range 'sentence sentence 7 1 :end nil)
                      (cons 7 10)))
-      (should (equal (hel-thing-edge 'sentence sentence 7 -1 1 :begin nil)
+      (should (equal (hel-thing-motion-range 'sentence sentence 7 -1 :begin nil)
                      (cons 6 7))))))
 
 ;;; hel-text-object-tests.el ends here

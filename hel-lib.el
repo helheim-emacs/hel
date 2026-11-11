@@ -239,10 +239,10 @@ backward when DIRECTION is -1."
     (set-mark begin)
     (goto-char end)))
 
-(defun hel-select-motion (start end)
+(defun hel-motion-select (start end)
   "Select from START to END, with point at END.
 When extending selection is active, keep the mark and only move point."
-  (set-mark (if hel--extend-selection (mark) start))
+  (set-mark (if hel-extending-selection (mark) start))
   (goto-char end))
 
 (defun hel-selection ()
@@ -258,12 +258,12 @@ RANGE is (BEGIN . END). `hel-select' takes the returned list as its arguments:
 
 (defun hel-maybe-set-mark ()
   "Set mark at point unless extending selection is active."
-  (or hel--extend-selection
+  (or hel-extending-selection
       (set-mark (point))))
 
 (defun hel-maybe-deactivate-mark ()
   "Deactivate mark unless extending selection is active."
-  (or hel--extend-selection
+  (or hel-extending-selection
       (deactivate-mark)))
 
 (defun hel-ensure-region-direction (direction)
@@ -466,12 +466,21 @@ after all elements whose key equals VALUE. VECTOR must be sorted by KEY
 in ascending order. Return (length VECTOR) when there is no such index."
   (hel-partition-index vector (lambda (x) (< value (funcall key x)))))
 
+;;; Motions
+
+(cl-defun hel-skip-chars (chars &optional (direction 1))
+  "Move point across the characters in CHARS in direction DIRECTION.
+CHARS is a set in the form that `skip-chars-forward' takes. Return the
+distance traveled, with the sign of DIRECTION."
+  (if (< 0 direction)
+      (skip-chars-forward chars)
+    (skip-chars-backward chars)))
+
 ;;; Blanks and whitespace
 
 (defconst hel-whitespace-chars "[:space:]\r\n"
-  "The `skip-chars-forward' set of whitespace: the blanks and the line ends.
-See `hel-blank-p' for a blank. The syntax of a line end depends on the
-mode, so the set names the line ends.")
+  "The set of whitespace: the blanks and the line ends.
+See `hel-blank-p' for a blank.")
 
 (defun hel-blank-p (char)
   "Return non-nil if CHAR is a blank.
@@ -482,7 +491,7 @@ A blank is a character with whitespace syntax that is not a line end."
 (cl-defun hel-skip-blanks (&optional (dir 1))
   "Move point across the blanks on its line in direction DIR.
 Return the distance traveled, with the sign of DIR."
-  (if (natnump dir)
+  (if (< 0 dir)
       (skip-syntax-forward " " (line-end-position))
     (skip-syntax-backward " " (line-beginning-position))))
 
@@ -520,22 +529,57 @@ Return nil if nothing remains."
     (if (< begin end)
         (cons begin end))))
 
-;;; Motions
+(defconst hel--punctuation-pairs
+  '((?\( . ?\)) (?\[ . ?\]) (?\{ . ?\}) (?< . ?>) (?\" . ?\") (?\' . ?\') (?` . ?`))
+  "The pairs of brackets and quotes, each opening one with its closing one.")
 
-(cl-defun hel-skip-chars (chars &optional (direction 1))
-  "Move point across the characters in CHARS in direction DIRECTION.
-CHARS is a set in the form that `skip-chars-forward' takes. Return the
-distance traveled, with the sign of DIRECTION."
-  (if (< 0 direction)
-      (skip-chars-forward chars)
-    (skip-chars-backward chars)))
-
-(cl-defun hel-next-char (&optional (direction 1))
-  "Return the next after point char toward the DIRECTION.
-If DIRECTION is positive number — get following char, otherwise preceding char."
-  (if (natnump direction)
-      (following-char)
-    (preceding-char)))
+(cl-defun hel-trim-punctuation-from-range ((begin . end) chars)
+  "Return BEGIN..END without the punctuation at its edges.
+So in `see (foo).' the text `(foo).' gives `foo'. A bracket or a quote at
+an edge stays when its pair is inside the range, as in `foo(bar)', and
+a pair that wraps the whole range goes, as in `(foo)'. When only
+punctuation is in the range, return the range as it is. CHARS is a string
+of the punctuation characters."
+  (let ((original (cons begin end))
+        (chars (string-to-list chars)))
+    (cl-labels ((pair-pos (pos open close dir)
+                  ;; The position of the pair of the bracket at POS, which
+                  ;; is OPEN forward and CLOSE backward, or nil.
+                  (let ((depth 0) found)
+                    (cl-loop for i = (+ pos dir) then (+ i dir)
+                             while (and (not found) (<= begin i) (< i end))
+                             do (let ((char (char-after i)))
+                                  (cond ((eq char (if (< 0 dir) close open))
+                                         (if (zerop depth)
+                                             (setq found i)
+                                           (cl-decf depth)))
+                                        ((eq char (if (< 0 dir) open close))
+                                         (cl-incf depth)))))
+                    found))
+                (trim-begin ()
+                  (let* ((char (char-after begin))
+                         (close (alist-get char hel--punctuation-pairs)))
+                    (cond ((not (memq char chars)) nil)
+                          ((not close) (cl-incf begin))
+                          ((eql (pair-pos begin char close 1) (1- end))
+                           (cl-incf begin)
+                           (cl-decf end))
+                          ((pair-pos begin char close 1) nil)
+                          (t (cl-incf begin)))))
+                (trim-end ()
+                  (let* ((char (char-before end))
+                         (open (car (rassq char hel--punctuation-pairs))))
+                    (cond ((not (memq char chars)) nil)
+                          ((or (not open)
+                               (not (pair-pos (1- end) open char -1)))
+                           (cl-decf end))))))
+      (while (and (< begin end)
+                  (or (trim-begin)
+                      (and (< begin end)
+                           (trim-end)))))
+      (if (< begin end)
+          (cons begin end)
+        original))))
 
 ;;; Lines
 
@@ -635,6 +679,17 @@ Indentation and trailing whitespace do not count."
          (progn (goto-char (hel-after-blanks end 1)) (eolp)))))
 
 ;;; Selection
+
+(defun hel-cursor-position ()
+  "Return the position of the character that the cursor is on.
+With a selection, this is the character at the end where point is, after
+the whitespace at the edges of the selection is left out. Without one,
+this is point."
+  (-if-let ((begin . end) (hel-trimmed-selection-bounds))
+      (if (< 0 (hel-region-direction))
+          (1- end)
+        begin)
+    (point)))
 
 (defun hel-trimmed-selection-bounds ()
   "Return the bounds that the structural commands start from, or nil.
@@ -918,6 +973,40 @@ See `isearch-open-necessary-overlays'."
   "Permanently open fold at POS."
   (-each (overlays-at pos) #'hel-open-overlay))
 
+;;; Tree-sitter
+
+(declare-function treesit-available-p "treesit.c" ())
+(declare-function treesit-parser-list "treesit.c")
+(declare-function treesit-node-start "treesit.c" (node))
+(declare-function treesit-node-end "treesit.c" (node))
+
+(defun hel-treesit-active-p ()
+  "Return non-nil if the current buffer has a tree-sitter parser."
+  (and (treesit-available-p)
+       (treesit-parser-list)
+       t))
+
+(defun hel-treesit-node-bounds (node)
+  "Return the (BEGIN . END) bounds of the tree-sitter NODE."
+  (cons (treesit-node-start node)
+        (treesit-node-end node)))
+
+(defun hel-treesit-node-length (node)
+  "Return the length of the tree-sitter NODE in characters."
+  (hel-range-length (hel-treesit-node-bounds node)))
+
+(defun hel-treesit-nodes-hull (nodes)
+  "Return the hull of the tree-sitter NODES: the smallest range
+that holds every one of them. The order of NODES does not matter.
+The result is a (BEGIN . END) pair."
+  (cons (-min (-map #'treesit-node-start nodes))
+        (-max (-map #'treesit-node-end nodes))))
+
+(define-hash-table-test 'hel-treesit-node
+  #'treesit-node-eq
+  (lambda (node)
+    (sxhash-equal (hel-treesit-node-bounds node))))
+
 ;;; Advices
 
 (declare-function hel-extend-selection "hel-commands" (arg) t)
@@ -935,7 +1024,7 @@ See `isearch-open-necessary-overlays'."
 
 (defun hel-maybe-deactivate-mark-a (&rest _)
   "Deactivate mark unless extending selection is active. Can be used as advice."
-  (or hel--extend-selection
+  (or hel-extending-selection
       (deactivate-mark)))
 
 (declare-function hel-disable-multiple-cursors-mode "hel-multiple-cursors-core")

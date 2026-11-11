@@ -7,37 +7,31 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/go/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-(function_declaration
-  body: (block)? @function.inside) @function.around
+(function_declaration) @function
 
-(func_literal
-  body: (block)? @function.inside) @function.around
+(func_literal) @function
 
-(method_declaration
-  body: (block)? @function.inside) @function.around
-
-;; struct and interface declaration as class textobject?
-(type_declaration
-  (type_spec (type_identifier) (struct_type (field_declaration_list (_)?) @class.inside))) @class.around
+(method_declaration) @function
 
 (type_declaration
-  (type_spec (type_identifier) (interface_type (method_elem)+ @class.inside))) @class.around
+  (type_spec
+    (type_identifier)
+    (struct_type (field_declaration_list)))) @class
+
+(type_declaration
+  (type_spec
+    (type_identifier)
+    (interface_type (method_elem)))) @class
 
 (type_parameter_list
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+  (_) @argument)
 
 (parameter_list
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+  (_) @argument)
 
 (argument_list
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+  (_) @argument)
 
-(comment) @comment.inside @comment.around
-
-; Go test/benchmark/example/fuzz functions (all live in _test.go).
-((function_declaration
-   name: (identifier) @_name
-   body: (block)? @test.inside) @test.around
- (#match? @_name "^\\(Test\\|Benchmark\\|Example\\|Fuzz\\)"))
+(comment) @comment

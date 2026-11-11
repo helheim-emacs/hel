@@ -105,8 +105,8 @@ use it."
   "[ s" #'hel-mark-sentence-backward
   "] ." #'hel-mark-sentence-forward
   "[ ." #'hel-mark-sentence-backward
-  "] e" #'next-error
-  "[ e" #'previous-error
+  "] d" #'next-error
+  "[ d" #'previous-error
   ;; Because page boudaries are displayed as ^L.
   "] l" #'forward-page
   "[ l" #'backward-page
@@ -236,24 +236,28 @@ use it."
   "M-j" #'hel-select-all-children
 
   ;; Text objects
-  "m f"   #'hel-mark-inner-function
-  "m i f" #'hel-mark-inner-function
-  "m a f" #'hel-mark-a-function
+  "m f"   #'hel-mark-function
+  "m i f" #'hel-mark-function
+  "m a f" #'hel-mark-around-function
   "] f"   #'hel-mark-function-forward
   "[ f"   #'hel-mark-function-backward
-  "m t"   #'hel-mark-inner-class
-  "m i t" #'hel-mark-inner-class
-  "m a t" #'hel-mark-a-class
+  "m t"   #'hel-mark-class
+  "m i t" #'hel-mark-class
+  "m a t" #'hel-mark-around-class
   "] t"   #'hel-mark-class-forward
   "[ t"   #'hel-mark-class-backward
-  "m A"   #'hel-mark-inner-argument
-  "m i a" #'hel-mark-inner-argument
-  "m a a" #'hel-mark-a-argument
+  "m A"   #'hel-mark-argument
+  "m i a" #'hel-mark-argument
+  "m a a" #'hel-mark-around-argument
   "] a"   #'hel-mark-argument-forward
   "[ a"   #'hel-mark-argument-backward
-  "m c"   #'hel-mark-inner-comment
-  "m i c" #'hel-mark-inner-comment
-  "m a c" #'hel-mark-a-comment
+  "m i e" #'hel-mark-entry
+  "m a e" #'hel-mark-around-entry
+  "] e"   #'hel-mark-entry-forward
+  "[ e"   #'hel-mark-entry-backward
+  "m c"   #'hel-mark-comment
+  "m i c" #'hel-mark-comment
+  "m a c" #'hel-mark-around-comment
   "] c"   #'hel-mark-comment-forward
   "[ c"   #'hel-mark-comment-backward)
 
@@ -284,22 +288,22 @@ use it."
 ;;;; Mark commands
 
 (hel-keymap-global-set :state 'normal
-  "m w"   #'hel-mark-inner-word
-  "m i w" #'hel-mark-inner-word
-  "m a w" #'hel-mark-a-word
-  "m W"   #'hel-mark-inner-WORD
-  "m i W" #'hel-mark-inner-WORD
-  "m a W" #'hel-mark-a-WORD
+  "m w"   #'hel-mark-word
+  "m i w" #'hel-mark-word
+  "m a w" #'hel-mark-around-word
+  "m W"   #'hel-mark-WORD
+  "m i W" #'hel-mark-WORD
+  "m a W" #'hel-mark-around-WORD
   ;; sentence
-  "m ."   #'hel-mark-inner-sentence
-  "m i ." #'hel-mark-inner-sentence
-  "m a ." #'hel-mark-a-sentence
-  "m i s" #'hel-mark-inner-sentence
-  "m a s" #'hel-mark-a-sentence
+  "m ."   #'hel-mark-sentence
+  "m i ." #'hel-mark-sentence
+  "m a ." #'hel-mark-around-sentence
+  "m i s" #'hel-mark-sentence
+  "m a s" #'hel-mark-around-sentence
   ;; paragraph
-  "m p"   #'hel-mark-inner-paragraph
-  "m i p" #'hel-mark-inner-paragraph
-  "m a p" #'hel-mark-a-paragraph
+  "m p"   #'hel-mark-paragraph
+  "m i p" #'hel-mark-paragraph
+  "m a p" #'hel-mark-around-paragraph
 
   "m \""   #'hel-mark-inner-double-quoted
   "m i \"" #'hel-mark-inner-double-quoted

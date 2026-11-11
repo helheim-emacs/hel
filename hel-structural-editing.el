@@ -63,7 +63,7 @@
   "Return the (BEGIN . END) bounds of NODE.")
 
 (cl-defgeneric hel-node-parent (producer node)
-  "Return the parent of NODE, or nil at the root.")
+  "Return the parent of NODE, or nil.")
 
 (cl-defgeneric hel-node-children (producer node)
   "Return the children of NODE, in buffer order.")
@@ -80,9 +80,7 @@ POS on the boundary of the node does not count.
 
 By default, this is the enclosing node of POS when it has no
 children, so a producer that defines `hel-node-enclosing' and
-`hel-node-children' gets this operation without a method of its own.")
-
-(cl-defmethod hel-node-enclosing-leaf (producer pos)
+`hel-node-children' gets this operation without a method of its own."
   (when-let* ((enclosing (hel-node-enclosing producer pos))
               ((null (hel-node-children producer enclosing))))
     enclosing))
@@ -92,14 +90,12 @@ children, so a producer that defines `hel-node-enclosing' and
 With SIDE 1 the node starts at POS, and with SIDE -1 it ends there.")
 
 (cl-defgeneric hel-node-side-child (producer pos side)
-  "Return the nearest node after POS, or before POS when SIDE is -1, or nil.
+  "Return the nearest node before/after POS, when SIDE is -1/1, or nil.
 The node lies on the same level as POS: inside the same brackets or parent.
 
 By default, the children are those of the enclosing node of POS, so
 a producer that defines `hel-node-enclosing' and `hel-node-children'
-gets this operation without a method of its own.")
-
-(cl-defmethod hel-node-side-child (producer pos side)
+gets this operation without a method of its own."
   (when-let* ((enclosing (hel-node-enclosing producer pos))
               (children (hel-node-children producer enclosing)))
     (if (< 0 side)
@@ -110,21 +106,18 @@ gets this operation without a method of its own.")
                (<= (cdr (hel-node-bounds producer child)) pos))
              children))))
 
-(cl-defgeneric hel-node-expand-steps (producer range)
-  "Return the ranges that expanding the selection from RANGE can select.
-The ranges may come in any order: each step of the expansion selects the
-smallest of them that encloses the selection.
-
-By default, the ranges are those of the node on RANGE and of its parents,
-without the root. An empty RANGE stands for the character after it.")
-
-(cl-defmethod hel-node-expand-steps (producer range)
-  (-let* (((begin . end) range)
-          (node (hel-node-on producer
-                             (if (= begin end)
-                                 (cons begin (min (1+ end) (point-max)))
-                               range)))
-          ranges)
+(cl-defgeneric hel-node-expand-steps (producer range-or-pos)
+  "Return the ranges that expanding the selection can select.
+The resulting ranges may come in any order: each step of the expansion
+selects the smallest of them that encloses the selection. RANGE-OR-POS is
+the selection that the expansion starts from, or the position of point
+when there is no selection."
+  (let ((node (hel-node-on producer (pcase-exhaustive range-or-pos
+                                      ((and (pred numberp) pos)
+                                       (hel-range pos (min (1+ pos) (point-max))))
+                                      ((pred -cons-pair-p)
+                                       range-or-pos))))
+        ranges)
     (while-let ((node)
                 (parent (hel-node-parent producer node)))
       (push (hel-node-bounds producer node) ranges)
@@ -149,7 +142,7 @@ without the root. An empty RANGE stands for the character after it.")
   (treesit-node-on (car range) (cdr range) nil t))
 
 (cl-defmethod hel-node-bounds ((_producer hel-tree-treesit-producer) node)
-  (hel-treesit--node-bounds node))
+  (hel-treesit-node-bounds node))
 
 (cl-defmethod hel-node-parent ((_producer hel-tree-treesit-producer) node)
   (treesit-node-parent node))
@@ -162,11 +155,11 @@ without the root. An empty RANGE stands for the character after it.")
   "Return the named sibling of NODE in direction DIR.
 When NODE has no sibling, but a parent has the same bounds as NODE,
 return the sibling of that parent."
-  (let ((range (hel-treesit--node-bounds node)))
+  (let ((range (hel-treesit-node-bounds node)))
     (cl-loop for same = node
              then (treesit-node-parent same)
              while (and same
-                        (equal range (hel-treesit--node-bounds same)))
+                        (equal range (hel-treesit-node-bounds same)))
              thereis (if (< 0 dir)
                          (treesit-node-next-sibling same t)
                        (treesit-node-prev-sibling same t)))))
@@ -228,28 +221,27 @@ first one to the end of RANGE. Return nil if no sexp is at its start."
     (save-excursion
       (goto-char begin)
       (ignore-errors
-        (cond
-         ;; A comment is a node of its own. The sexp scan would skip it.
-         ((and (char-after)
-               (not (hel-blank-p (char-after)))
-               (forward-comment 1))
-          (cons begin (max (->> (cons begin (point))
-                                (hel-trim-whitespace-from-range)
-                                (cdr))
-                           end)))
-         ((and (char-after)
-               (eq ?\) (char-syntax (char-after))))
-          (let ((stop (1+ begin)))
-            (cons (hel--sexp-begin stop)
-                  (max stop end))))
-         (t
-          (when (memq (char-syntax (char-after)) '(?w ?_))
-            (skip-syntax-backward "w_"))
-          (when-let* ((stop (scan-sexps (point) 1))
-                      (start (hel--sexp-begin stop))
-                      ((< start end))
-                      ((< begin stop)))
-            (cons start (max stop end)))))))))
+        (cond (;; A comment is a node of its own. The sexp scan would skip it.
+               (and (char-after)
+                    (not (hel-blank-p (char-after)))
+                    (forward-comment 1))
+               (cons begin (max (->> (cons begin (point))
+                                     (hel-trim-whitespace-from-range)
+                                     (cdr))
+                                end)))
+              ((and (char-after)
+                    (eq ?\) (char-syntax (char-after))))
+               (let ((stop (1+ begin)))
+                 (cons (hel--sexp-begin stop)
+                       (max stop end))))
+              (t
+               (when (memq (char-syntax (char-after)) '(?w ?_))
+                 (skip-syntax-backward "w_"))
+               (when-let* ((stop (scan-sexps (point) 1))
+                           (start (hel--sexp-begin stop))
+                           ((< start end))
+                           ((< begin stop)))
+                 (cons start (max stop end)))))))))
 
 (cl-defmethod hel-node-bounds ((_producer hel-tree-sexp-producer) node)
   node)
@@ -304,25 +296,28 @@ POS inside an empty bracket pair does not count."
       sexp)))
 
 (cl-defmethod hel-node-side-child ((_producer hel-tree-sexp-producer) pos side)
-  "Return the sexp after POS, or before POS when SIDE is negative."
-  (if (< 0 side)
-      (hel--sexp-after pos)
-    (hel--sexp-before pos)))
+  "Return the sexp before/after POS, when SIDE is -1/1."
+  (if (< side 0)
+      (hel--sexp-before pos)
+    (hel--sexp-after pos)))
 
-(cl-defmethod hel-node-expand-steps ((_producer hel-tree-sexp-producer) range)
-  "Return what expanding can select around the start of RANGE.
+(cl-defmethod hel-node-expand-steps ((_producer hel-tree-sexp-producer)
+                                     range-or-pos)
+  "Return what expanding can select around the start of RANGE-OR-POS.
 This is the word and the symbol there, the string, the comment and the
 bracket pairs around it, the inside of the string and of the innermost
 pair, the sentence in `text-mode' and the paragraph."
   (save-excursion
-    (let* ((pos (car range))
+    (let* ((pos (pcase-exhaustive range-or-pos
+                  ((and (pred numberp) pos) pos)
+                  (`(,begin . ,_) begin)))
            (on-word (memq (char-syntax (or (char-after pos) ?\s))
                           '(?w ?_))))
       (append (->> `(,@(if on-word '(word))
                      ,@(if (derived-mode-p 'text-mode) '(sentence))
                      paragraph)
                    (-keep (lambda (thing)
-                            (when-let* ((producer (hel-producer thing)))
+                            (when-let* ((producer (hel-thing-producer thing)))
                               (-some->> (hel--thing-under thing producer pos 1)
                                 (hel-thing-instance-bounds))))))
               (when-let* ((on-word)
@@ -330,18 +325,21 @@ pair, the sentence in `text-mode' and the paragraph."
                                          (bounds-of-thing-at-point 'symbol))))
                 (list symbol))
               (hel--syntax-ppss-bounds pos)
-              ;; The cursor sits on the character after `pos'. When that character
-              ;; opens a bracket pair, a string or a comment, the scan from the
-              ;; next position finds it.
+              ;; The cursor sits on the character after `pos'. When that
+              ;; character opens a bracket pair, a string or a comment, the
+              ;; scan from the next position finds it.
               (if (< pos (point-max))
                   (hel--syntax-ppss-bounds (1+ pos)))))))
 
-(cl-defmethod hel-node-expand-steps ((_producer hel-tree-lisp-producer) range)
-  "Return what expanding can select around the start of RANGE.
+(cl-defmethod hel-node-expand-steps ((_producer hel-tree-lisp-producer)
+                                     range-or-pos)
+  "Return what expanding can select around the start of RANGE-OR-POS.
 This is the symbol, the string or the comment there, and each list around
 it as a whole. The inside of a list or of a string is not a step,
 because `mi(' and `mi\"' select those."
-  (let ((begin (car range)))
+  (let ((begin (pcase-exhaustive range-or-pos
+                 ((and (pred numberp) pos) pos)
+                 (`(,begin . ,_) begin))))
     (cons (hel--sexp-leaf begin)
           (append (hel--bracket-sexps begin)
                   ;; The cursor sits on the character after `begin'. When
@@ -350,22 +348,25 @@ because `mi(' and `mi\"' select those."
                       (hel--bracket-sexps (1+ begin)))))))
 
 (defun hel--syntax-ppss-bounds (pos)
-  "Return the bounds of the strings, comments and bracket pairs around POS.
-A string gives its inside and its whole, and a comment gives its whole.
-Each bracket pair gives its whole, and the innermost one also gives its
-inside."
+  "Return the bounds of the strings, comments, and bracket pairs surrounding POS.
+
+A string returns both its full bounds and the bounds of its content (excluding
+the quotes).
+
+Each bracket pair returns its full bounds, while the innermost pair also returns
+the bounds of its content (excluding the brackets)."
   (let* ((ppss (save-excursion (syntax-ppss pos)))
-         (brackets (hel--bracket-bounds pos))
-         (ranges brackets))
-    (-when-let (((begin . end)) brackets)
-      (push (hel-trim-whitespace-from-range (cons (1+ begin) (1- end)))
-            ranges))
-    (when-let* ((begin (nth 8 ppss)))
-      (if (nth 3 ppss)
+         ranges)
+    (-when-let* ((brackets (hel--bracket-bounds pos))
+                 ((beg . end) (car brackets)))
+      (setq ranges (cons (hel-trim-whitespace-from-range (cons (1+ beg) (1- end)))
+                         brackets)))
+    (when-let* ((begin (nth 8 ppss))) ; comment or string
+      (if (nth 3 ppss) ; string
           (when-let* ((end (ignore-errors (scan-sexps begin 1))))
             (push (cons begin end) ranges)
             (push (cons (1+ begin) (1- end)) ranges))
-        ;; else
+        ;; else comment
         (push (-some-> (hel-bounds-of-comment-at pos)
                 (hel-trim-whitespace-from-range))
               ranges)))
@@ -431,12 +432,12 @@ The bounds include the prefix characters of each sexp."
 Return nil when POS lies in none of them."
   (save-excursion
     (let ((ppss (syntax-ppss pos)))
-      (cond ((nth 3 ppss)
+      (cond ((nth 3 ppss) ; in string
              (when-let* ((begin (nth 8 ppss))
                          (end (ignore-errors (scan-sexps begin 1)))
                          ((< begin pos end)))
                (cons begin end)))
-            ((nth 4 ppss)
+            ((nth 4 ppss) ; in comment
              (when-let* ((comment (-some-> (hel-bounds-of-comment-at pos)
                                     (hel-trim-whitespace-from-range)))
                          ((< (car comment) pos (cdr comment))))
@@ -450,8 +451,8 @@ Return nil when POS lies in none of them."
 ;;; Algorithms over trees
 
 (defun hel--node-on-selection (producer)
-  "Return the node under the selection, or nil without one.
-The node covers the selection without the whitespace at its edges."
+  "Return the node that covers the selection, or nil.
+The whitespace at the edges of the selection does not count."
   (when-let* ((range (hel-trimmed-selection-bounds)))
     (hel-node-on producer range)))
 
@@ -518,7 +519,7 @@ child."
                                 range)))))
     (-min-by (-on #'> #'hel-range-length))))
 
-;;; Drivers
+;;; Selecting nodes
 
 (defun hel--tree-select-first-child (producer)
   "Select the first child of the node under the selection.
@@ -536,8 +537,9 @@ selection changed."
 
 (defun hel--tree-shrink-1 (producer)
   "Shrink the selection one step. Return non-nil if it changed.
-Return to the previous selection of this chain of expands. Without one,
-select the first child of the node under the selection."
+Return to the selection before the last expand step. When the selection
+does not come from an expand step, select the first child of the node
+under the selection."
   (hel--sync-selection-history)
   (if hel-selection-history
       (progn
@@ -550,64 +552,66 @@ select the first child of the node under the selection."
     ;; else
     (hel--tree-select-first-child producer)))
 
-(defconst hel--tree-expand-commands
-  '(hel-expand-selection-backward
-    hel-expand-selection-forward
-    hel-shrink-selection)
+(defconst hel--tree-expand-commands '(hel-expand-selection-backward
+                                      hel-expand-selection-forward
+                                      hel-shrink-selection)
   "The commands of one series of expand and shrink steps.
 The first command of a series pushes the old point to the mark ring.")
 
-(defun hel--tree-expand (producer count dir)
+(defun hel--tree-expand (producer count side)
   "Expand the selection COUNT times to the enclosing node.
 Each step selects the smallest node that holds the selection: a
 tree-sitter node, or a sexp in a buffer without a parser. A negative
-COUNT shrinks the selection back. DIR, 1 or -1, is the direction of
-the expanded selection. PRODUCER finds the nodes."
+COUNT shrinks the selection back. SIDE is the side of the expanded
+selection where point goes: 1 for its end, -1 for its beginning.
+PRODUCER finds the nodes."
   (if (< count 0)
       (dotimes (_ (- count))
         (hel--tree-shrink-1 producer))
+    ;; else
     (let ((origin (point))
           changed)
       (dotimes (_ count)
-        (when (hel--tree-expand-1 producer dir)
+        (when (hel--tree-expand-1 producer side)
           (setq changed t)))
       (when (and changed
                  (not (memq last-command hel--tree-expand-commands)))
         (hel-push-point origin))))
   (hel-reveal-point-when-on-top))
 
-(defun hel--tree-expand-1 (producer dir)
+(defun hel--tree-expand-1 (producer side)
   "Expand the selection one step to the enclosing node.
-DIR, 1 or -1, is the direction of the new selection. Without a
-selection, the first step selects the node with point on its boundary.
-Return non-nil if the selection changed."
+Without a selection, the first step selects the node with point on its
+boundary. Return non-nil if the selection changed. SIDE is the side of
+the new selection where point goes: 1 for its end, -1 for its beginning."
   (hel--sync-selection-history)
-  (let* ((before (hel--selection-before))
-         (range (car before)))
+  (let* ((selection (hel-selection))
+         (before (or selection (point)))
+         (range (if selection (car selection) (hel-range (point) (point))))
+         (chain-start (or (-last-item hel-selection-history) before)))
     (when-let*
         ((new-range
-          (or (unless (use-region-p)
+          (or (unless selection
                 (-some->> (hel--node-touching-point producer)
                   (hel-node-bounds producer)))
               ;; The steps come from the selection where this chain
               ;; of expands began, so the inside of an outer bracket
               ;; pair never becomes a step.
-              (-> (hel-node-expand-steps
-                   producer
-                   (-if-let ((chain-start) (-last-item hel-selection-history))
-                       chain-start
-                     range))
+              (-> (hel-node-expand-steps producer
+                                         (pcase-exhaustive chain-start
+                                           ((and (pred numberp) pos) pos)
+                                           (`(,init-range . ,_) init-range)))
                   (hel--smallest-larger-range range)))))
-      (hel-select new-range dir)
+      (hel-select new-range side)
       (hel--record-selection before)
       t)))
 
 (defun hel--node-under-cursor (producer)
-  "Return the largest node inside the selection on the end where point is."
-  (-let* (((begin . end) (hel-trimmed-selection-bounds))
-          (forward? (< 0 (hel-region-direction)))
-          (char (if forward? (1- end) begin))
-          (node (hel-node-on producer (cons char (1+ char)))))
+  "Return the largest node inside the selection that holds the cursor.
+The cursor is on the character that `hel-cursor-position' returns."
+  (-let* ((cursor (hel-cursor-position))
+          ((begin . end) (hel-trimmed-selection-bounds))
+          (node (hel-node-on producer (cons cursor (1+ cursor)))))
     (while-let ((node)
                 (parent (hel-node-parent producer node))
                 ((-let [(parent-begin . parent-end)
@@ -622,13 +626,14 @@ Toward the side of point, the selection takes the next sibling. Away from
 it, the selection gives back its last node, and when only one node is left,
 it keeps that node and turns around. Return non-nil if the selection
 changed."
-  (cl-flet ((near (range) (if (< 0 dir) (car range) (cdr range)))
-            (far  (range) (if (< 0 dir) (cdr range) (car range))))
+  (cl-flet ((near (range) (if (< dir 0) (cdr range) (car range)))
+            (far  (range) (if (< dir 0) (car range) (cdr range))))
     (if (not (use-region-p))
         (when-let* ((node (hel--sibling-start-node producer dir))
                     (range (hel-node-bounds producer node)))
           (goto-char (far range))
           t)
+      ;; else
       (when-let* ((node (hel--node-under-cursor producer))
                   (range (hel-node-bounds producer node))
                   (sibling (hel-node-sibling producer node dir))
@@ -636,9 +641,9 @@ changed."
         (cond ((= dir (hel-region-direction))
                (goto-char (far target)))
               ;; The sibling still overlaps the selection: give back NODE.
-              ((if (< 0 dir)
-                   (< (near target) (region-end))
-                 (< (region-beginning) (near target)))
+              ((if (< dir 0)
+                   (< (region-beginning) (near target))
+                 (< (near target) (region-end)))
                (goto-char (near target)))
               ;; NODE is the last one: keep it, and go on past the other end.
               (t
@@ -650,8 +655,9 @@ changed."
 A negative COUNT goes backward. At the last sibling, keep the selection.
 Keep the direction of the selection. Without a selection, first select the
 node at point on the side of the motion, in the direction of the motion.
-With the selection extended, extend it. PRODUCER finds the nodes."
-  (if hel--extend-selection
+When extending the selection is on, extend the selection instead of
+replacing it. PRODUCER finds the nodes."
+  (if hel-extending-selection
       (let ((origin (point)))
         (when (/= count
                   (hel-motion-loop (dir count)
@@ -687,7 +693,7 @@ With the selection extended, extend it. PRODUCER finds the nodes."
   "Put a cursor on each range that FN returns, for every cursor.
 FN takes no arguments and runs at each cursor with its selection."
   (hel-with-each-cursor
-    (setq hel--extend-selection nil)
+    (setq hel-extending-selection nil)
     (when-let* ((ranges (funcall fn)))
       (hel-select-ranges ranges (if (use-region-p)
                                      (hel-region-direction)
@@ -727,8 +733,11 @@ Each function takes no arguments and returns a producer, or nil when it
 does not apply. The first producer wins. A major mode adds its own function
 with a buffer-local `add-hook', which runs it before the global functions.")
 
-(defun hel--node-producer ()
-  "Return the producer of nodes for the current buffer, or nil."
+(defun hel-node-producer ()
+  "Return the producer of nodes for the current buffer, or nil.
+The first function in `hel-node-source-functions' that returns
+a producer wins. The `hel-node-' operations take this producer as their
+first argument."
   (run-hook-with-args-until-success 'hel-node-source-functions))
 
 ;;; .

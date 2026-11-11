@@ -7,56 +7,30 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/ecma/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
+
+; The languages that inherit "ecma" read this file too.
 
 (function_declaration
-  body: (_) @function.inside) @function.around
-
-(function_expression
-  body: (_) @function.inside) @function.around
-
-(arrow_function
-  body: (_) @function.inside) @function.around
-
-(method_definition
-  body: (_) @function.inside) @function.around
+  body: (_)) @function
 
 (generator_function_declaration
-  body: (_) @function.inside) @function.around
+  body: (_)) @function
+
+(function_expression
+  body: (_)) @function
+
+(arrow_function
+  body: (_)) @function
+
+(method_definition
+  body: (_)) @function
 
 (class_declaration
-  body: (class_body) @class.inside) @class.around
+  body: (class_body)) @class
 
 (class
-  (class_body) @class.inside) @class.around
-
-(export_statement
-  declaration: [
-    (function_declaration) @function.around
-    (class_declaration) @class.around 
-  ])
-
-(formal_parameters
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(arguments
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(comment) @comment.inside @comment.around
-
-(array 
-  (_) @entry.around)
-
-(pair
-  (_) @entry.inside) @entry.around
-
-(pair_pattern
-  (_) @entry.inside) @entry.around
-
-; Hel's own patterns.
-;
-; The languages that inherit "ecma" read this file too. A match replaces
-; the match whose around capture is the node of `@_extended'.
+  (class_body)) @class
 
 ; An exported declaration: the object holds `export' and `default'.
 
@@ -64,19 +38,19 @@
   declaration: [
     (function_declaration)
     (generator_function_declaration)
-  ] @_extended) @function.around
-
-(export_statement
-  declaration: (class_declaration) @_extended) @class.around
+  ] @_shadowed) @function
 
 (export_statement
   value: [
     (function_expression)
     (arrow_function)
-  ] @_extended) @function.around
+  ] @_shadowed) @function
 
 (export_statement
-  value: (class) @_extended) @class.around
+  declaration: (class_declaration) @_shadowed) @class
+
+(export_statement
+  value: (class) @_shadowed) @class
 
 ; A function assigned to a name in a declaration of one variable: the
 ; object holds the keyword, the name and the semicolon. The same function
@@ -88,8 +62,8 @@
     value: [
       (function_expression)
       (arrow_function)
-    ] @_extended)
-  .) @function.around
+    ] @_shadowed)
+  .) @function
 
 (variable_declaration
   .
@@ -97,8 +71,8 @@
     value: [
       (function_expression)
       (arrow_function)
-    ] @_extended)
-  .) @function.around
+    ] @_shadowed)
+  .) @function
 
 (export_statement
   declaration: (lexical_declaration
@@ -108,4 +82,19 @@
                      (function_expression)
                      (arrow_function)
                    ])
-                 .) @_extended) @function.around
+                 .) @_shadowed) @function
+
+(formal_parameters
+  (_) @argument)
+
+(arguments
+  (_) @argument)
+
+(array
+  (_) @entry)
+
+(pair) @entry
+
+(pair_pattern) @entry
+
+(comment) @comment

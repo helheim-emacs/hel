@@ -7,51 +7,39 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/python/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-(function_definition
-  body: (block)? @function.inside) @function.around
+(function_definition) @function
 
-(class_definition
-  body: (block)? @class.inside) @class.around
+; A decorated function or class is a `decorated_definition' node: the
+; object holds the decorators.
+
+(decorated_definition
+  definition: (function_definition) @_shadowed) @function
+
+(class_definition) @class
+
+(decorated_definition
+  definition: (class_definition) @_shadowed) @class
 
 (parameters
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-  
+  (_) @argument)
+
 (lambda_parameters
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+  (_) @argument)
 
 (argument_list
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(comment) @comment.inside @comment.around
-
-((function_definition
-   name: (identifier) @_name
-   body: (block)? @test.inside) @test.around
- (#match? @_name "^test_"))
+  (_) @argument)
 
 (list
-  (_) @entry.around)
+  (_) @entry)
 
 (tuple
-  (_) @entry.around)
+  (_) @entry)
 
 (set
-  (_) @entry.around)
+  (_) @entry)
 
-(pair
-  (_) @entry.inside) @entry.around
+(pair) @entry
 
-; Hel's own patterns.
-;
-; A decorated function or class is a `decorated_definition' node, and the
-; Helix patterns capture only the definition inside it. These patterns make
-; the decorators a part of the object. A match replaces the Helix match whose
-; around capture is the node of `@_extended'.
-
-(decorated_definition
-  definition: (function_definition) @_extended) @function.around
-
-(decorated_definition
-  definition: (class_definition) @_extended) @class.around
+(comment) @comment

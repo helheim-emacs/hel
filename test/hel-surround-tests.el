@@ -71,4 +71,23 @@ EXPECTED is the text that COMMAND selects, or nil for no selection."
      ;; Point on a blank line in the gap after a run.
      (emacs-lisp-mode ";; (a)\n\n|\n;; (c)\n" hel-mark-a-paren nil))))
 
+(ert-deftest hel-surround-touching-pairs ()
+  "When point touches two pairs, the pair after point wins. Point right
+after a closing bracket, with no pair after it, belongs to that bracket."
+  (hel-surround-tests--check
+   '((emacs-lisp-mode "(progn (foo)|(bar))" hel-mark-a-paren "(bar)")
+     (emacs-lisp-mode "(progn (foo)| (bar))" hel-mark-a-paren "(foo)")
+     (emacs-lisp-mode "(progn (foo)|)" hel-mark-a-paren "(foo)"))))
+
+(ert-deftest hel-surround-unmatched-bracket-in-string-or-comment ()
+  "A bracket without its pair inside a string or a comment does not pair
+up with a bracket outside: the search finds the pair around the string
+or the comment."
+  (hel-surround-tests--check
+   '((emacs-lisp-mode "(foo \"(|\" 1)" hel-mark-a-paren "(foo \"(\" 1)")
+     (emacs-lisp-mode "(foo \"(\"| 1)" hel-mark-a-paren "(foo \"(\" 1)")
+     (emacs-lisp-mode "(foo \")|\" 1)" hel-mark-a-paren "(foo \")\" 1)")
+     (emacs-lisp-mode "(foo ;; (|\n 1)" hel-mark-a-paren "(foo ;; (\n 1)")
+     (c-mode "f(a, \"[|\", b);" hel-mark-inner-paren "a, \"[\", b"))))
+
 ;;; hel-surround-tests.el ends here

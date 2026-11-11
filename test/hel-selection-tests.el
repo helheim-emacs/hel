@@ -5,7 +5,7 @@
 ;;; Commentary:
 ;;
 ;; The functions that set and read the selection and work on ranges:
-;; `hel-select', `hel-select-motion', `hel-selection' and their relatives.
+;; `hel-select', `hel-motion-select', `hel-selection' and their relatives.
 ;;
 ;; The texts of the tests use the notation of `hel-test-helpers.el'.
 ;;
@@ -44,24 +44,24 @@
 (ert-deftest hel-select-ignores-extending ()
   (hel-test-with #'fundamental-mode hel-selection-tests--text
     (set-mark 15)
-    (let ((hel--extend-selection t))
+    (let ((hel-extending-selection t))
       (hel-select (cons 3 7))
       (should (equal (hel-selection-tests--state) '(3 7 t))))))
 
-(ert-deftest hel-select-motion-new-selection ()
+(ert-deftest hel-motion-select-new-selection ()
   (hel-test-with #'fundamental-mode hel-selection-tests--text
-    (hel-select-motion 10 15)
+    (hel-motion-select 10 15)
     (should (equal (hel-selection-tests--state) '(10 15 t)))
-    (hel-select-motion 15 10)
+    (hel-motion-select 15 10)
     (should (equal (hel-selection-tests--state) '(15 10 t)))))
 
-(ert-deftest hel-select-motion-keeps-mark-when-extending ()
+(ert-deftest hel-motion-select-keeps-mark-when-extending ()
   (hel-test-with #'fundamental-mode hel-selection-tests--text
     (hel-select (cons 5 10))
-    (let ((hel--extend-selection t))
-      (hel-select-motion 10 15)
+    (let ((hel-extending-selection t))
+      (hel-motion-select 10 15)
       (should (equal (hel-selection-tests--state) '(5 15 t)))
-      (hel-select-motion 15 2)
+      (hel-motion-select 15 2)
       (should (equal (hel-selection-tests--state) '(5 2 t))))))
 
 (ert-deftest hel-selection-shape ()

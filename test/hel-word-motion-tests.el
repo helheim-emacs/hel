@@ -32,7 +32,7 @@ command, called with the count 1, or a list of a command and a count.
 With EXTEND non-nil, the keys extend a selection that starts at the
 cursor, as after `v'."
   (hel-test-with #'fundamental-mode (hel-test-mark text start)
-    (setq hel--extend-selection extend)
+    (setq hel-extending-selection extend)
     (when extend
       (set-mark (point))
       (activate-mark))
@@ -292,18 +292,18 @@ previous word."
 (ert-deftest hel-WORD-stops-at-every-blank ()
   (dolist (blank (list ?\s ?\t ?\f #xA0 #x3000))
     (hel-test-with #'text-mode (concat "foo" (string blank) "bar|")
-      (should (equal (hel-blank-tests--stops #'hel--forward-WORD) '(4 8))))))
+      (should (equal (hel-blank-tests--stops #'hel-WORD-motion) '(4 8))))))
 
 (ert-deftest hel-word-motions-cross-a-page-break ()
-  (dolist (motion '(hel--forward-word hel--forward-WORD))
+  (dolist (motion '(hel-word-motion hel-WORD-motion))
     (hel-test-with #'emacs-lisp-mode "foo\n\f\nbar|"
       (should (= (-last-item (hel-blank-tests--stops motion)) (point-max))))))
 
 (ert-deftest hel-word-motion-stays-backward-symmetric ()
   (hel-test-with #'text-mode (concat "foo" (string #x3000) "bar|")
-    (hel--forward-WORD -1)
+    (hel-WORD-motion -1)
     (should (= (point) 5))
-    (hel--forward-WORD -1)
+    (hel-WORD-motion -1)
     (should (= (point) 1))))
 
 (ert-deftest hel-trim-takes-every-blank ()

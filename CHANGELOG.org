@@ -1,6 +1,15 @@
 * [Unreleased]
 ** Added
 
+- Extensions can use more of Hel. ~hel-node-producer~ returns the producer
+  that the ~hel-node-~ operations take. ~hel-extending-selection~ is non-nil
+  while =v= makes motions extend the selection. ~hel-word-motion~,
+  ~hel-WORD-motion~, ~hel-sentence-motion~, ~hel-paragraph-motion~,
+  ~hel-function-motion~ and ~hel-sexp-motion~ move point over COUNT things
+  and return the part of COUNT that is left, as ~hel-motion-source~
+  expects. ~hel-treesit-nodes-hull~ returns the smallest range that holds
+  a list of tree-sitter nodes.
+
 - =mst=, =mdt=, =mrt= — surround functionality for XML/HTML tags.
 
 - Structural selection in every buffer, with the keys of ~hel-paredit~ and
@@ -30,21 +39,42 @@
 
 - Function, class, argument and comment text objects: =mif= / =maf=, =mit= / =mat=,
   =mia= / =maa=, =mic= / =mac=, and the jumps =]f= / =[f=, =]t= / =[t=, =]a= / =[a=, =]c= / =[c=.
-  On Emacs 31 they use the tree-sitter queries of Helix, which Hel ships
-  in the =queries= directory. A package recipe must include this directory:
+  On Emacs 31 they use tree-sitter queries, which Hel ships in the
+  =queries= directory and which derive from the queries of Helix.
+
+- Entry text object: =mie= / =mae= and the jumps =]e= / =[e=. An entry is
+  one element of a data structure: an element of a list, a key with its
+  value in a dictionary, or a field of a struct. It needs Emacs 31 and
+  a tree-sitter parser. A package recipe must include this directory:
   ~:files (:defaults "queries")~. Without a query, the function and comment
   objects use the syntax table, as before.
 
+- Without a tree-sitter query, =mia= / =maa= and =]a= / =[a= find the
+  arguments with the syntax table: an argument is the text between two
+  commas in parentheses. So they work on Emacs 29 and 30 and in modes
+  without a parser. Lisp modes have no such arguments.
+
 ** Changed
+
+- =]d= and =[d= go to the next and the previous error or diagnostic
+  (~next-error~, ~previous-error~). =]e= and =[e= select entries.
 
 - =]p= and =[p= run the same commands as =}= and ={=. ~hel-forward-paragraph-end~
   and ~hel-backward-paragraph-end~ are removed.
 
 - ~hel-set-region~ is removed. Use ~hel-select~ with a range and a direction,
-  or ~hel-select-motion~ for a motion that keeps the mark after =v=.
+  or ~hel-motion-select~ for a motion that keeps the mark after =v=.
 
 - The Hel API says "selection" for a selection as a value. ~hel-region~ and
   ~hel-save-region~ are renamed to ~hel-selection~ and ~hel-save-selection~.
+
+- The text object commands for things lose the ~inner-~ part of their name,
+  and the ~a-~ part becomes ~around-~: ~hel-mark-inner-function~ is
+  ~hel-mark-function~, and ~hel-mark-a-function~ is
+  ~hel-mark-around-function~. This holds for words, WORDs, sentences,
+  paragraphs, functions, classes, arguments, entries and comments. The
+  commands for the text between delimiters, such as
+  ~hel-mark-inner-paren~, keep their names.
 
 - Word motions, =_= and the text objects take every character with whitespace
   syntax as a blank, such as a page break, a no-break space and an ideographic
@@ -72,23 +102,31 @@
   / =mas=, =mip= / =map=) use the same rules as the function object. A count works
   for all of them, and a repeated key adds the next object. =maw= takes the
   spaces after the word, or before it when the word ends at punctuation or
-  at the end of the line. =mas= takes the whitespace after the sentence across
-  line ends, but not past the end of the paragraph, and a count stops at the
-  end of the paragraph as well.
+  at the end of the line. =mas= takes the blanks after the sentence, or before
+  it when the sentence ends at the end of the line, and a count stops at the
+  end of the paragraph. An around object takes the gap before it when the
+  gap after it is empty or ends at a closing bracket or at the end of the
+  buffer, so =d= leaves no blank line or separator in front of them.
 
-- ~hel-mark-a-sentence~ takes a count instead of a thing. The functions
+- =miW= and =maW= leave out the punctuation at the edges of a WORD, so =miW=
+  on =~foo~.= selects =~foo~=. A bracket or a quote stays when its pair is
+  inside the WORD, as in =foo(bar)=. =W=, =B= and =E= do not change.
+
+- ~hel-mark-around-sentence~ takes a count instead of a thing. The functions
   ~hel-mark-inner-thing~, ~hel-mark-a-thing~, ~hel-bounds-of-count-things-at-point~
   and ~hel-bounds-of-complement-of-thing-at-point~ are removed. A package defines
   its own kind of object as a thing: a symbol whose property ~hel-thing-sources~
-  lists where its objects come from. Its commands call ~hel--mark-text-object~
-  and ~hel--mark-to-thing-edge~, and a rule that holds for one kind is a method
+  lists where its objects come from. Its commands call ~hel-mark-text-object~
+  and ~hel-mark-to-thing-edge~, and a rule that holds for one kind is a method
   of a ~hel-thing-~ generic function.
 
 - A producer returns each thing that it finds as a ~hel-thing-instance~
   struct instead of a plist. Build one with ~hel-thing-instance-create~, and
-  read it with ~hel-thing-instance-begin~, ~hel-thing-instance-end~ and
-  ~hel-thing-instance-parent~. ~hel-thing-instance-bounds~ returns its range,
-  and ~hel-thing-instance-edge~ returns its ~:begin~ or ~:end~ edge.
+  read it with ~hel-thing-instance-begin~ and ~hel-thing-instance-end~. The
+  slot ~data~ holds what the producer keeps about the thing, and only the
+  methods of that producer read it with ~hel-thing-instance-data~.
+  ~hel-thing-instance-bounds~ returns its range, and
+  ~hel-thing-instance-edge~ returns its ~:begin~ or ~:end~ edge.
 
 * [0.13.0]
 ** Added

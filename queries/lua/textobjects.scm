@@ -7,21 +7,21 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/lua/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
 (function_definition
-  body: (_) @function.inside) @function.around
+  body: (_)) @function
 
 (function_declaration
-  body: (_) @function.inside) @function.around
+  body: (_)) @function
 
 (parameters
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+  (_) @argument)
 
 (arguments
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(comment) @comment.inside @comment.around
+  (_) @argument)
 
 (table_constructor
-  (field (_) @entry.inside) @entry.around)
+  (field) @entry)
+
+(comment) @comment

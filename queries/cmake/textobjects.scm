@@ -7,20 +7,16 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/cmake/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
 [
   (macro_def)
   (function_def)
-] @function.around
+] @function
 
-(argument) @parameter.inside
+(argument) @argument
 
 [
   (bracket_comment)
   (line_comment)
-] @comment.inside
-
-(line_comment) @comment.around
-
-(bracket_comment) @comment.around
+] @comment

@@ -7,108 +7,37 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/rust/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
+
+; The object of a function or a type holds the attributes above it, so that
+; `#[derive(...)]' goes with its type.
 
 (
-  (attribute_item)* @function.around
+  (attribute_item)* @function
   .
   (function_item
-    body: (_) @function.inside) @function.around
+    body: (_)) @function
 )
 
 (closure_expression
-  body: (_) @function.inside) @function.around
+  body: (_)) @function
 
 (struct_item
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (enum_item
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (union_item
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (trait_item
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (impl_item
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
-(parameters 
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(type_parameters
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(type_arguments
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(closure_parameters
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(arguments
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(field_initializer_list  
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-[
-  (line_comment)
-  (block_comment)
-] @comment.inside
-
-(line_comment) @comment.around
-
-(block_comment) @comment.around
-
-(; #[test]
- (attribute_item
-   (attribute
-     (identifier) @_test_attribute)) @test.around
- ; allow other attributes like #[should_panic] and comments
- [
-   (attribute_item) @test.around
-   (line_comment) @test.around
- ]*
- .
- ; the test function
- (function_item
-   body: (_) @test.inside) @test.around
- (#eq? @_test_attribute "test"))
-
-(array_expression
-  (_) @entry.around)
-
-(tuple_expression
-  (_) @entry.around)
-
-(tuple_pattern
-  (_) @entry.around)
-
-; Commonly used vec macro initializer is special cased
-(macro_invocation
-  (identifier) @_id (token_tree (_) @entry.around)
-  (#eq? @_id "vec"))
-
-(enum_variant) @entry.around
-
-(field_declaration
-  (_) @entry.inside) @entry.around
-
-(field_initializer
-  (_) @entry.inside) @entry.around
-
-(shorthand_field_initializer) @entry.around
-
-; Hel's own patterns.
-;
-; The Helix patterns put the attributes above a function into the object,
-; and leave them out for the other items. This pattern puts the attributes
-; above a struct, an enum, a union, a trait or an impl into the object, so
-; that `#[derive(...)]' goes with its type. A match replaces the match whose
-; around capture is the node of `@_extended'.
-
-((attribute_item)+ @class.around
+((attribute_item)+ @class
  .
  [
    (struct_item body: (_))
@@ -116,4 +45,52 @@
    (union_item body: (_))
    (trait_item body: (_))
    (impl_item body: (_))
- ] @class.around @_extended)
+ ] @class @_shadowed)
+
+(parameters
+  (_) @argument)
+
+(type_parameters
+  (_) @argument)
+
+(type_arguments
+  (_) @argument)
+
+(closure_parameters
+  (_) @argument)
+
+(arguments
+  (_) @argument)
+
+(field_initializer_list
+  (_) @argument)
+
+(array_expression
+  (_) @entry)
+
+(tuple_expression
+  (_) @entry)
+
+(tuple_pattern
+  (_) @entry)
+
+; The elements of `vec![...]'.
+
+((macro_invocation
+   (identifier) @_name
+   (token_tree
+     (_) @entry))
+ (#eq? @_name "vec"))
+
+(enum_variant) @entry
+
+(field_declaration) @entry
+
+(field_initializer) @entry
+
+(shorthand_field_initializer) @entry
+
+[
+  (line_comment)
+  (block_comment)
+] @comment

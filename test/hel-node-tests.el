@@ -197,21 +197,21 @@ shrinks."
 (ert-deftest hel-text-object-extends-after-exchange-point-and-mark ()
   "A repeat extends the run when only the direction of the selection differs."
   (hel-test-with #'emacs-lisp-mode (hel-test-mark "one\n\ntwo\n\nthree\n" "one")
-    (hel-mark-inner-paragraph 1)
+    (hel-mark-paragraph 1)
     (let ((end (region-end)))
       (hel-exchange-point-and-mark)
-      (hel-mark-inner-paragraph 1)
+      (hel-mark-paragraph 1)
       (should (< end (region-end))))))
 
 (ert-deftest hel-text-object-extends-after-shrink ()
   "Shrink restores the run of the selection that it returns to."
   (hel-test-with #'emacs-lisp-mode (hel-test-mark "one\n\ntwo\n\nthree\n" "one")
-    (hel-mark-inner-paragraph 1)
-    (hel-mark-inner-paragraph 1)
+    (hel-mark-paragraph 1)
+    (hel-mark-paragraph 1)
     (let ((end (region-end)))
       (hel-shrink-selection 1)
       (should (< (region-end) end))
-      (hel-mark-inner-paragraph 1)
+      (hel-mark-paragraph 1)
       (should (= (region-end) end)))))
 
 (ert-deftest hel-expand-history-per-cursor ()
@@ -375,11 +375,11 @@ and the selections of `M-n', `M-p' and `M-o'.")
   (hel-test-with #'text-mode (hel-test-mark "foo bar\n" " bar")
     (forward-char 1)
     (deactivate-mark)
-    (hel-mark-inner-word 1)
+    (hel-mark-word 1)
     (should (equal (hel-test-selection) "bar")))
   (hel-test-with #'text-mode (hel-test-mark "foo.\n" ".")
     (deactivate-mark)
-    (hel-mark-inner-word 1)
+    (hel-mark-word 1)
     (should (equal (hel-test-selection) "."))))
 
 ;;; Lisp: sexps as nodes
@@ -826,7 +826,7 @@ before the pair (The syntax producer)."
     (unwind-protect
         (progn
           (hel-test-run #'hel-select-all-siblings)
-          (should-not hel--extend-selection)
+          (should-not hel-extending-selection)
           (should (= 2 (length (hel-all-fake-cursors)))))
       (hel-remove-all-fake-cursors))))
 
@@ -875,7 +875,7 @@ a node with a dot in it moves as one node."
   "Rule 7: `v' works with motions.  `mi' and `ma' create a selection, so they
 replace the selection, as without `v'."
   (hel-node-tests--with-v #'text-mode "foo| bar^ baz\n"
-    (hel-test-run #'hel-mark-inner-word)
+    (hel-test-run #'hel-mark-word)
     (should (equal (hel-test-render) "foo ^bar| baz\n")))
   (hel-node-tests--with-v #'emacs-lisp-mode "|(a b^ c)\n"
     (hel-test-run #'hel-mark-inner-paren)
@@ -919,7 +919,7 @@ directions of the motion, over a count, and at the last sibling."
 the next function."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "def f():\n    pa|ss\n\ndef g():\n    pass\n"
-    (hel-test-run #'hel-mark-inner-function)
+    (hel-test-run #'hel-mark-function)
     (hel-test-run #'hel-select-next-sibling)
     (should (equal (hel-test-render)
                    "def f():\n    pass\n\n|def g():\n    pass^\n"))))
@@ -976,11 +976,11 @@ every kind of buffer."
 no step for the inside of a list."
   (dolist (mode '(lisp-mode scheme-mode lisp-interaction-mode))
     (hel-test-with mode "(foo (bar| baz) qux)\n"
-      (should (hel-tree-lisp-producer-p (hel--node-producer)))
+      (should (hel-tree-lisp-producer-p (hel-node-producer)))
       (should (equal (hel-test-steps #'hel-expand-selection-backward 2)
                      '("bar" "(bar baz)")))))
   (hel-test-with #'c-mode "f(a| b);\n"
-    (should-not (hel-tree-lisp-producer-p (hel--node-producer)))))
+    (should-not (hel-tree-lisp-producer-p (hel-node-producer)))))
 
 (ert-deftest hel-comment-sibling-lisp ()
   "Rule 10: in Lisp a comment is a leaf, so after M-o selects it, M-n and
@@ -1237,7 +1237,7 @@ siblings and select all children, which use `:multiple-cursors nil'."
   (dolist (command '(hel-expand-selection-backward hel-shrink-selection
                                                    hel-expand-selection-forward
                                                    hel-select-next-sibling hel-select-previous-sibling
-                                                   hel-mark-inner-function hel-mark-a-function
+                                                   hel-mark-function hel-mark-around-function
                                                    hel-mark-function-forward hel-mark-function-backward
                                                    hel-backward-word-end))
     (should (eq t (get command 'multiple-cursors))))
@@ -1249,11 +1249,11 @@ siblings and select all children, which use `:multiple-cursors nil'."
   "Section Selecting an object: mi and ma set `:merge-selections t'.
 Section Commands are thin: ]f always merges, and ge merges only when the
 selection extends."
-  (dolist (command '(hel-mark-inner-function hel-mark-a-function
-                                             hel-mark-inner-word hel-mark-a-argument
+  (dolist (command '(hel-mark-function hel-mark-around-function
+                                             hel-mark-word hel-mark-around-argument
                                              hel-mark-function-forward))
     (should (eq t (get command 'merge-selections))))
-  (should (eq 'hel--extend-selection
+  (should (eq 'hel-extending-selection
               (get 'hel-backward-word-end 'merge-selections))))
 
 (ert-deftest hel-eldoc-registration ()
@@ -1278,37 +1278,43 @@ keys are plain bindings in `hel-normal-state-map'."
                    ("M-a" . hel-select-all-siblings)
                    ("M-I" . hel-select-all-children)
                    ("M-j" . hel-select-all-children)
-                   ("m w" . hel-mark-inner-word)
-                   ("m i w" . hel-mark-inner-word)
-                   ("m a w" . hel-mark-a-word)
-                   ("m W" . hel-mark-inner-WORD)
-                   ("m i W" . hel-mark-inner-WORD)
-                   ("m a W" . hel-mark-a-WORD)
-                   ("m ." . hel-mark-inner-sentence)
-                   ("m i s" . hel-mark-inner-sentence)
-                   ("m a s" . hel-mark-a-sentence)
+                   ("m w" . hel-mark-word)
+                   ("m i w" . hel-mark-word)
+                   ("m a w" . hel-mark-around-word)
+                   ("m W" . hel-mark-WORD)
+                   ("m i W" . hel-mark-WORD)
+                   ("m a W" . hel-mark-around-WORD)
+                   ("m ." . hel-mark-sentence)
+                   ("m i s" . hel-mark-sentence)
+                   ("m a s" . hel-mark-around-sentence)
                    ("] s" . hel-mark-sentence-forward)
                    ("[ s" . hel-mark-sentence-backward)
-                   ("m p" . hel-mark-inner-paragraph)
-                   ("m i p" . hel-mark-inner-paragraph)
-                   ("m a p" . hel-mark-a-paragraph)
+                   ("m p" . hel-mark-paragraph)
+                   ("m i p" . hel-mark-paragraph)
+                   ("m a p" . hel-mark-around-paragraph)
                    ("] p" . hel-forward-paragraph)
                    ("[ p" . hel-backward-paragraph)
-                   ("m f" . hel-mark-inner-function)
-                   ("m i f" . hel-mark-inner-function)
-                   ("m a f" . hel-mark-a-function)
+                   ("m f" . hel-mark-function)
+                   ("m i f" . hel-mark-function)
+                   ("m a f" . hel-mark-around-function)
                    ("] f" . hel-mark-function-forward)
                    ("[ f" . hel-mark-function-backward)
-                   ("m i t" . hel-mark-inner-class)
-                   ("m a t" . hel-mark-a-class)
+                   ("m i t" . hel-mark-class)
+                   ("m a t" . hel-mark-around-class)
                    ("] t" . hel-mark-class-forward)
                    ("[ t" . hel-mark-class-backward)
-                   ("m i a" . hel-mark-inner-argument)
-                   ("m a a" . hel-mark-a-argument)
+                   ("m i a" . hel-mark-argument)
+                   ("m a a" . hel-mark-around-argument)
                    ("] a" . hel-mark-argument-forward)
                    ("[ a" . hel-mark-argument-backward)
-                   ("m i c" . hel-mark-inner-comment)
-                   ("m a c" . hel-mark-a-comment)
+                   ("m i e" . hel-mark-entry)
+                   ("m a e" . hel-mark-around-entry)
+                   ("] e" . hel-mark-entry-forward)
+                   ("[ e" . hel-mark-entry-backward)
+                   ("] d" . next-error)
+                   ("[ d" . previous-error)
+                   ("m i c" . hel-mark-comment)
+                   ("m a c" . hel-mark-around-comment)
                    ("] c" . hel-mark-comment-forward)
                    ("[ c" . hel-mark-comment-backward)
                    ("}" . hel-forward-paragraph)

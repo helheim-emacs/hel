@@ -7,27 +7,19 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/css/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-; Rule sets and their declaration blocks
-(rule_set) @function.around
-(rule_set
-  (block) @function.inside)
+; A rule set or a keyframe block counts as a function, and an at-rule with
+; a body, such as `@media', counts as a class.
 
-(keyframe_block_list) @function.around
-(keyframe_block
-  (block) @function.inside)
+(rule_set) @function
 
-; At-rules with a body (e.g. @media, @supports)
-(media_statement) @class.around
-(media_statement
-  (block) @class.inside)
+(keyframe_block_list) @function
 
-; Declarations as key/value entries
-(declaration) @entry.around
-(declaration
-  ":"
-  (_) @entry.inside)
+(keyframe_block) @function
 
-(comment) @comment.inside
-(comment) @comment.around
+(media_statement) @class
+
+(declaration) @entry
+
+(comment) @comment

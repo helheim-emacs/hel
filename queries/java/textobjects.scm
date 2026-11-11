@@ -7,49 +7,44 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/java/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-(method_declaration
-  body: (_)? @function.inside) @function.around
+(method_declaration) @function
 
 (constructor_declaration
-  body: (_) @function.inside) @function.around
+  body: (_)) @function
 
 (interface_declaration
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (class_declaration
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (record_declaration
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (enum_declaration
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (formal_parameters
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+  (_) @argument)
 
 (type_parameters
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+  (_) @argument)
 
 (type_arguments
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+  (_) @argument)
 
 (argument_list
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+  (_) @argument)
+
+(array_initializer
+  (_) @entry)
+
+(enum_body
+  (enum_constant) @entry)
 
 [
   (line_comment)
   (block_comment)
-] @comment.inside
-
-(line_comment) @comment.around
-
-(block_comment) @comment.around
-
-(array_initializer
-  (_) @entry.around)
-
-(enum_body
-  (enum_constant) @entry.around)
+] @comment

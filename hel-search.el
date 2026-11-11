@@ -555,7 +555,7 @@ index in `hel-search-counter' depends on point.")
                       (match (hel-search-session-next-match-from-pos
                               hel-search--session pos dir)))
             (-let [(_ start end closed-overlays) match]
-              (when (and hel--extend-selection (use-region-p))
+              (when (and hel-extending-selection (use-region-p))
                 (hel-create-fake-cursor-from-point))
               (hel-select (cons start end) region-dir)
               (-each closed-overlays #'hel-open-overlay))))))))
@@ -645,7 +645,7 @@ Do not auto-detect word boundaries in the search pattern."
                                    (cons mark point)))))))
       (deactivate-mark)
       (-each (hel-all-fake-cursors) #'hel--delete-fake-cursor)
-      (setq hel--extend-selection nil)
+      (setq hel-extending-selection nil)
       (if (setq regions (hel-select-interactively-in-ranges regions invert))
           (hel-recenter-point-on-jump
             ;; Real cursor
@@ -850,7 +850,7 @@ If INVERT is non-nil — remove selections that match regexp."
 Right after this command while hints are active, you can use n and N
 keys to repeat motion forward/backward."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive)
   (hel-maybe-set-mark)
   (hel-find-char (read-char "f" t) 1 nil))
@@ -861,7 +861,7 @@ keys to repeat motion forward/backward."
 Right after this command while hints are active, you can use n and N
 keys to repeat motion forward/backward."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive)
   (hel-maybe-set-mark)
   (hel-find-char (read-char "F" t) -1 nil))
@@ -872,7 +872,7 @@ keys to repeat motion forward/backward."
 Right after this command while hints are active, you can use n and N
 keys to repeat motion forward/backward."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive)
   (hel-maybe-set-mark)
   (hel-find-char (read-char "t" t) 1 t))
@@ -883,7 +883,7 @@ keys to repeat motion forward/backward."
 Right after this command while hints are active, you can use n and N
 keys to repeat motion forward/backward."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive)
   (hel-maybe-set-mark)
   (hel-find-char (read-char "T" t) -1 t))

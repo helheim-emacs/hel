@@ -7,40 +7,31 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/_typescript/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-[
-  (interface_declaration 
-    body:(_) @class.inside)
-  (type_alias_declaration 
-    value: (_) @class.inside)
-] @class.around
-
-(enum_body
-  (_) @entry.around)
-
-(enum_assignment (_) @entry.inside)
-
-; Hel's own patterns.
-;
 ; The languages that inherit "_typescript" read this file too.
 
-; Objects that the Helix patterns lack: an abstract class, and a function
-; that `declare' introduces.
+(ambient_declaration
+  (function_signature)) @function
 
 (abstract_class_declaration
-  body: (class_body) @class.inside) @class.around
+  body: (class_body)) @class
 
-(ambient_declaration
-  (function_signature)) @function.around
+[
+  (interface_declaration
+    body: (_))
+  (type_alias_declaration
+    value: (_))
+] @class
 
 ; An exported declaration of a TypeScript kind: the object holds `export'.
-; A match replaces the match whose around capture is the node of
-; `@_extended'.
 
 (export_statement
   declaration: [
     (abstract_class_declaration)
     (interface_declaration)
     (type_alias_declaration)
-  ] @_extended) @class.around
+  ] @_shadowed) @class
+
+(enum_body
+  (_) @entry)

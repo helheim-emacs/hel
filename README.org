@@ -72,6 +72,24 @@ try [[https://github.com/helheim-emacs/helheim][Helheim Emacs]].
 
 Hel is on [[https://melpa.org/#/hel][MELPA]].
 
+*** Requirements
+
+Hel needs Emacs 29.1 or later. A few features need a newer Emacs, and on an
+older one they are missing or work in a simpler way:
+
+- Emacs 31 ::
+  - The function, class, argument, entry and comment text objects and their
+    jumps (=mif=, =mat=, =]a=, and so on) use the tree-sitter queries only
+    on Emacs 31. On an older Emacs, the function and comment objects work
+    through the syntax table, and the class, argument and entry objects
+    show a message.
+  - =i= in the =*xref*= and =*grep*= buffers switches them to an editable
+    mode, and =ZZ= saves the changes.
+
+- Emacs 30.1 ::
+  - =gq= in a programming mode runs ~prog-fill-reindent-defun~.
+  - =C-w p= pins the buffer to its window (~toggle-window-dedicated~).
+
 *** Emacs built-in package manager
 
 This is the most minimal example of the =init.el= file:
@@ -108,8 +126,9 @@ This is the most minimal example of the =init.el= file:
 
 #+begin_quote
 [!NOTE]
-The function, class, argument and comment text objects of tree-sitter
-modes read the query files in the =queries= directory of this repository.
+The function, class, argument, entry and comment text objects of
+tree-sitter modes read the query files in the =queries= directory of this
+repository.
 A package recipe must include this directory, for example with
 =:files (:defaults "queries")=. Without it, the class and argument objects
 do not work, and the function and comment objects use the syntax table.

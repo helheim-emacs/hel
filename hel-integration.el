@@ -222,6 +222,8 @@ in the command loop, and the fake cursors can pick up on those instead."
                      'hel-mark-class-backward        ; [t
                      'hel-mark-argument-forward      ; ]a
                      'hel-mark-argument-backward     ; [a
+                     'hel-mark-entry-forward         ; ]e
+                     'hel-mark-entry-backward        ; [e
                      'hel-mark-comment-forward       ; ]c
                      'hel-mark-comment-backward))    ; [c
 
@@ -494,7 +496,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 (hel-define-command helheim-wdired-exit ()
   :multiple-cursors t
   (interactive)
-  (cond (hel--extend-selection
+  (cond (hel-extending-selection
          (hel-extend-selection -1))
         ((use-region-p)
          (deactivate-mark))
@@ -728,8 +730,9 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (hel-select-motion (point)
-                     (progn (widget-end-of-line) (point))))
+  (hel-motion-select (point) (progn
+                               (widget-end-of-line)
+                               (point))))
 
 ;;;; Xref
 

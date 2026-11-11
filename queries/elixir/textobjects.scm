@@ -7,40 +7,29 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/elixir/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-; Function heads and guards have no body at all, so `keywords` and `do_block` nodes are both optional
+; A function head and a guard have no body, so the arguments are optional.
+
 ((call
    target: (identifier) @_keyword
    (arguments
      [
        (call
-         (arguments (_)? @parameter.inside))
-       ; function has a guard
+         (arguments (_)? @argument))
+       ; The function has a guard.
        (binary_operator
-         left:
-           (call
-             (arguments (_)? @parameter.inside)))
-     ]
-     ; body is "do: body" instead of a do-block
-     (keywords
-       (pair
-         value: (_) @function.inside))?)?
-   (do_block (_)* @function.inside)?)
- (#match? @_keyword "^\\(def\\|defdelegate\\|defguard\\|defguardp\\|defmacro\\|defmacrop\\|defn\\|defnp\\|defp\\)$")) @function.around
+         left: (call
+                 (arguments (_)? @argument)))
+     ])?)
+ (#match? @_keyword "^\\(def\\|defdelegate\\|defguard\\|defguardp\\|defmacro\\|defmacrop\\|defn\\|defnp\\|defp\\)$")) @function
 
 (anonymous_function
-  (stab_clause right: (body) @function.inside)) @function.around
+  (stab_clause right: (body))) @function
 
 ((call
    target: (identifier) @_keyword
-   (do_block (_)* @class.inside))
- (#match? @_keyword "^\\(defmodule\\|defprotocol\\|defimpl\\)$")) @class.around
+   (do_block))
+ (#match? @_keyword "^\\(defmodule\\|defprotocol\\|defimpl\\)$")) @class
 
-((call
-  target: (identifier) @_keyword
-  (arguments ((string) . (_)?))
-  (do_block (_)* @test.inside)?)
- (#match? @_keyword "^\\(test\\|describe\\)$")) @test.around
-
-(comment) @comment.around @comment.inside
+(comment) @comment

@@ -7,25 +7,30 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/c-sharp/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
+
+(constructor_declaration
+  body: (_)) @function
+
+(destructor_declaration
+  body: (_)) @function
+
+(method_declaration
+  body: (_)) @function
+
+(property_declaration
+  (_)) @function
 
 [
-  (class_declaration body: (_) @class.inside)
-  (struct_declaration body: (_) @class.inside)
-  (interface_declaration body: (_) @class.inside)
-  (enum_declaration body: (_) @class.inside)
+  (class_declaration body: (_))
+  (struct_declaration body: (_))
+  (interface_declaration body: (_))
+  (enum_declaration body: (_))
   (delegate_declaration)
-  (record_declaration body: (_) @class.inside)
-] @class.around
+  (record_declaration body: (_))
+] @class
 
-(constructor_declaration body: (_) @function.inside) @function.around
+(parameter
+  (_)) @argument
 
-(destructor_declaration body: (_) @function.inside) @function.around
-
-(method_declaration body: (_) @function.inside) @function.around
-
-(property_declaration (_) @function.inside) @function.around
-
-(parameter (_) @parameter.inside) @parameter.around
-
-(comment) @comment.around
+(comment) @comment

@@ -1,58 +1,90 @@
 #+title: Text object queries
 
 This directory holds the tree-sitter queries of the text objects of Hel:
-function, class, argument and comment. ~hel-text-objects.el~ reads them on
-Emacs 31 and later.
+function, class, argument, entry and comment. ~hel-text-objects.el~ reads
+them on Emacs 31 and later.
 
 * The files
 
 Each language has one file, =<language>/textobjects.scm=. The directory of
 a language has the name of the language of its tree-sitter parser, such as
 =c-sharp= or =tsx=. A file can inherit the patterns of other files with a
-line such as =; inherits: ecma=. So =ecma=, =_typescript= and =_jsx= serve
+line such as =; inherits: ecma=. So =ecma= and =_typescript= serve
 JavaScript, TypeScript and TSX, and =c= serves C++.
 
-The patterns use the capture names of the queries of the [[https://github.com/helix-editor/helix][Helix]] editor:
-=@function.around=, =@function.inside=, =@class.around= and so on. The
-regex of a =#match?= predicate is an Emacs regex, as in
-="^\\(test\\|describe\\)$"=.
+* The captures
+
+A pattern captures the object itself with the name of the object:
+=@function=, =@class=, =@argument=, =@entry= or =@comment=. The object is
+what =mi= selects. Hel adds the rest of =ma= in Lisp: the header comment,
+the blank lines after a function, the comma after an argument. So
+a pattern captures no commas and no blank lines.
+
+#+begin_src scheme
+(function_definition) @function
+
+(argument_list
+  (_) @argument)
+#+end_src
+
+When a match captures several nodes with the name of the object, the object
+spans all of them. In C, a struct with the =;= after it is one object:
+
+#+begin_src scheme
+((struct_specifier body: (_)) @class @_shadowed
+ .
+ ";" @class)
+#+end_src
+
+Other captures start with =_=, so that Hel never reads them as objects.
+A =#match?= predicate refers to such a capture, as in
+=(#match? @_keyword "^\\(defmodule\\|defimpl\\)$")=. The regex is an Emacs
+regex.
+
+* Shadowing patterns
+
+Some objects hold syntax around a smaller object: the decorators of a Python
+function, =export= in JavaScript, =template <...>= in C++. The smaller
+object still matches its own pattern, because its node is still in the tree,
+and a query cannot say "not inside a =decorated_definition=". So the larger
+pattern marks the node of the smaller object with =@_shadowed=:
+
+#+begin_src scheme
+(function_definition) @function
+
+(decorated_definition
+  definition: (function_definition) @_shadowed) @function
+#+end_src
+
+Hel drops every match that has a =@_shadowed= node of another match among
+its nodes: the larger match shadows the smaller one. Shadowing can chain:
+in =export const f = () => 1=, the =export= statement shadows the =const=
+declaration, which shadows the arrow function. A shadowing pattern follows
+the pattern that it shadows in the file.
+
+A query file can rely on these rules:
+
+1. An object is all the nodes that one match captures under its name, such
+   as a struct and the =;= after it. Their order and their sizes do not
+   matter.
+2. =@_shadowed= may mark any number of nodes, and the match of every one of
+   them is dropped. A match may mark its own node: it never drops itself.
+3. The parent of an object is the nearest node above all of its nodes. For
+   one node, it is the parent of that node. For siblings, it is their
+   parent. Two objects with the same parent are siblings, so =2 maf= stays
+   among them.
 
 * Where the files come from
 
 Each file derives from the file =runtime/queries/<language>/textobjects.scm=
-of Helix, at the commit in =HELIX-REVISION=. Hel changes these files in
-three ways:
-
-- Each regex is in Emacs syntax. Helix writes them in the syntax of the
-  Rust =regex= crate.
-- A comment pattern matches one comment. Helix writes =(comment)+= for
-  a run of comments. Hel builds the runs itself. Without an anchor, the
-  =+= pattern gives one match for every comment among the siblings, and
-  that makes each comment lookup slow in a large file.
-- The section "Hel's own patterns" at the end of a file gives an object
-  a larger range than the Helix patterns, such as a Python function with
-  its decorators. Such a pattern names the node that it extends with the
-  capture =@_extended=, and its match replaces the match of that node.
+of [[https://github.com/helix-editor/helix][Helix]], at the commit that its header names. Hel maintains the files
+on its own and does not follow the changes in Helix.
 
 Helix licenses its files under the Mozilla Public License 2.0, so the files
 here stay under that license. The file =LICENSE= holds its text. Section
 3.3 of MPL-2.0 allows these files to be distributed together with Hel,
 which is licensed under GPL-3.0-or-later, because none of them is marked
 "Incompatible With Secondary Licenses".
-
-* Porting the changes of Helix
-
-The script =helix-changes.sh= prints the changes of the Helix files since
-the commit in =HELIX-REVISION=. Run it by hand from any directory:
-
-#+begin_src sh
-queries/helix-changes.sh          # the master branch of Helix
-queries/helix-changes.sh <ref>    # a tag or a branch of Helix
-#+end_src
-
-Port the changes by hand, with the three rules above. Then write the commit
-that the script prints last to =HELIX-REVISION=. The script stops with an
-error when a file carries the "Incompatible With Secondary Licenses" mark.
 
 * Packaging
 

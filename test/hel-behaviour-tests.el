@@ -809,7 +809,7 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("foo b|ar baz qux" "-2miw" "|foo bar^ baz qux")
   ;; A word in programming modes.
   (:mode c-mode "int fo|o_bar;" "miw" "int ^foo|_bar;")
-  (:mode c-mode "int fo|o_bar;" "miW" "int ^foo_bar;|")
+  (:mode c-mode "int fo|o_bar;" "miW" "int ^foo_bar|;")
   (:mode python-mode "fo|o = 1" "maw" "^foo |= 1"))
 
 (hel-test-table object-WORD

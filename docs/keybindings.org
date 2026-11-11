@@ -156,6 +156,7 @@ All keys available in Emacs state are also work in Normal state.
   - =[f= / =]f= :: Function, with its decorators.
   - =[t= / =]t= :: Class or type.
   - =[a= / =]a= :: Argument or parameter, without the comma.
+  - =[e= / =]e= :: Entry of a data structure, without the comma.
   - =[c= / =]c= :: Block of comment lines.
   - =[s= / =]s= :: Sentence.
   - =[p= / =]p= :: Paragraph. These keys differ from the others: they work the
@@ -172,6 +173,10 @@ All keys available in Emacs state are also work in Normal state.
   derived from ~prog-mode~.
 
 - =[l= / =]l= :: Move over pages (=^L= sign in the buffer).
+
+- =[d= / =]d= :: Go to the previous / next error or diagnostic, or to the
+  previous / next match of a grep or compilation buffer (~previous-error~ /
+  ~next-error~).
 
 *** Easymotion
 
@@ -354,6 +359,12 @@ commands like ~mark-word~ which use the word "mark" in this particular sense.
 - =maa= :: Mark the argument with the comma and the space after it, or
   before it on the last argument.
 
+- =mie= :: Mark the entry of a data structure: an element of a list or an
+  array, a key with its value in a dictionary, or a field of a struct.
+
+- =mae= :: Mark the entry with the comma and the space after it, or before
+  it on the last entry.
+
 - =mc= or =mic= :: Mark the block of comment lines: whole lines, with their comment
   markers.
 
@@ -361,10 +372,10 @@ commands like ~mark-word~ which use the word "mark" in this particular sense.
   =map= does for a paragraph. A comment after code takes only the spaces on
   its line.
 
-The function, class, argument and comment objects use the tree-sitter
-queries of Helix on Emacs 31 and later, in a buffer with a tree-sitter
-parser. In other buffers, the function and comment objects work through
-the syntax table, and the class and argument objects show a message. With a
+The function, class, argument, entry and comment objects use tree-sitter
+queries on Emacs 31 and later, in a buffer with a tree-sitter parser. In
+other buffers, the function and comment objects work through the syntax
+table, and the class, argument and entry objects show a message. With a
 count, these keys mark several objects. When you press the same key again,
 it adds the next object, and =M-i= removes it.
 

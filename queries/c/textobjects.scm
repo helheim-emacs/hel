@@ -7,55 +7,38 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/c/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
+
+; C++ inherits "c", so it reads this file too.
 
 (function_definition
-  body: (_) @function.inside) @function.around
+  body: (_)) @function
 
 (struct_specifier
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (enum_specifier
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
 (union_specifier
-  body: (_) @class.inside) @class.around
+  body: (_)) @class
 
-(parameter_list 
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
+; A struct, an enum or a union declared on its own, with or without a
+; body: the object holds the `;' after it. A forward declaration such as
+; `struct S;' has no body. The anchor keeps out a use of the type, as in
+; `struct S s;', where a declarator stands before the `;'.
 
-(argument_list
-  ((_) @parameter.inside . ","? @parameter.around) @parameter.around)
-
-(comment) @comment.inside @comment.around
-
-(enumerator
-  (_) @entry.inside) @entry.around
-
-(initializer_list
-  (_) @entry.around)
-
-; Hel's own patterns.
-;
-; C++ inherits "c", so it reads this file too. A match replaces the match
-; whose around capture is the node of `@_extended'. Unlike a Helix match,
-; the object keeps every node that the pattern captures, the anonymous `;'
-; included.
-
-; A struct, an enum or a union declared on its own: the object holds the
-; `;' after it.
-
-((struct_specifier body: (_)) @class.around @_extended
+((struct_specifier) @class @_shadowed
  .
- ";" @class.around)
+ ";" @class)
 
-((enum_specifier body: (_)) @class.around @_extended
+((enum_specifier) @class @_shadowed
  .
- ";" @class.around)
+ ";" @class)
 
-((union_specifier body: (_)) @class.around @_extended
+((union_specifier) @class @_shadowed
  .
- ";" @class.around)
+ ";" @class)
 
 ; A struct, an enum or a union inside `typedef': the object is the whole
 ; `typedef'.
@@ -65,4 +48,17 @@
     (struct_specifier body: (_))
     (enum_specifier body: (_))
     (union_specifier body: (_))
-  ] @_extended) @class.around
+  ] @_shadowed) @class
+
+(parameter_list
+  (_) @argument)
+
+(argument_list
+  (_) @argument)
+
+(enumerator) @entry
+
+(initializer_list
+  (_) @entry)
+
+(comment) @comment

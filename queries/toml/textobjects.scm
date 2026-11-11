@@ -7,12 +7,11 @@
 ; SPDX-License-Identifier: MPL-2.0
 ;
 ; The file derives from runtime/queries/toml/textobjects.scm of Helix,
-; https://github.com/helix-editor/helix, at the commit in ../HELIX-REVISION.
+; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
-(pair 
-  (_) @entry.inside) @entry.around
+(pair) @entry
 
 (array
-  (_) @entry.around)
+  (_) @entry)
 
-(comment) @comment.around
+(comment) @comment
