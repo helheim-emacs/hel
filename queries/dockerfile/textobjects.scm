@@ -10,3 +10,6 @@
 ; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
 (comment) @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+[(double_quoted_string) (single_quoted_string) (json_string)] @string

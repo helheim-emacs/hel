@@ -19,3 +19,6 @@
   (_) @entry)
 
 (comment) @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+[(string) (raw_string) (ansi_c_string) (translated_string)] @string

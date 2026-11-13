@@ -1,8 +1,9 @@
 #+title: Text object queries
 
 This directory holds the tree-sitter queries of the text objects of Hel:
-function, class, argument, entry and comment. ~hel-text-objects.el~ reads
-them on Emacs 31 and later.
+function, class, argument, entry and comment, and the strings of the quote
+keys =mi"=, =mi'= and =mi`=. ~hel-text-objects.el~ and ~hel-surround.el~
+read them on Emacs 31 and later.
 
 * The files
 
@@ -35,6 +36,12 @@ spans all of them. In C, a struct with the =;= after it is one object:
  .
  ";" @class)
 #+end_src
+
+=@string= captures a whole string node, such as =(string)= in Python. The
+quote keys take its first child as the opening delimiter and its last child
+as the closing one, so a Python ="""text"""= is one pair with three quotes
+on each side. Where the query finds no string, as in a comment, the quote
+keys use the syntax table.
 
 Other captures start with =_=, so that Hel never reads them as objects.
 A =#match?= predicate refers to such a capture, as in

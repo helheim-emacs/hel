@@ -32,8 +32,9 @@ hel-text-objects.el           the thing protocol, run producers, text objects,
                               the motions over things
 hel-structural-editing.el     the tree level: operations on nodes, node
                               producers, the algorithms over trees
-hel-surround.el               the text between delimiters: quotes, brackets,
-                              HTML tags
+hel-surround.el               pairs of delimiters: the pair producers of
+                              brackets, quotes and HTML tags, the key tables,
+                              hel-mark-pair
 hel-commands.el               all interactive editing commands: motions,
                               selections, node commands, text objects
 hel-search.el                 search, replace, highlighting
@@ -47,8 +48,9 @@ hel-keybindings.el            default key bindings
 and stay under MPL-2.0, but Hel maintains them on its own. A pattern
 captures the object itself under the name of the object (`@function`,
 `@class`, `@argument`, `@entry`, `@comment`), and a shadowing pattern marks
-the node of the smaller object that it replaces with `@_shadowed`. Their
-regexes are in Emacs syntax. See `queries/README.org`.
+the node of the smaller object that it replaces with `@_shadowed`. `@string`
+captures the strings for the quote keys of `hel-surround.el`. Their regexes
+are in Emacs syntax. See `queries/README.org`.
 
 ### Specification
 

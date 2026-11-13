@@ -34,3 +34,6 @@
     (class_specifier)
     (struct_specifier)
   ] @_shadowed) @class
+
+; The strings, for the quote keys of the pair commands, such as mi".
+(raw_string_literal) @string

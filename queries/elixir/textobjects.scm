@@ -33,3 +33,6 @@
  (#match? @_keyword "^\\(defmodule\\|defprotocol\\|defimpl\\)$")) @class
 
 (comment) @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+[(string) (charlist)] @string

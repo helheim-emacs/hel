@@ -352,93 +352,29 @@ If this value is nil, there is no ceiling."
   "List of minor-modes that will be temporarily disabled while there are more
 then one cursor in the buffer.")
 
-;; TODO: add examples with `elisp-demos' package
-(defvar-local hel-surround-alist
-  '((?\) :insert ("(" . ")")
-         :remove ("(" . ")") :balanced t)
-    (?\} :insert ("{" . "}")
-         :remove ("{" . "}") :balanced t)
-    (?\] :insert ("[" . "]")
-         :remove ("[" . "]") :balanced t)
-    (?\> :insert ("<" . ">")
-         :remove ("<" . ">") :balanced t)
-    (?\( :insert (lambda ()
-                   (if (hel-linewise-selection-p)
-                       '("(\n" . ")\n")
-                     '("( " . " )")))
-         :remove (lambda ()
-                   (hel-4-bounds-of-brackets-at-point ?\( ?\)))
-         ;; or
-         ;; :remove ("([[:blank:]\n]*" . "[[:blank:]\n]*)")
-         ;; :regexp t
-         ;; :balanced t
-         )
-    (?\[ :insert (lambda ()
-                   (if (hel-linewise-selection-p)
-                       '("[\n" . "]\n")
-                     '("[ " . " ]")))
-         :remove (lambda ()
-                   (hel-4-bounds-of-brackets-at-point ?\[ ?\])))
-    (?\{ :insert (lambda ()
-                   (if (hel-linewise-selection-p)
-                       '("{\n" . "}\n")
-                     '("{ " . " }")))
-         :remove (lambda ()
-                   (hel-4-bounds-of-brackets-at-point ?{ ?})))
-    (?\< :insert (lambda ()
-                   (if (hel-linewise-selection-p)
-                       '("<\n" . ">\n")
-                     '("< " . " >")))
-         :remove (lambda ()
-                   (hel-4-bounds-of-brackets-at-point ?< ?>)))
-    (?\" :insert ("\"" . "\"")
-         :remove (lambda ()
-                   (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?\"))
-                     (list beg (1+ beg) (1- end) end))))
-    (?t :insert hel-surround-read-tag
-        :remove (lambda ()
-                  (-> (read-string "Delete tag: ")
-                      (string-trim)
-                      (hel-surround-4-bounds-of-html-tag-at-point)))))
-  "Alist of (KEY . SPEC) elements for Hel surround functionality.
+(defvar-local hel-surround-alist nil
+  "Alist of (KEY . SPEC) elements for the surround commands.
+This variable is obsolete. Use `hel-pair-sources' for what `md' and `mr'
+find, and `hel-surround-delimiters' for what `ms' and `mr' insert. An
+element of this alist wins over both of them.
 
-This variable is buffer-local so that users can modify it from major-mode hooks.
+KEY is a character. SPEC is a plist:
 
-KEY is a character, SPEC is a plist with ideologically 2 group of keys:
+`:insert'    A cons (LEFT . RIGHT) of the strings that `ms' inserts, or
+             a function that returns one.
 
-1. What \"ms\" (`hel-surround') and \"mr\" (`hel-surround-change') will insert.
+`:remove'    A cons (LEFT . RIGHT) of the strings around the text that
+             `md' deletes, or a function that returns the four positions
+             (LEFT-START LEFT-END RIGHT-START RIGHT-END) of the two
+             delimiters around point.
 
-   `:insert'    Cons cell (LEFT . RIGHT) of strings, or a function that returns
-              such cons cell.
+`:regexp'    When non-nil, LEFT and RIGHT of `:remove' are regexps.
 
-2. What \"md\" (`hel-surround-delete') and \"mr\" (`hel-surround-change')
-   will remove.
+`:balanced'  When non-nil, the nested pairs of LEFT and RIGHT are skipped.")
 
-   Either a group of keys:
-
-   `:remove'    Cons cell (LEFT . RIGHT) of strings, or a function that returns
-              such a cons cell. LEFT and RIGHT should be patterns used to search
-              for the two substrings to delete.
-
-   `:regexp'    If non-nil, treat LEFT and RIGHT from `:remove' as regular
-              expressions. Otherwise, search for them literally.
-
-   `:balanced'  When non-nil, skip all nested balanced LEFT/RIGHT pairs.
-              Otherwise, accept the first matching pair found.
-
-   Or a single key
-
-   `:remove'    Function that returns list with 4 positions:
-
-                       (LEFT-START LEFT-END RIGHT-START RIGHT-END)
-
-              of START and END of left and right delimeters. Example:
-
-                       |<tag> |Lorem ipsum dolor sit amet| </tag>|
-                       ^      ^                          ^       ^
-              LEFT-START      LEFT-END         RIGHT-START       RIGHT-END
-
-See the default value for examples.")
+(make-obsolete-variable 'hel-surround-alist
+                        "use `hel-pair-sources' and `hel-surround-delimiters'."
+                        "0.14.0")
 
 (defcustom hel-search-initial-delay 0.25
   "Seconds to wait before beginning to lazily highlight all matches.

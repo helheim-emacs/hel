@@ -61,3 +61,6 @@
 (enum_case) @entry
 
 (comment) @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+[(string) (encapsed_string)] @string

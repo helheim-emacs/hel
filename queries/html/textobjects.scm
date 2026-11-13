@@ -10,3 +10,6 @@
 ; https://github.com/helix-editor/helix, at the commit ba40e547426b.
 
 (comment) @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+(quoted_attribute_value) @string

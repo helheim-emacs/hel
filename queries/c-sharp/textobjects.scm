@@ -34,3 +34,7 @@
   (_)) @argument
 
 (comment) @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+[(string_literal) (verbatim_string_literal) (raw_string_literal)
+ (interpolated_string_expression)] @string

@@ -12,3 +12,6 @@
 (block_mapping_pair) @entry
 
 (comment) @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+[(double_quote_scalar) (single_quote_scalar)] @string

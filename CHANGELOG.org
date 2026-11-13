@@ -54,7 +54,56 @@
   commas in parentheses. So they work on Emacs 29 and 30 and in modes
   without a parser. Lisp modes have no such arguments.
 
+- =mb= / =mim= and =mam= select inside and around the closest brackets:
+  parentheses, square brackets or curly brackets, whichever lie closest, as
+  =mim= in Helix. =mdm= and =mrm= delete and replace them.
+
+- A repeated =mi(=, =ma(= and the other bracket keys select the next brackets
+  outward, and a count goes that many brackets outward. =M-i= returns to the
+  selection before.
+
+- Pairs of delimiters have an API. ~hel-pair-sources~ maps a key character
+  to the producers of its pairs, and ~hel-surround-delimiters~ to what
+  =ms= inserts and to its padding. ~hel-function-pair-source~ makes a pair from a function that
+  returns four positions, and ~hel-delimiter-pair-source~ from two strings.
+  ~hel-pair-at~ and ~hel-pair-parent~ find a ~hel-pair~, and
+  ~hel-mark-pair~ selects one.
+
 ** Changed
+
+- =mr= replaces only the delimiters and keeps the layout of the pair:
+  =mr([= turns =(foo)= into =[foo]=, and brackets on lines of their own stay
+  there.
+
+- =md= deletes a delimiter that stands alone on its line with its line, for
+  every key, and leaves no blanks at the end of a line.
+
+- Only a programming mode indents the text after a linewise =ms= or after
+  =md=. Other modes, such as Markdown, keep the indentation of the text,
+  and a linewise =ms= puts the delimiter lines at the least indentation of
+  the text.
+
+- ~hel-surround-alist~ is obsolete. Use ~hel-pair-sources~ and
+  ~hel-surround-delimiters~. For one release Hel still reads the old
+  variable, and its elements win over the new ones. Its default value is
+  empty.
+
+- ~hel-surround-4-bounds-at-point~, ~hel-bounds-of-brackets-at-point~,
+  ~hel-4-bounds-of-brackets-at-point~, ~hel-bounds-of-quoted-at-point~,
+  ~hel-surround-4-bounds-of-html-tag-at-point~ and
+  ~hel-surround-search-outward~ are removed. Use ~hel-pair-at~ with the
+  producer of a key, ~(hel-pair-producer CHAR)~.
+
+- ~hel-mark-inner-legacy-quoted~ and ~hel-mark-a-legacy-quoted~ are removed.
+  In Emacs Lisp, =mi`= and =mi'= select the text between =`= and ='=.
+
+- =mi"= and =ma"= find the string with the cursor on its opening quote or
+  right after its closing quote, also where the quote mark is not a string
+  quote of the mode, as in ~text-mode~.
+
+- In tree-sitter modes, =mi"=, =mi'= and =mi`= find the strings through the
+  query of the language, so a Python ="""docstring"""= is one string with
+  three quotes on each side, and =ma"= takes the prefix of =f"text"=.
 
 - =]d= and =[d= go to the next and the previous error or diagnostic
   (~next-error~, ~previous-error~). =]e= and =[e= select entries.

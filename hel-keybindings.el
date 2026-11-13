@@ -343,6 +343,10 @@ use it."
   "m a <" #'hel-mark-an-angle
   "m a >" #'hel-mark-an-angle
 
+  "m b"   #'hel-mark-inner-closest-pair
+  "m i m" #'hel-mark-inner-closest-pair
+  "m a m" #'hel-mark-around-closest-pair
+
   "m !"   #'hel-mark-inner-surround
   "m @"   #'hel-mark-inner-surround
   "m #"   #'hel-mark-inner-surround

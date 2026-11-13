@@ -1598,141 +1598,198 @@ COUNT, go on to the start of the COUNT-th comment."
   (interactive "p")
   (hel-mark-to-thing-edge 'comment (- count) :begin t))
 
-;;;; Mark surround
+;;;; Mark pairs
 
 ;; mi"
-(hel-define-command hel-mark-inner-double-quoted ()
+(hel-define-command hel-mark-inner-double-quoted (count)
+  "Select the text between the double quotes at the cursor.
+COUNT is ignored: quotes do not nest."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?\"))
-    (hel-select (cons (1+ beg) (1- end)))))
+  (interactive "p")
+  (hel-mark-pair ?\" :inner count))
 
 ;; ma"
-(hel-define-command hel-mark-a-double-quoted ()
+(hel-define-command hel-mark-a-double-quoted (count)
+  "Select the text between the double quotes at the cursor, with the quotes.
+COUNT is ignored: quotes do not nest."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-some-> (hel-bounds-of-quoted-at-point ?\")
-    (hel-select)))
+  (interactive "p")
+  (hel-mark-pair ?\" :around count))
 
 ;; mi'
-(hel-define-command hel-mark-inner-single-quoted ()
+(hel-define-command hel-mark-inner-single-quoted (count)
+  "Select the text between the single quotes at the cursor.
+COUNT is ignored: quotes do not nest."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?'))
-    (hel-select (cons (1+ beg) (1- end)))))
+  (interactive "p")
+  (hel-mark-pair ?' :inner count))
 
 ;; ma'
-(hel-define-command hel-mark-a-single-quoted ()
+(hel-define-command hel-mark-a-single-quoted (count)
+  "Select the text between the single quotes at the cursor, with the quotes.
+COUNT is ignored: quotes do not nest."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-some-> (hel-bounds-of-quoted-at-point ?')
-    (hel-select)))
+  (interactive "p")
+  (hel-mark-pair ?' :around count))
 
 ;; mi`
-(hel-define-command hel-mark-inner-back-quoted ()
+(hel-define-command hel-mark-inner-back-quoted (count)
+  "Select the text between the backquotes at the cursor.
+COUNT is ignored: quotes do not nest."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-when-let ((beg . end) (hel-bounds-of-quoted-at-point ?`))
-    (hel-select (cons (1+ beg) (1- end)))))
+  (interactive "p")
+  (hel-mark-pair ?` :inner count))
 
 ;; ma`
-(hel-define-command hel-mark-a-back-quoted ()
+(hel-define-command hel-mark-a-back-quoted (count)
+  "Select the text between the backquotes at the cursor, with the quotes.
+COUNT is ignored: quotes do not nest."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-some-> (hel-bounds-of-quoted-at-point ?`)
-    (hel-select)))
+  (interactive "p")
+  (hel-mark-pair ?` :around count))
 
 ;; mi( mi)
-(hel-define-command hel-mark-inner-paren ()
+(hel-define-command hel-mark-inner-paren (count)
+  "Select the text inside the parentheses around the cursor.
+The whitespace at the edges of the text stays out. A repeated key
+selects inside the next parentheses outward, and COUNT goes COUNT - 1
+pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (pcase (hel-4-bounds-of-brackets-at-point ?\( ?\))
-    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
+  (interactive "p")
+  (hel-mark-pair ?\( :inner count))
 
 ;; ma( ma)
-(hel-define-command hel-mark-a-paren ()
+(hel-define-command hel-mark-a-paren (count)
+  "Select the parentheses around the cursor, with the text inside.
+A repeated key selects the next parentheses outward, and COUNT goes
+COUNT - 1 pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-some-> (hel-bounds-of-brackets-at-point ?\( ?\))
-    (hel-select)))
+  (interactive "p")
+  (hel-mark-pair ?\( :around count))
 
 ;; mi[ mi]
-(hel-define-command hel-mark-inner-bracket ()
+(hel-define-command hel-mark-inner-bracket (count)
+  "Select the text inside the square brackets around the cursor.
+The whitespace at the edges of the text stays out. A repeated key
+selects inside the next square brackets outward, and COUNT goes
+COUNT - 1 pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (pcase (hel-4-bounds-of-brackets-at-point ?\[ ?\])
-    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
+  (interactive "p")
+  (hel-mark-pair ?\[ :inner count))
 
 ;; ma[ ma]
-(hel-define-command hel-mark-a-bracket ()
+(hel-define-command hel-mark-a-bracket (count)
+  "Select the square brackets around the cursor, with the text inside.
+A repeated key selects the next square brackets outward, and COUNT goes
+COUNT - 1 pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-some-> (hel-bounds-of-brackets-at-point ?\[ ?\])
-    (hel-select)))
+  (interactive "p")
+  (hel-mark-pair ?\[ :around count))
 
 ;; mi{ mi}
-(hel-define-command hel-mark-inner-curly ()
+(hel-define-command hel-mark-inner-curly (count)
+  "Select the text inside the curly brackets around the cursor.
+The whitespace at the edges of the text stays out. A repeated key
+selects inside the next curly brackets outward, and COUNT goes
+COUNT - 1 pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (pcase (hel-4-bounds-of-brackets-at-point ?{ ?})
-    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
+  (interactive "p")
+  (hel-mark-pair ?{ :inner count))
 
 ;; ma{ ma}
-(hel-define-command hel-mark-a-curly ()
+(hel-define-command hel-mark-a-curly (count)
+  "Select the curly brackets around the cursor, with the text inside.
+A repeated key selects the next curly brackets outward, and COUNT goes
+COUNT - 1 pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-some-> (hel-bounds-of-brackets-at-point ?{ ?})
-    (hel-select)))
+  (interactive "p")
+  (hel-mark-pair ?{ :around count))
 
 ;; mi< mi>
-(hel-define-command hel-mark-inner-angle ()
+(hel-define-command hel-mark-inner-angle (count)
+  "Select the text inside the angle brackets around the cursor.
+The whitespace at the edges of the text stays out. A repeated key
+selects inside the next angle brackets outward, and COUNT goes
+COUNT - 1 pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (pcase (hel-4-bounds-of-brackets-at-point ?< ?>)
-    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
+  (interactive "p")
+  (hel-mark-pair ?< :inner count))
 
 ;; ma< ma>
-(hel-define-command hel-mark-an-angle ()
+(hel-define-command hel-mark-an-angle (count)
+  "Select the angle brackets around the cursor, with the text inside.
+A repeated key selects the next angle brackets outward, and COUNT goes
+COUNT - 1 pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (-when-let ((beg _ _ end) (hel-4-bounds-of-brackets-at-point ?< ?>))
-    (hel-select (cons beg end))))
+  (interactive "p")
+  (hel-mark-pair ?< :around count))
 
-(hel-define-command hel-mark-inner-surround ()
+;; mim mb
+(hel-define-command hel-mark-inner-closest-pair (count)
+  "Select the text inside the closest brackets around the cursor.
+The brackets are parentheses, square brackets or curly brackets,
+whichever lie closest. The whitespace at the edges of the text stays
+out. A repeated key selects inside the next brackets outward, and COUNT
+goes COUNT - 1 pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (when-let* ((char (if (characterp last-command-event)
-                        last-command-event
-                      (get last-command-event 'ascii-character)))
-              (bounds (hel-surround--remove char)))
-    (-let [(_ beg end _) bounds]
-      (hel-select (cons beg end)))))
+  (interactive "p")
+  (hel-mark-pair ?m :inner count))
 
-(hel-define-command hel-mark-a-surround ()
+;; mam
+(hel-define-command hel-mark-around-closest-pair (count)
+  "Select the closest brackets around the cursor, with the text inside.
+The brackets are parentheses, square brackets or curly brackets,
+whichever lie closest. A repeated key selects the next brackets
+outward, and COUNT goes COUNT - 1 pairs outward."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
-  (when-let* ((char (if (characterp last-command-event)
-                        last-command-event
-                      (get last-command-event 'ascii-character)))
-              (bounds (hel-surround--remove char)))
-    (-let [(beg _ _ end) bounds]
-      (hel-select (cons beg end)))))
+  (interactive "p")
+  (hel-mark-pair ?m :around count))
+
+(defun hel--last-command-char ()
+  "Return the character of the last key that ran the command, or nil."
+  (if (characterp last-command-event)
+      last-command-event
+    (get last-command-event 'ascii-character)))
+
+;; mi* and the other characters
+(hel-define-command hel-mark-inner-surround (count)
+  "Select the text between two characters of the last key, as `*' in `mi*'.
+The key finds its pair through `hel-pair-sources'. A character without
+sources pairs with itself. COUNT goes COUNT - 1 pairs outward when the
+pairs nest."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (when-let* ((char (hel--last-command-char)))
+    (hel-mark-pair char :inner count)))
+
+;; ma* and the other characters
+(hel-define-command hel-mark-a-surround (count)
+  "Select the text between two characters of the last key, with them.
+The key is the last character typed, as `*' in `ma*', and it finds its
+pair through `hel-pair-sources'. A character without sources pairs with
+itself. COUNT goes COUNT - 1 pairs outward when the pairs nest."
+  :multiple-cursors t
+  :merge-selections t
+  (interactive "p")
+  (when-let* ((char (hel--last-command-char)))
+    (hel-mark-pair char :around count)))
 
 ;;;; Expand selection
 
@@ -1828,94 +1885,87 @@ selection."
 
 ;; ms
 (hel-define-command hel-surround ()
-  (format "Enclose the active region with the chosen delimiters.
+  (format "Enclose the active region with the delimiters of a key.
+Read the key, see `hel-surround-delimiters'.
 
-Left brackets — `(', `[', `{' — add extra spaces around the surrounded
-region. If the selection is linewise (made with \"x\"), the delimiters
-are placed on separate lines.
+Left brackets — `(', `[', `{' — add a space between each bracket and the
+region. With a linewise selection (made with \"x\"), they put each
+bracket on a line of its own instead.
 
-Right brackets — `)', `]', `}' — do the opposite: they remove all
-spaces or newlines from the selection and are inserted tightly.
+Right brackets — `)', `]', `}' — are inserted tightly, and leave out
+the spaces and the line break at the edges of the region.
 
-For custom delimiters, the general rule is: if either delimiter
-contains a newline character, they are inserted on separate lines.
+%s -- surround the region with an HTML tag: type “div class=\"box\"”​ and
+the region is wrapped in <div class=\"box\"> and </div>. With a linewise
+selection (made with %s), the tags go on lines of their own.
 
-%s -- surround selection with XML tag: type “div class=\"box\"”​ and
-selection will be wraped in <div class=\"box\"> and </div>.
-
-With linewise selection (made with %s) tags are placed on separate lines."
+In a programming mode the new lines are indented by the rules of the
+mode. In other modes the region keeps its indentation, and the new lines
+take the least indentation of the region."
           (propertize "m s t" 'face 'help-key-binding)
           (propertize "x" 'face 'help-key-binding))
   :multiple-cursors t
   (interactive)
   (when-let* (((use-region-p))
               (key (read-char "Surround: " t)))
-    (-let* (((left . right) (hel-surround--insert key))
-            (linewise? (or (string-search "\n" left)
-                           (string-search "\n" right))))
-      (if linewise?
-          (progn
-            (cl-callf string-trim left)
-            (cl-callf string-trim right))
+    (-let* (((delimiters . padding) (hel-surround--delimiters key))
+            (linewise? (and padding (hel-linewise-selection-p))))
+      (unless linewise?
         (hel-trim-whitespace-from-selection))
-      (let ((beg (copy-marker (region-beginning)))
-            (end (copy-marker (region-end) t)))
-        (hel-save-selection
-          (goto-char beg)
-          (insert left)
-          (when linewise? (newline))
-          (goto-char end)
-          (insert right)
-          (when linewise? (newline))
-          (indent-region beg end))
-        (set-marker beg nil)
-        (set-marker end nil)))
+      (hel-save-selection
+        (hel-surround-wrap (region-beginning) (region-end)
+                           delimiters padding linewise?)))
     (hel-extend-selection -1)))
 
 ;; md
 (hel-define-command hel-surround-delete ()
-  (format "Delete surround.
+  (format "Delete the pair of delimiters around point.
+Read the key of the pair, see `hel-pair-sources'. A delimiter alone on
+its line goes with its line, and a programming mode then indents the
+text again. A left bracket also deletes the spaces inside the brackets,
+and a right bracket deletes only the brackets.
 
-%s -- delete XML tag: type “div​” and enclosing <div class=\"box\">
-and </div> tag will be deleted. An empty input deletes the nearest
-enclosing tag."
+%s -- delete an HTML tag: type “div​” and the enclosing <div class=\"box\">
+and </div> tags are deleted. An empty name deletes the nearest
+enclosing tags."
           (propertize "m d t" 'face 'help-key-binding))
   :multiple-cursors t
   (interactive)
-  (when-let* ((key (read-char "Delete pair: " t))
-              (bounds (hel-surround--remove key)))
-    (-let (((left-beg left-end right-beg right-end) bounds)
+  (when-let* ((char (read-char "Delete pair: " t))
+              (producer (hel-pair-producer char))
+              (pair (hel-pair-at producer (point))))
+    (let* ((pair (hel-surround-widen pair (hel-surround--padding char)))
+           (lines? (hel--pair-on-own-lines-p pair))
+           (text-begin (copy-marker (hel-pair-open-end pair)))
+           (text-end (copy-marker (hel-pair-close-begin pair)))
            (deactivate-mark nil))
-      (delete-region right-beg right-end)
-      (delete-region left-beg left-end))))
+      (hel-surround-replace pair '("" . ""))
+      (when (and lines? (derived-mode-p 'prog-mode))
+        (indent-region text-begin text-end))
+      (set-marker text-begin nil)
+      (set-marker text-end nil))))
 
 ;; mr
 (hel-define-command hel-surround-change ()
-  (format "Change surround.
+  (format "Replace the pair of delimiters around point with another pair.
+Read the key of the old pair, see `hel-pair-sources', then the key of the
+new one, see `hel-surround-delimiters'. Only the delimiters change: the
+spaces and the line breaks between them and the text stay.
 
-%s -- replace one XML tag with another. An empty tag name replaces
-the nearest enclosing tag."
+%s -- replace one HTML tag with another. An empty tag name replaces
+the nearest enclosing tags."
           (propertize "m r t" 'face 'help-key-binding))
   :multiple-cursors t
   (interactive)
-  (let (4-bounds left right)
-    (pcase (read-char "Replace pair: " t)
-      (?t   (and (setq 4-bounds (-> (read-string "Replace tag: ")
-                                    (string-trim)
-                                    (hel-surround-4-bounds-of-html-tag-at-point)))
-                 (-setq (left . right) (hel-surround-read-tag "With tag: "))))
-      (char (and (setq 4-bounds (hel-surround--remove char))
-                 (-setq (left . right) (-> (read-char "With pair: " t)
-                                           (hel-surround--insert))))))
-    (-when-let ((left-beg left-end right-beg right-end) 4-bounds)
-      (let ((deactivate-mark nil))
-        (hel-save-selection
-          (delete-region right-beg right-end)
-          (goto-char right-beg)
-          (insert right)
-          (delete-region left-beg left-end)
-          (goto-char left-beg)
-          (insert left))))))
+  (when-let* ((char (read-char "Replace pair: " t))
+              (producer (hel-pair-producer char))
+              (pair (hel-pair-at producer (point))))
+    (let ((delimiters (if (eq char ?t)
+                          (hel-surround-read-tag "With tag: ")
+                        (car (hel-surround--delimiters
+                              (read-char "With pair: " t))))))
+      (hel-save-selection
+        (hel-surround-replace pair delimiters)))))
 
 ;;; Window navigation
 

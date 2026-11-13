@@ -98,3 +98,6 @@
 (pair_pattern) @entry
 
 (comment) @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+[(string) (template_string)] @string

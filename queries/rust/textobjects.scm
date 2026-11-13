@@ -94,3 +94,6 @@
   (line_comment)
   (block_comment)
 ] @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+[(string_literal) (raw_string_literal)] @string

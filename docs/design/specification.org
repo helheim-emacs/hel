@@ -17,7 +17,12 @@ use the syntax tree; without one they use the syntax table: words, strings,
 comments, brackets, sexps and paragraphs. So =M-o=, =M-n= and =mif= work
 everywhere. Class and entry are the exception, because only a parser knows
 where they are. Without a parser, an argument is a piece of the text between
-parentheses, from one comma to the next. The code has no dependencies outside Emacs.
+parentheses, from one comma to the next. The code has no dependencies
+outside Emacs.
+
+~hel-surround.el~ adds a third part, the pairs of delimiters: brackets,
+quotes and HTML tags, which =mi( ma( md mr ms= select and edit
+([[*Pairs][Pairs]]).
 
 This document holds the rules that the code must keep and the reasons for
 them. The code holds how. The tests were written from this document, so
@@ -589,21 +594,6 @@ and =mi(= (~hel-surround.el~), so a pair can span two comment lines; the
 search uses a comment only when the comment itself holds point, not through
 its gap, or a cursor in the code below a comment would search in it.
 
-*** Quotes
-
-=mi"= and =ma"= select the text between two quotes and the text with them;
-=mi'=, =ma'=, =mi`= and =ma`= do the same for their marks. They start from
-the cursor, so =ma"= then =mi"= selects the inside of the same string.
-
-A string of the major mode counts when the cursor is inside it, on a quote,
-or right after the closing quote. Where the mark is not a string quote, as
-="= in ~text-mode~, the quotes pair up from the start of the defun. Inside
-a comment, an Org table or a string of another mark, the search takes the
-nearest quote on each side, and a cursor on the opening quote or right
-after the closing one finds nothing. Python's ="""text"""= is three strings
-for the syntax table, so =ma"= in the text selects it with one quote on
-each side, and on the first quote it selects the empty string =""=.
-
 *** The around range
 
 The around range adds the header comment, for the kinds that have one, and
@@ -887,6 +877,153 @@ A function passed as an argument, as in =foo(() => 1)=, stays an object
 without the call. C#, Java, PHP, Go, Lua and Bash need no shadowing: their
 definitions already hold their attributes.
 
+* Pairs
+
+| Keys        | Pair                                 | Count and repeat |
+|-------------+--------------------------------------+------------------|
+| =mi(= =ma(=, =m(= | parentheses; also =[ { <=              | go outward       |
+| =mim= =mam=, =mb= | the closest of =( [ {=                 | go outward       |
+| =mi"= =ma"=, =m"= | double quotes; also ='= and =`=          | none             |
+| =mi*= =ma*=, =m*= | any other character, with itself     | when they nest   |
+| =md= =mr= + key | delete or replace the two delimiters |                  |
+| =ms= + key    | insert two delimiters                |                  |
+
+A /pair/ is two delimiters around a text, and the commands see it as four
+positions: the start and the end of each delimiter. =mi= selects the text
+between the delimiters, =ma= the text with them, =md= deletes the delimiters,
+and =mr= replaces them. A pair is not a text object: it is a level of nesting,
+not one of a sequence, so a count and a repeated key go outward and never to
+a neighbour.
+
+** Finding a pair
+
+~hel-pair-sources~ maps a key character to its sources, as ~hel-thing-sources~
+does for a thing: functions that return a /pair producer/ at the cursor, or
+nil. A producer answers two questions: the pair at a position, and the pair
+around a pair. A character without sources pairs with itself, as the stars
+of =*bold*=. The variable is buffer-local: Emacs Lisp maps =`= and ='= to the
+legacy quotes =`like this'=, and Org maps =*=, =/=, =_= and =+= to its emphasis.
+
+The pair at a position follows the rule of every Hel object: a pair that
+starts at the cursor wins, then a pair that ends at the cursor, then the
+innermost pair around it. So in =(foo)|(bar)= the pair is =(bar)=, and in
+=(a (b)| c)= it is =(b)=.
+
+- *Strings* come from the query of the language when the buffer has
+  a parser, and from the syntax table otherwise ([[*Quotes][Quotes]]).
+- *Brackets* come from the syntax table, so a bracket in a string or
+  a comment does not pair with one outside. The text of the comment or the
+  string at the cursor is searched first, and then the code around it: on
+  =(foo "(|" 1)=, =ma(= selects the whole list. =<= and =>= become brackets
+  through a copy of the syntax table.
+- *Two strings*, such as =<<= and =>>=, pair up by a search of the text. With
+  =:balanced=, the nested pairs on the way are skipped. A cursor inside
+  a delimiter counts as a cursor at that delimiter. In a programming mode
+  the search stays in the defun.
+- *When both delimiters are the same text*, as the stars of =*bold*=, nothing
+  tells an opening delimiter from a closing one. The pair is the nearest
+  delimiter on each side, and a cursor on a delimiter may find nothing.
+- *HTML tags* =mdt= and =mrt= read a tag name; an empty name finds the
+  nearest tags of any name. A cursor inside a tag belongs to that tag.
+- *A function* that returns the four positions around point is the quickest
+  new producer, as for Org emphasis. Hel cannot tell how such pairs nest,
+  so they have no pair around them.
+
+** Going outward
+
+Without a selection, =mi(= takes the pair at the cursor. With a selection, it
+takes the smallest pair whose inner text holds the selection and is larger,
+so a repeated =mi(= grows outward one pair per press, and =ma(= then =mi(= selects
+inside the next pair outward. A count goes that many pairs outward, and
+stops at the outermost one. =M-i= returns to the selection before, as
+after =M-o=.
+
+When no pair holds the selection, the pair at the cursor counts. Quotes do
+not nest, so this is the rule for them: =ma"= then =mi"= selects the inside of
+the same string, as in Helix.
+
+=mi= of brackets leaves out the whitespace at the edges of the text, as =mi(=
+on =( foo )= selects =foo=; =mi= of other pairs keeps it, because the spaces
+inside a string belong to its text.
+
+** The closest brackets
+
+=mim= takes the closest pair of parentheses, square brackets and curly
+brackets: the smallest of the pairs that the three producers find, with
+the same rule at the edges. This works because brackets of the syntax table
+always nest properly. A quote of plain text and a bracket can overlap in
+part, as in =(a "b) c"=, so the closest pair leaves out quotes. =mb= is the
+short form, as =b= is in Vim's =dib=. =mdm= and =mrm= change the closest
+brackets.
+
+** Surround
+
+=ms= wraps the selection in the delimiters of a key, =md= deletes the
+delimiters of a pair, and =mr= replaces them with those of another key.
+~hel-surround-delimiters~ maps a key character to its two strings and its
+/padding/, the whitespace between a delimiter and the text. A character
+without an element has itself on both sides.
+
+| =:padding= | =ms= on an inline selection | =ms= on a linewise selection | Keys        |
+|------------+-----------------------------+------------------------------+-------------|
+| nil        | =(foo)=                     | =(foo)=                      | =)=, quotes |
+| =t=        | =( foo )=                   | each delimiter on its line   | =( [ { <=   |
+| =linewise= | =<a>foo</a>=                | each delimiter on its line   | =t=         |
+
+The padding is the rule of vim-surround: an opening bracket means the
+brackets with the whitespace inside them, and a closing bracket the bare
+brackets. So =ms(= inserts =( foo )= and =ms)= =(foo)=, and =md(= turns
+=( foo )= into =foo=, and =md)= into = foo =. The pair itself always holds
+the bare brackets, so one producer serves both keys.
+
+- *=md= deletes what goes with a delimiter.* A delimiter alone on its line
+  goes with its whole line, for every key: =md{= and =md}= on braces on
+  lines of their own leave no empty lines. Otherwise, with =:padding t=,
+  the delimiter takes the blanks next to it inside the pair. No blanks stay
+  at the end of a line, as after =if (x) {= loses its brace. So =ms= then
+  =md= with the same key gives back the text.
+- *=mr= changes only the delimiters.* The layout of the pair already exists,
+  so =mr([= turns =(foo)= into =[foo]= and =( foo )= into =[ foo ]=, and
+  brackets on lines of their own stay there. Here Hel departs from
+  vim-surround, whose =cs([= adds spaces.
+- *Indentation follows the mode.* After a linewise =ms=, and after =md=
+  removes the line of a delimiter, a mode derived from ~prog-mode~ indents
+  the text again: the text moved one level, and the mode knows by how much.
+  Any other mode keeps the indentation of the text exactly, as of a code
+  block pasted into Markdown, and a linewise =ms= puts each delimiter line
+  at the least indentation of the text.
+
+~hel-surround-alist~ is the obsolete form of both tables. For one release
+Hel still reads it, and an element there wins: Hel builds a producer from
+its =:remove= strings or function, and the delimiters from its =:insert=,
+where a newline in the strings stands for the padding =linewise=.
+
+** Quotes
+
+=mi"= and =ma"= select the text between two quotes and the text with them;
+=mi'=, =ma'=, =mi`= and =ma`= do the same for their marks. They start from
+the cursor, so =ma"= then =mi"= selects the inside of the same string.
+
+A string of the major mode counts when the cursor is inside it, on a quote,
+or right after the closing quote. Where the mark is not a string quote, as
+="= in ~text-mode~, the quotes pair up from the start of the defun, with the
+same three places for the cursor. Inside
+a comment, an Org table or a string of another mark, the search takes the
+nearest quote on each side, and a cursor on the opening quote or right
+after the closing one finds nothing.
+
+With a parser, the query of the language finds the strings first
+(=@string=). The first child of a string node is its opening delimiter and
+the last child its closing one, so Python's ="""text"""= is one pair with
+three quotes on each side, and the prefix of =f"text"= belongs to the
+opening delimiter. A string counts for a key when its opening delimiter
+holds the mark of the key. Where the query finds no string of that mark,
+as in a comment, the syntax table finds the pair. Without a parser,
+Python's ="""text"""= is three strings for the syntax table: =ma"= in the
+text selects it with one quote on each side, and on the first quote it
+selects the empty string =""=. Hel adds no rules of its own for that case,
+because the parser knows the answer.
+
 * The protocol of structural selection
 
 Every command runs one algorithm over one kind of /thing/. The word comes
@@ -894,20 +1031,83 @@ from Emacs: in ~thingatpt~ and ~treesit-thing-next~, "thing" names both
 a kind, such as ~word~, and a piece of text of that kind. "Text object"
 stays the name of the =mi= and =ma= keys.
 
+** The operations, and why they are enough
+
+The protocol is a short list of generic functions. A producer implements
+the /primitive/ ones, which nothing else can compute. Every other operation
+has a default method built from the primitives, and a producer replaces it
+only to answer faster or by a rule of its own. So a new producer writes the
+primitives and gets every command.
+
+*The run level* gives things one after another:
+
+| Operation              | Kind      | Default method                              |
+|------------------------+-----------+---------------------------------------------|
+| ~hel-thing-at~           | primitive | none: each producer writes it               |
+| ~hel-thing-next~         | primitive | none: each producer writes it               |
+| ~hel-thing-parent~       | rule      | nil: all things are siblings                |
+| ~hel-thing-after-gap~    | rule      | the whitespace after a position             |
+| ~hel-thing-candidates~   | algorithm | built from =at= and =next= in both directions   |
+| ~hel-thing-sibling~      | algorithm | built from =next= and =parent=                  |
+| ~hel-thing-around~       | algorithm | built from =after-gap= and the header comment |
+| ~hel-thing-owning~       | algorithm | built from =candidates= and =around=            |
+| ~hel-thing-motion-range~ | algorithm | built from =at= and =next=                      |
+
+=at= and =next= are the minimum, because neither one gives the other. They
+split the text around a position into three answers that do not overlap:
+the thing that holds the character at the position, the nearest thing that
+ends at or before it, and the nearest thing that starts after it. =next=
+never returns the thing that holds the position, and =at= never returns
+a neighbour. A producer with only =next= would have to rebuild =at= in
+private.
+
+A /rule/ has a default that is a fact about most things, not a computation
+from the primitives: things have no parent, and the gap after a thing is
+whitespace. A thing or a producer with another fact gives a method: the
+parent of a sentence is its paragraph, and a query skips commas in a gap.
+
+*The tree level* walks a syntax tree:
+
+| Operation                 | Kind      | Default method                                  |
+|---------------------------+-----------+-------------------------------------------------|
+| ~hel-node-on~             | primitive | none: each producer writes it                   |
+| ~hel-node-bounds~         | primitive | none: each producer writes it                   |
+| ~hel-node-parent~         | primitive | none: each producer writes it                   |
+| ~hel-node-children~       | primitive | none: each producer writes it                   |
+| ~hel-node-sibling~        | primitive | none: each producer writes it                   |
+| ~hel-node-enclosing~      | primitive | none: each producer writes it                   |
+| ~hel-node-touching~       | primitive | none: each producer writes it                   |
+| ~hel-node-enclosing-leaf~ | algorithm | built from =enclosing= and =children=           |
+| ~hel-node-side-child~     | algorithm | built from =enclosing=, =children= and =bounds= |
+| ~hel-node-expand-steps~   | algorithm | built from =on=, =parent= and =bounds=          |
+
+=parent= and =children= are the edges of the tree, and =bounds= is the only
+way to read a node, because each producer chooses its own node type. =on=,
+=enclosing= and =touching= are the three ways into the tree, and each has
+its own rule at an edge: =on= takes the node that covers a range,
+=enclosing= one with the position strictly inside, and =touching= one with
+the position on its boundary. =sibling= alone could be computed, from the
+children of the parent, but that walk is linear, and both producers answer
+it directly: tree-sitter from the node itself, the syntax table with one
+sexp scan.
+The cost of an operation is part of its contract, so =sibling= stays
+primitive.
+
 ** Two questions, two arguments
 
 Every operation answers one of two questions:
 
-- *How are the things found?* That depends on the /producer/: a query,
-  a motion, a comment finder, a parser, the syntax table.
+- *How are the things found?* That depends on the /producer/: a tree-sitter
+  query, a motion, a comment finder, a ppss (parse-partial sexp scanner),
+  the syntax table.
 - *What rules hold for this kind?* That depends on the /thing/.
 
 So every run operation takes the thing and the producer, and each method
 specializes the argument that its answer depends on:
 
-| Operation                                   | Specializes        | Example                                          |
-|---------------------------------------------+--------------------+--------------------------------------------------|
-| ~hel-thing-at~, ~hel-thing-next~                | producer           | a query finds functions and classes the same way |
+| Operation                                     | Specializes        | Example                                          |
+|-----------------------------------------------+--------------------+--------------------------------------------------|
+| ~hel-thing-at~, ~hel-thing-next~              | producer           | a query finds functions and classes the same way |
 | ~hel-thing-candidates~                        | producer           | a query takes the gap around the cursor at once  |
 | ~hel-thing-after-gap~                         | producer           | a query skips separator nodes, such as commas    |
 | ~hel-node-parent~ and the tree                | producer           | the parent of a tree-sitter node                 |
@@ -916,7 +1116,7 @@ specializes the argument that its answer depends on:
 | ~hel-thing-after-gap~                         | property of thing  | a line end is a border for a word or a sentence  |
 | ~hel-thing-after-gap~                         | thing              | a comment after code keeps its gap on its line   |
 | ~hel-thing-jump-p~                            | property of thing  | a word motion does not push the mark ring        |
-| ~hel-thing-selection-direction~               | property of thing  | =mif= puts point at the start of the function      |
+| ~hel-thing-selection-direction~               | property of thing  | =mif= puts point at the start of the function    |
 | ~hel-thing-parent~                            | thing and producer | a sentence stays in its paragraph                |
 | ~hel-thing-motion-range~                      | producer           | a word motion does not cross a line end          |
 
@@ -999,9 +1199,7 @@ of its own type, a tree-sitter node or a sexp range, and a tree algorithm
 hands it back to the same producer, as an iterator owns its value type in
 C++.
 
-~hel-thing-candidates~ is an algorithm over ~hel-thing-at~ and
-~hel-thing-next~, with a default method that a producer may replace when it
-can do the same work faster. The laws, checked on every model:
+The laws of the primitives, checked on every model:
 
 - ~hel-thing-at~ returns an object R with =begin(R) <= POS <= end(R)=, and
   it holds the character at POS whenever some object does.
@@ -1011,26 +1209,48 @@ can do the same work faster. The laws, checked on every model:
 - ~hel-thing-after-gap~ moves in its direction, and a second call from its
   own result returns nil.
 
-~hel-thing-sibling~ by default takes the next thing and compares parents.
-The query producer replaces it, because query things nest: between two
-top-level functions, the nearest function may be a method of a class, and
-the search stays inside the parent node instead.
+Two producers replace a default algorithm by a rule of their own:
 
-Three tree operations have default methods that follow from the others:
-a leaf is an enclosing node without children, the side child is the first
-child after point or the last before it, and the expand steps are the node
-and its parents without the root. The sexp producer replaces all three:
-a leaf is a symbol, a string or a whole comment, and the expand steps come
-from the syntax table. The Lisp producer replaces only the expand steps,
-with the leaf and the lists around it; with only =(= selected, =M-o=
-selects the whole list.
+- The query producer replaces ~hel-thing-sibling~, because query things
+  nest: between two top-level functions, the nearest function may be
+  a method of a class, and the search stays inside the parent node
+  instead. It also replaces ~hel-thing-candidates~ with one query over the
+  gap around the cursor, which is cheaper than three searches.
+- The sexp producer replaces the three tree algorithms: a leaf is a symbol,
+  a string or a whole comment, and the expand steps come from the syntax
+  table. The Lisp producer replaces only the expand steps, with the leaf
+  and the lists around it; with only =(= selected, =M-o= selects the whole
+  list.
 
 ** The comment producers
 
-A model of the comment producer finds /pieces/ and the producer joins them.
-A model needs two operations: ~hel--comment-piece-under~, the piece that
-holds the character at a position, and ~hel--comment-piece-next~, the next
-piece in a direction. A piece is plain bounds, not a thing. Their laws:
+A parser and the syntax table give only the /pieces/ of a comment, such as
+each line of a =//= comment, so a model of the comment producer finds
+pieces, and the producer joins them into comments. A model needs only two
+operations, and they form a small concept of their own:
+
+- ~hel--comment-piece-under~: the piece that holds the character at
+  a position;
+- ~hel--comment-piece-next~: the next piece in a direction.
+
+Everything else about comments is built from these two, once, on the base
+struct ~hel-comment-producer~:
+
+| Built from the two operations | How                                                  |
+|-------------------------------+------------------------------------------------------|
+| the comment at a position     | the piece under it, joined with the pieces on the    |
+|                               | lines above and below while each one fills its line  |
+| ~hel-thing-at~ of ~comment~   | the comment at the position, or at the one before it |
+| ~hel-thing-next~ of ~comment~ | the comment of the next piece, until one lies past   |
+|                               | the position                                         |
+| ~hel-bounds-of-comment-at~    | the comment at a position, for code outside the      |
+|                               | producer: header comments, =J=, the limits of =mi"=  |
+| =mic=, =mac=, =]c=, =[c=      | the run algorithms over =at= and =next=              |
+
+The two operations are the minimum for the same reason as =at= and =next=
+of the run level: the piece under a position and the next piece in
+a direction are separate answers, and neither gives the other. A piece is
+plain bounds, not a thing. Their laws:
 
 - The piece under a position starts at or before it and ends after it.
 - At the start of a piece that ~hel--comment-piece-next~ returned,
@@ -1040,10 +1260,9 @@ piece in a direction. A piece is plain bounds, not a thing. Their laws:
   a comment that does not lie past the position and searches again, because
   a comment built from an earlier piece can hold the position.
 
-The methods of ~hel-thing-at~ and ~hel-thing-next~ sit on the base struct
-~hel-comment-producer~, so a new way of finding comments is one struct and
-two methods, and it gets the comments, the motions and the header comments
-for nothing. A test model that reads pieces from a list shows this. The two
+So a new way of finding comments is one struct and two methods, and it
+gets the comments, the motions and the header comments for nothing. A test
+model that reads pieces from a list of ranges shows this. The two
 operations are methods and not function slots, because they vary together
 and only between named models; a motion producer, by contrast, takes any
 motion function as data.
@@ -1123,8 +1342,7 @@ parent scans every enclosing level, 2 ms at depth 16.
 
 * Package layout
 
-- ~hel-commands.el~ holds the commands; the two machinery files define
-  none.
+- ~hel-commands.el~ holds the commands; the two machinery files define none.
 - Hel registers nothing with thingatpt. The property ~hel-thing-sources~
   carries the =hel-= prefix, so putting it on ~word~ or ~function~ collides
   with nothing: thingatpt reads only ~forward-op~, ~beginning-op~, ~end-op~

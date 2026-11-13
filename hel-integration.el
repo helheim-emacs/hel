@@ -264,10 +264,12 @@ in the command loop, and the fake cursors can pick up on those instead."
   (add-hook hook #'hel-use-lisp-nodes))
 
 (defun hel--emacs-lisp-mode-h ()
-  ;; Add legacy quotes marks to Hel surround functionality.
-  (let ((spec '(:insert ("`" . "'") :remove ("`" . "'"))))
-    (setf (alist-get ?` hel-surround-alist) spec)
-    (setf (alist-get ?' hel-surround-alist) spec))
+  ;; The legacy quotes `like this' of docstrings and comments.
+  (let ((source (hel-delimiter-pair-source "`" "'")))
+    (setq-local hel-pair-sources
+                `((?` ,source) (?' ,source) ,@hel-pair-sources))
+    (setq-local hel-surround-delimiters
+                `((?` ("`" . "'")) (?' ("`" . "'")) ,@hel-surround-delimiters)))
   ;;
   ;; Teach `imenu' about Hel macros.
   (dolist (i (eval-when-compile
@@ -283,33 +285,9 @@ in the command loop, and the fake cursors can pick up on those instead."
                   2))))
     (cl-pushnew i imenu-generic-expression :test #'equal)))
 
-(dolist (keymap (list emacs-lisp-mode-map
-                      lisp-data-mode-map))
-  (hel-keymap-set keymap :state 'normal
-    "m `"   #'hel-mark-inner-legacy-quoted
-    "m '"   #'hel-mark-inner-legacy-quoted
-    "m i `" #'hel-mark-inner-legacy-quoted
-    "m i '" #'hel-mark-inner-legacy-quoted
-    "m a `" #'hel-mark-a-legacy-quoted
-    "m a '" #'hel-mark-a-legacy-quoted))
-
 (hel-keymap-set emacs-lisp-compilation-mode-map
   "g"   nil
   ", r" #'emacs-lisp-compilation-recompile)
-
-(hel-define-command hel-mark-inner-legacy-quoted ()
-  :multiple-cursors t
-  :merge-selections t
-  (interactive)
-  (pcase (hel-surround-4-bounds-at-point "`" "'")
-    (`(,_ ,beg ,end ,_) (hel-select (cons beg end)))))
-
-(hel-define-command hel-mark-a-legacy-quoted ()
-  :multiple-cursors t
-  :merge-selections t
-  (interactive)
-  (-when-let ((beg _ _ end) (hel-surround-4-bounds-at-point "`" "'"))
-    (hel-select (cons beg end))))
 
 ;;;; Help
 

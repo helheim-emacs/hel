@@ -887,8 +887,8 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("foo `b|ar` baz" "ma`" "foo ^`bar`| baz")
   ;; Point at the delimiters.
   ("foo |\"bar\" baz" "mi\"" "foo \"^bar|\" baz")
-  ;; After the closing quote point is outside of the quotes.
-  ("foo \"bar\"| baz" "mi\"" "foo \"bar\"| baz")
+  ;; Right after the closing quote, the string is still the one at the cursor.
+  ("foo \"bar\"| baz" "mi\"" "foo \"^bar|\" baz")
   ;; Nothing to select.
   ("fo|o bar" "mi\"" "fo|o bar")
   ;; Strings in programming modes.
@@ -896,7 +896,24 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   (:mode c-mode "char *a = \"b|ar\";" "ma\"" "char *a = ^\"bar\"|;")
   (:mode python-mode "a = 'b|ar'" "mi'" "a = '^bar|'")
   (:mode python-mode "a = \"b|ar\"" "ma\"" "a = ^\"bar\"|")
-  (:mode emacs-lisp-mode "(foo \"b|ar\")" "mi\"" "(foo \"^bar|\")"))
+  (:mode emacs-lisp-mode "(foo \"b|ar\")" "mi\"" "(foo \"^bar|\")")
+  ;; The cursor on a quote of a string, in programming modes.
+  (:mode emacs-lisp-mode "(foo |\"bar\")" "mi\"" "(foo \"^bar|\")")
+  (:mode emacs-lisp-mode "(foo |\"bar\")" "ma\"" "(foo ^\"bar\"|)")
+  (:mode emacs-lisp-mode "(foo \"bar|\")" "ma\"" "(foo ^\"bar\"|)")
+  (:mode c-mode "f(|\"bar\");" "mi\"" "f(\"^bar|\");")
+  (:mode c++-ts-mode "f(|\"bar\");" "mi\"" "f(\"^bar|\");")
+  ;; Right after the closing quote.
+  (:mode emacs-lisp-mode "(foo \"bar\"| x)" "mi\"" "(foo \"^bar|\" x)")
+  (:mode c-mode "f(\"bar\"|, x);" "ma\"" "f(^\"bar\"|, x);")
+  ;; A selection: the cursor is on its last character when it is forward.
+  (:mode emacs-lisp-mode "(foo ^\"bar\"| x)" "mi\"" "(foo \"^bar|\" x)")
+  (:mode emacs-lisp-mode "(foo |\"bar\"^ x)" "mi\"" "(foo \"^bar|\" x)")
+  (:mode emacs-lisp-mode "(foo \"b|ar\")" "ma\" mi\"" "(foo \"^bar|\")")
+  ;; An empty string.
+  (:mode emacs-lisp-mode "(foo |\"\")" "ma\"" "(foo ^\"\"|)")
+  ;; Not touching any quote.
+  (:mode emacs-lisp-mode "(foo| \"bar\")" "mi\"" "(foo| \"bar\")"))
 
 ;;; Text objects: brackets
 
@@ -985,6 +1002,45 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("x _fo|o_ bar" "ma_" "x ^_foo_| bar")
   ("fo|o bar" "mi*" "fo|o bar"))
 
+;;; Text objects: pairs walk outward
+
+(hel-test-table object-pair-levels
+  ;; A repeated key grows outward one pair per press.
+  ("(a (b (c|) d) e)" "mi(" "(a (b (^c|) d) e)")
+  ("(a (b (c|) d) e)" "mi(mi(" "(a (^b (c) d|) e)")
+  ("(a (b (c|) d) e)" "mi(mi(mi(" "(^a (b (c) d) e|)")
+  ;; At the outermost pair the selection stays.
+  ("(a (b (c|) d) e)" "mi(mi(mi(mi(" "(^a (b (c) d) e|)")
+  ("(a (b (c|) d) e)" "ma(ma(" "(a ^(b (c) d)| e)")
+  ;; After ma(, mi( selects inside the next pair outward.
+  ("(a (b (c|) d) e)" "ma(mi(" "(a (^b (c) d|) e)")
+  ;; A count goes outward.
+  ("(a (b (c|) d) e)" "2mi(" "(a (^b (c) d|) e)")
+  ("(a (b (c|) d) e)" "3ma(" "^(a (b (c) d) e)|")
+  ("(a (b (c|) d) e)" "9mi(" "(^a (b (c) d) e|)")
+  ;; M-i returns to the selection before.
+  ("(a (b (c|) d) e)" "mi(mi(M-i" "(a (b (^c|) d) e)")
+  ;; With a selection, the pair around the selection.
+  ("(foo ^bar|)" "mi(" "(^foo bar|)")
+  ;; The closest brackets of any shape.
+  ("(a [b {c|} d] e)" "mim" "(a [b {^c|} d] e)")
+  ("(a [b {c|} d] e)" "mb" "(a [b {^c|} d] e)")
+  ("(a [b {c|} d] e)" "mimmim" "(a [^b {c} d|] e)")
+  ("(a [b {c|} d] e)" "mam" "(a [b ^{c}| d] e)")
+  ("(a [b {c|} d] e)" "2mam" "(a ^[b {c} d]| e)")
+  ("(foo)|[bar]" "mam" "(foo)^[bar]|")
+  ("fo|o" "mim" "fo|o"))
+
+(hel-test-table object-quote-edges
+  ;; A string of the major mode counts on its opening quote and right
+  ;; after its closing quote. The string after the cursor wins.
+  (:mode emacs-lisp-mode "(foo |\"bar\" x)" "ma\"" "(foo ^\"bar\"| x)")
+  (:mode emacs-lisp-mode "(foo \"bar\"| x)" "ma\"" "(foo ^\"bar\"| x)")
+  (:mode emacs-lisp-mode "(foo \"a\"|\"b\")" "ma\"" "(foo \"a\"^\"b\"|)")
+  ;; ma" then mi" selects the inside of the same string.
+  (:mode emacs-lisp-mode "(foo \"b|ar\" x)" "ma\"mi\"" "(foo \"^bar|\" x)")
+  ("say \"one\" and \"t|wo\"" "ma\"mi\"" "say \"one\" and \"^two|\""))
+
 ;;; Match brackets
 
 (hel-test-table match
@@ -1065,11 +1121,46 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("<a><b>fo|o</b></a>" "mdta RET" "<b>fo|o</b>")
   ("<a><b>fo|o</b></a>" "mdtRET" "<a>fo|o</a>"))
 
+(hel-test-table surround-delete-padding
+  ;; An opening bracket also deletes the whitespace inside, a closing one
+  ;; deletes only the brackets.
+  ("( fo|o ) bar" "md(" "fo|o bar")
+  ("( fo|o ) bar" "md)" " fo|o  bar")
+  ;; mr keeps the spaces, whatever the key.
+  ("( fo|o ) bar" "mr(]" "[ fo|o ] bar")
+  ("( fo|o ) bar" "mr)]" "[ fo|o ] bar")
+  ;; The closest brackets of any shape.
+  ("(a [fo|o] b)" "mdm" "(a fo|o b)")
+  ;; The legacy quotes of Emacs Lisp.
+  (:mode emacs-lisp-mode ";; see `fo|o' here\n" "md`" ";; see fo|o here\n")
+  (:mode emacs-lisp-mode ";; see `fo|o' here\n" "mi`" ";; see `^foo|' here\n")
+  (:mode emacs-lisp-mode ";; see `fo|o' here\n" "mr`\"" ";; see \"fo|o\" here\n"))
+
+(hel-test-table surround-layout
+  ;; A delimiter alone on its line goes with its line, for every key, and
+  ;; a programming mode indents the text again.
+  (:mode c-mode "if (x)\n  {\n    re|turn;\n  }\n" "md{" "if (x)\n  re|turn;\n")
+  (:mode c-mode "if (x)\n  {\n    re|turn;\n  }\n" "md}" "if (x)\n  re|turn;\n")
+  ;; No blanks stay at the end of a line.
+  (:mode c-mode "if (x) {\n    re|turn;\n}\n" "md{" "if (x)\n  re|turn;\n")
+  ("x {\n  b|\n}\n" "md{" "x\n  b|\n")
+  ;; Outside a programming mode the text keeps its indentation.
+  ("(\n    fo|o\n)\nbar\n" "md(" "    fo|o\nbar\n")
+  ("<div>\nfo|o\n</div>\n" "mdtdiv RET" "fo|o\n")
+  ;; A linewise ms puts the delimiter lines at the least indentation of
+  ;; the text and leaves the text as it is.
+  ("^  a\n    b\n|" "ms(" "  (\n^  a\n    b\n|  )\n")
+  ("^  a\n    b\n|" "mstdiv RET" "  <div>\n^  a\n    b\n|  </div>\n")
+  ;; mr keeps delimiters on lines of their own.
+  (:mode c-mode "if (x)\n  {\n    re|turn;\n  }\n" "mr{("
+         "if (x)\n  (\n    re|turn;\n  )\n"))
+
 (hel-test-table surround-change
-  ("(fo|o) bar" "mr([" "[ fo|o ] bar")
+  ;; Only the delimiters change, the layout stays.
+  ("(fo|o) bar" "mr([" "[fo|o] bar")
   ("(fo|o) bar" "mr(]" "[fo|o] bar")
   ("[fo|o] bar" "mr])" "(fo|o) bar")
-  ("{fo|o} bar" "mr{(" "( fo|o ) bar")
+  ("{fo|o} bar" "mr{(" "(fo|o) bar")
   ("\"fo|o\" bar" "mr\"'" "'fo|o' bar")
   ("(fo|o) bar" "mr(\"" "\"fo|o\" bar")
   ("*fo|o* bar" "mr*_" "_fo|o_ bar")

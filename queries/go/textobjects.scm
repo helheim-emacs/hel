@@ -35,3 +35,6 @@
   (_) @argument)
 
 (comment) @comment
+
+; The strings, for the quote keys of the pair commands, such as mi".
+[(interpreted_string_literal) (raw_string_literal)] @string
