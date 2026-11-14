@@ -833,8 +833,10 @@ a WORD, because the punctuation at its edges is not part of it."
     (should (equal (hel-test-selection) " /generic-programming-design"))))
 
 (ert-deftest hel-trim-punctuation ()
-  "Brackets and quotes stay when their pair is inside the WORD, a pair
-that wraps the whole WORD goes, and a WORD of only punctuation stays."
+  "A separator goes from its own side of the WORD. Brackets and quotes
+stay when their pair is inside the WORD, a pair that wraps the whole WORD
+goes, and an apostrophe without a pair stays. A WORD of only punctuation
+stays."
   (dolist (case '(("foo." "foo")
                   ("(foo" "foo")
                   ("foo)," "foo")
@@ -844,8 +846,24 @@ that wraps the whole WORD goes, and a WORD of only punctuation stays."
                   ("(foo(bar))" "foo(bar)")
                   ("(a)(b)" "(a)(b)")
                   ("\"quoted\"" "quoted")
-                  ("dogs'" "dogs")
-                  ("'tis" "tis")
+                  ("dogs'" "dogs'")
+                  ("'tis" "'tis")
+                  ("'foo" "'foo")
+                  ("'quoted'," "quoted")
+                  (":begin" ":begin")
+                  ("#'car," "#'car")
+                  ("!enabled" "!enabled")
+                  ("?a" "?a")
+                  ("¿Dónde" "Dónde")
+                  ("estás?" "estás")
+                  ("«слово»," "слово")
+                  ("«слово" "слово")
+                  ("„Wort“" "Wort")
+                  ("“word”." "word")
+                  ("‘word’" "word")
+                  ("`foo'." "foo")
+                  ("``foo''" "foo")
+                  ("`code`" "code")
                   ("don't" "don't")
                   ("std::vector," "std::vector")
                   ("hel-text-objects.el." "hel-text-objects.el")
@@ -854,9 +872,8 @@ that wraps the whole WORD goes, and a WORD of only punctuation stays."
     (with-temp-buffer
       (insert (car case))
       (should (equal (-let [(begin . end)
-                            (hel-trim-punctuation-from-range
-                             (cons (point-min) (point-max))
-                             (get 'WORD 'hel-thing-trim-punctuation))]
+                            (hel-trim-punctuation-around-word
+                             (cons (point-min) (point-max)))]
                        (buffer-substring begin end))
                      (cadr case))))))
 

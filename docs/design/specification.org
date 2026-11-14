@@ -485,14 +485,21 @@ The kinds differ in three properties:
 - *A word's gap stays on its line.* =maw= on the last word of a line takes
   the blanks before the word, not the line end. A blank is a whitespace
   character other than a line end.
-- *A WORD leaves out the punctuation at its edges*: =,.;:!?=, brackets and
-  quotes (property ~hel-thing-trim-punctuation~). In =for ~hel-thing-owning~.=
-  =miW= selects =~hel-thing-owning~=. Punctuation inside stays, as in
-  =don't= and =std::vector=. A bracket or quote at an edge stays when its
-  pair is inside, as in =foo(bar)=, and a pair around the whole WORD goes:
-  =(foo(bar))= gives =foo(bar)=. A WORD of only punctuation, such as =...=,
-  stays whole. The motions =W=, =B= and =E= keep the punctuation, as in
-  Helix.
+- *A WORD leaves out the punctuation around it* (property
+  ~hel-thing-trim-punctuation~). In =for ~hel-thing-owning~.= =miW= selects
+  =~hel-thing-owning~=. A separator goes only from its own side, because
+  punctuation on the other side is a part of the word:
+  - =,.;:!?= go from the end, so =:begin=, =#'car=, =!enabled= and =?a= keep
+    their first character;
+  - the Spanish =¿= and =¡= go from the start;
+  - brackets and quotes go from both sides, the quotes =« » „ “ ” ‘ ’=
+    and the Emacs quote =`foo'= included. A bracket or quote at an edge
+    stays when its pair is inside, as in =foo(bar)=, and a pair around the
+    whole WORD goes: =(foo(bar))= gives =foo(bar)=. An apostrophe without
+    a pair stays, as in ='foo= and =dogs'=.
+  Punctuation inside stays, as in =don't= and =std::vector=. A WORD of only
+  punctuation, such as =...=, stays whole. The motions =W=, =B= and =E= keep
+  the punctuation, as in Helix.
 - *A sentence's gap stays on its line too*, so =mas= and =d= never join two
   lines. A sentence alone on its line has a border on both sides, so =mas=
   selects only the sentence and =d= leaves the empty line. A count stops at

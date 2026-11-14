@@ -37,12 +37,13 @@
   of the previous word or WORD, as =ge= and =gE= in Vim. No key is bound to
   them.
 
-- Function, class, argument and comment text objects: =mif= / =maf=, =mit= / =mat=,
-  =mia= / =maa=, =mic= / =mac=, and the jumps =]f= / =[f=, =]t= / =[t=, =]a= / =[a=, =]c= / =[c=.
+- Function, class, argument and comment text objects: =mif= / =maf=,
+  =mit= / =mat=, =mia= / =maa=, =mic= / =mac=, and the motions =]f= / =[f=,
+  =]t= / =[t=, =]a= / =[a=, =]c= / =[c=.
   On Emacs 31 they use tree-sitter queries, which Hel ships in the
   =queries= directory and which derive from the queries of Helix.
 
-- Entry text object: =mie= / =mae= and the jumps =]e= / =[e=. An entry is
+- Entry text object: =mie= / =mae= and the motions =]e= / =[e=. An entry is
   one element of a data structure: an element of a list, a key with its
   value in a dictionary, or a field of a struct. It needs Emacs 31 and
   a tree-sitter parser. A package recipe must include this directory:
@@ -157,9 +158,12 @@
   gap after it is empty or ends at a closing bracket or at the end of the
   buffer, so =d= leaves no blank line or separator in front of them.
 
-- =miW= and =maW= leave out the punctuation at the edges of a WORD, so =miW=
-  on =~foo~.= selects =~foo~=. A bracket or a quote stays when its pair is
-  inside the WORD, as in =foo(bar)=. =W=, =B= and =E= do not change.
+- =miW= and =maW= leave out the punctuation around a WORD, so =miW= on
+  =~foo~.= selects =~foo~=. A separator such as =,= =.= or =:= goes only
+  from the end, so =:begin= keeps its colon, and =¿= and =¡= go only from
+  the start. A bracket or a quote, =«»=, =„“= and =`'= included, stays
+  when its pair is inside the WORD, as in =foo(bar)=, and an apostrophe
+  without a pair stays, as in ='foo=. =W=, =B= and =E= do not change.
 
 - ~hel-mark-around-sentence~ takes a count instead of a thing. The functions
   ~hel-mark-inner-thing~, ~hel-mark-a-thing~, ~hel-bounds-of-count-things-at-point~

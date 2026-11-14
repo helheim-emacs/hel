@@ -133,24 +133,21 @@ EDGE is `:begin' or `:end'."
 ;;;; The rules of a thing
 
 (defun hel-thing-owns-header-comment-p (thing)
-  "Return non-nil if the comment lines above a THING belong to it.
-The property `hel-thing-owns-header-comment' of THING holds the answer."
+  "Return non-nil if the comment lines above a THING belong to it."
   (get thing 'hel-thing-owns-header-comment))
 
 (defun hel-thing-jump-p (thing)
-  "Return non-nil if a motion over THINGs is a jump.
-A jump pushes the old point to the mark ring. The property
-`hel-thing-jump' of THING holds the answer, and a THING without this
-property jumps."
-  (if-let* ((cell (plist-member (symbol-plist thing) 'hel-thing-jump)))
-      (cadr cell)
-    t))
+  "Return non-nil if a motion over THING is a jump.
+A jump first pushes point to the mark ring, so the user can return to the
+place where the motion started. A motion over a THING with the property
+`hel-thing-no-jump' is not a jump."
+  (not (get thing 'hel-thing-no-jump)))
 
 (defun hel-thing-selection-direction (thing)
-  "Return the direction of a selection that holds one THING.
-With 1, point goes to the end of the selection, and with -1 to the start.
-The property `hel-thing-selection-direction' of THING holds the answer, and
-a THING without this property gives 1."
+  "Return the direction, 1 or -1, of a selection that holds one THING.
+1 stands for forward selection, -1 for backward. By default selection
+is forward. The property `hel-thing-selection-direction' of THING holds
+the answer."
   (or (get thing 'hel-thing-selection-direction)
       1))
 
@@ -166,14 +163,12 @@ BOUNDS is a (BEGIN . END) pair."
     bounds))
 
 (defun hel-thing-maybe-trim-punctuation (thing bounds)
-  "Return BOUNDS of the THING without the punctuation at its edges.
-The property `hel-thing-trim-punctuation' of THING is a string of the
-punctuation characters to trim, and the BOUNDS of a THING without this
-property stay as they are. A bracket or a quote at an edge stays when its
-pair is inside BOUNDS, see `hel-trim-punctuation-from-range'.
+  "Return BOUNDS of the THING without the punctuation around it.
+Only a THING with the property `hel-thing-trim-punctuation' loses its
+punctuation, see `hel-trim-punctuation-around-word' for the rules.
 BOUNDS is a (BEGIN . END) pair."
-  (if-let* ((chars (get thing 'hel-thing-trim-punctuation)))
-      (hel-trim-punctuation-from-range bounds chars)
+  (if (get thing 'hel-thing-trim-punctuation)
+      (hel-trim-punctuation-around-word bounds)
     bounds))
 
 (defun hel-thing-apply-rules (thing bounds)
@@ -340,21 +335,22 @@ the text after it in place."
         (cons (or (after-gap begin -1) begin)
               end)))))
 
-(cl-defgeneric hel-thing-motion-range (thing producer pos count edge whole?)
-  "Return the range from POS to the EDGE of the COUNT-th THING.
-A negative COUNT goes backward. With WHOLE non-nil and POS outside the first
-thing, the range starts at the near edge of that thing, so it holds the whole
-thing. With fewer than COUNT things, the range goes to the last of them; with
-EDGE `:begin' and WHOLE nil, it goes to the buffer edge. Return nil when no
-thing lies in that direction, or when POS is already at the buffer edge.
+(cl-defgeneric hel-thing-motion-range (thing producer pos count edge skip-gap?)
+  "Return the range that a motion from POS over COUNT THINGs selects.
+The range runs from POS to the EDGE of the COUNT-th THING, and a negative
+COUNT moves backward.
 
-EDGE is `:begin' or `:end'. PRODUCER finds the things.
+When SKIP-GAP? is non-nil and POS lies between things, the range starts at
+the first THING and leaves out the gap before it.
 
-By default, the first thing is the innermost one under the cursor at POS when
-its EDGE lies ahead of POS, and the next thing ahead otherwise. The search for
-each next thing starts at the far edge of the previous one. The range starts at
-POS, or at the near edge of the first thing when WHOLE is non-nil and POS lies
-outside that thing. It ends at the EDGE of the last thing."
+When fewer than COUNT things exist, the range ends at the last of them.
+A motion that keeps the gaps and goes to the starts of things goes on to
+the edge of the buffer instead, because the gap after the last thing runs
+up to there.
+
+Return nil when no THING lies in that direction, or when POS is already at
+the edge of the buffer. EDGE is `:begin' or `:end'. PRODUCER finds the
+things."
   (let* ((dir (hel-sign count))
          (count (abs count))
          (ahead-p (lambda (instance)
@@ -383,13 +379,13 @@ outside that thing. It ends at the EDGE of the last thing."
                do (setq last instance
                         found (1+ found))))
     (cond ((and (eq edge :begin)
-                (not whole?)
+                (not skip-gap?)
                 (< found count))
            (unless (= pos buffer-edge)
              (hel-range pos buffer-edge)))
           (first
-           (hel-range (if (and whole? (not here))
-                          (hel-thing-instance-edge first (if (< 0 dir) :begin :end))
+           (hel-range (if (and skip-gap? (not here))
+                          (hel-thing-instance-edge first (if (< dir 0) :end :begin))
                         pos)
                       (hel-thing-instance-edge last edge))))))
 
@@ -603,15 +599,15 @@ KIND is:
             (hel-reveal-point-when-on-top))))
     (hel--no-thing-producer-message thing)))
 
-(defun hel-mark-to-thing-edge (thing count edge whole?)
+(defun hel-mark-to-thing-edge (thing count edge skip-gap?)
   "Select from point to the EDGE of the COUNT-th THING.
-A negative COUNT goes backward. EDGE and WHOLE? are as in
+A negative COUNT goes backward. EDGE and SKIP-GAP? are as in
 `hel-thing-motion-range'. When extending the selection is on, extend the
 selection instead of replacing it. When no thing exists in the direction,
 the selection stays as it is."
   (if-let* ((producer (hel-thing-producer thing)))
       (-when-let ((begin . end) (hel-thing-motion-range
-                                 thing producer (point) count edge whole?))
+                                 thing producer (point) count edge skip-gap?))
         (when (hel-thing-jump-p thing) (hel-push-point))
         (when (< count 0) (cl-rotatef begin end))
         (hel-motion-select begin end)
@@ -1000,13 +996,13 @@ before it."
 ;;; Things
 ;;;; Words
 
-(put 'word 'hel-thing-jump nil)
+(put 'word 'hel-thing-no-jump t)
 (put 'word 'hel-thing-line-end-is-border t)
 (put 'word 'hel-thing-sources (list (hel-word-motion-source #'hel-word-motion)))
 
-(put 'WORD 'hel-thing-jump nil)
+(put 'WORD 'hel-thing-no-jump t)
 (put 'WORD 'hel-thing-line-end-is-border t)
-(put 'WORD 'hel-thing-trim-punctuation ",.;:!?()[]{}<>\"'`")
+(put 'WORD 'hel-thing-trim-punctuation t)
 (put 'WORD 'hel-thing-sources (list (hel-word-motion-source #'hel-WORD-motion)))
 
 (cl-defun hel-word-motion (&optional (count 1))
@@ -1037,7 +1033,7 @@ A WORD is a run of characters between whitespace."
       (hel-skip-chars (concat "^" hel-whitespace-chars) dir))))
 
 (cl-defmethod hel-thing-motion-range (_thing (producer hel-word-motion-producer)
-                                      pos count edge _whole)
+                                      pos count edge _skip-gap)
   "Step over the line end and the indentation of a line one at a time."
   (save-excursion
     (goto-char pos)
@@ -1402,6 +1398,7 @@ functions inside the same bracket pair, as it does for sexps."
 
 ;;;; Arguments
 
+(put 'argument 'hel-thing-no-jump t)
 (put 'argument 'hel-thing-owns-header-comment t)
 (put 'argument 'hel-thing-sources (list #'hel-treesit-source
                                         #'hel-syntax-argument-source))
@@ -1530,6 +1527,7 @@ linear in the size of the parentheses."
 ;; An entry is one element of a data structure: an element of a list or
 ;; an array, a key and its value in a dictionary, a field of a struct.
 
+(put 'entry 'hel-thing-no-jump t)
 (put 'entry 'hel-thing-owns-header-comment t)
 (put 'entry 'hel-thing-sources (list #'hel-treesit-source))
 

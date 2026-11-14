@@ -529,50 +529,84 @@ Return nil if nothing remains."
     (if (< begin end)
         (cons begin end))))
 
-(defconst hel--punctuation-pairs
-  '((?\( . ?\)) (?\[ . ?\]) (?\{ . ?\}) (?< . ?>) (?\" . ?\") (?\' . ?\') (?` . ?`))
-  "The pairs of brackets and quotes, each opening one with its closing one.")
+;;; Trim punctuation from WORD
 
-(cl-defun hel-trim-punctuation-from-range ((begin . end) chars)
-  "Return BEGIN..END without the punctuation at its edges.
-So in `see (foo).' the text `(foo).' gives `foo'. A bracket or a quote at
-an edge stays when its pair is inside the range, as in `foo(bar)', and
-a pair that wraps the whole range goes, as in `(foo)'. When only
-punctuation is in the range, return the range as it is. CHARS is a string
-of the punctuation characters."
-  (let ((original (cons begin end))
-        (chars (string-to-list chars)))
+(defconst hel--punctuation-pairs '((?\( . ?\)) (?\[ . ?\]) (?\{ . ?\}) (?< . ?>)
+                                   (?\" . ?\") (?\' . ?\') (?` . ?`) (?` . ?\')
+                                   (?« . ?») (?„ . ?“) (?“ . ?”) (?‘ . ?’))
+  "Opening and closing pairs for brackets and quotation marks.
+A character may participate in more than one pair. For example, a backquote may
+pair with another backquote in Markdown or with an apostrophe in Emacs Lisp and
+TeX. The character “ closes the German quote opened by „ and opens the English
+quote closed by ”.")
+
+(defconst hel--punctuation-after-word '(?, ?. ?\; ?: ?! ??)
+  "Punctuation marks that separate a word from the text following it.")
+
+(defconst hel--punctuation-before-word '(?¿ ?¡)
+  "Punctuation marks that separate a word from the text before it.")
+
+(cl-defun hel-trim-punctuation-around-word ((begin . end))
+  "Return BEGIN..END without surrounding punctuation.
+Punctuation that separates a word from following text is trimmed from
+the end; punctuation that separates it from preceding text is trimmed
+from the beginning. Thus `foo,' loses its comma, but `:foo' keeps its
+leading colon.
+
+Brackets and quotes at the edges are removed if unmatched. A matched
+pair is removed only when it encloses the entire remaining range, as
+in `(foo)'. Pairs that are inside the range are preserved, as in `foo(bar)'.
+An apostrophe without a pair stays, because it is a part of the word, as
+a Lisp quote or a possessive.
+
+If trimming would make the range empty, return the original range."
+  (let ((original (cons begin end)))
     (cl-labels ((pair-pos (pos open close dir)
                   ;; The position of the pair of the bracket at POS, which
                   ;; is OPEN forward and CLOSE backward, or nil.
                   (let ((depth 0) found)
                     (cl-loop for i = (+ pos dir) then (+ i dir)
-                             while (and (not found) (<= begin i) (< i end))
+                             while (and (not found)
+                                        (<= begin i) (< i end))
                              do (let ((char (char-after i)))
-                                  (cond ((eq char (if (< 0 dir) close open))
+                                  (cond ((eq char (if (< dir 0) open close))
                                          (if (zerop depth)
                                              (setq found i)
                                            (cl-decf depth)))
-                                        ((eq char (if (< 0 dir) open close))
+                                        ((eq char (if (< dir 0) close open))
                                          (cl-incf depth)))))
                     found))
                 (trim-begin ()
                   (let* ((char (char-after begin))
-                         (close (alist-get char hel--punctuation-pairs)))
-                    (cond ((not (memq char chars)) nil)
-                          ((not close) (cl-incf begin))
-                          ((eql (pair-pos begin char close 1) (1- end))
+                         (closes (-keep (-lambda ((open . close))
+                                          (and (eq open char) close))
+                                        hel--punctuation-pairs))
+                         (found (-keep (lambda (close)
+                                         (pair-pos begin char close 1))
+                                       closes)))
+                    (cond ((memq char hel--punctuation-before-word)
+                           (cl-incf begin))
+                          ((not closes) nil)
+                          ((memql (1- end) found)
                            (cl-incf begin)
                            (cl-decf end))
-                          ((pair-pos begin char close 1) nil)
+                          (found nil)
+                          ((eq char ?\') nil)
                           (t (cl-incf begin)))))
                 (trim-end ()
                   (let* ((char (char-before end))
-                         (open (car (rassq char hel--punctuation-pairs))))
-                    (cond ((not (memq char chars)) nil)
-                          ((or (not open)
-                               (not (pair-pos (1- end) open char -1)))
-                           (cl-decf end))))))
+                         (opens (-keep (-lambda ((open . close))
+                                         (and (eq close char) open))
+                                       hel--punctuation-pairs)))
+                    (cond ((memq char hel--punctuation-after-word)
+                           (cl-decf end))
+                          ((not opens) nil)
+                          ((-some (lambda (open)
+                                    (pair-pos (1- end) open char -1))
+                                  opens)
+                           nil)
+                          ((eq char ?\') nil)
+                          (t (cl-decf end))))))
       (while (and (< begin end)
                   (or (trim-begin)
                       (and (< begin end)
