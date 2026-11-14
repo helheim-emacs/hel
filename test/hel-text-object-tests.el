@@ -886,6 +886,25 @@ that wraps the whole WORD goes, and a WORD of only punctuation stays."
     (hel-mark-sentence-backward 1)
     (should (equal (hel-test-selection) "More "))))
 
+(ert-deftest hel-sentence-stays-in-string ()
+  "A sentence in a docstring leaves out the quotes and the code around them."
+  (hel-test-with #'emacs-lisp-mode
+      "(defun f ()\n  \"Return |foo.  Next one.\"\n  nil)\n"
+    (hel-mark-sentence 1)
+    (should (equal (hel-test-selection) "Return foo."))
+    (hel-test-goto "one")
+    (hel-mark-sentence 1)
+    (should (equal (hel-test-selection) "Next one."))))
+
+(ert-deftest hel-sentence-stays-in-comment ()
+  "A sentence in a comment leaves out the comment starter and the code."
+  (hel-test-with #'emacs-lisp-mode "(foo) ;; Bar |baz.  Qux.\n"
+    (hel-mark-sentence 1)
+    (should (equal (hel-test-selection) "Bar baz."))
+    (hel-test-goto "Qux")
+    (hel-mark-sentence 1)
+    (should (equal (hel-test-selection) "Qux."))))
+
 (ert-deftest hel-paragraph-object ()
   "A paragraph covers whole lines."
   (hel-test-with #'text-mode (hel-test-mark hel-to--prose-paragraphs "two")

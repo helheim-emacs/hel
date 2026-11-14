@@ -496,7 +496,10 @@ The kinds differ in three properties:
 - *A sentence's gap stays on its line too*, so =mas= and =d= never join two
   lines. A sentence alone on its line has a border on both sides, so =mas=
   selects only the sentence and =d= leaves the empty line. A count stops at
-  the end of the paragraph.
+  the end of the paragraph. A sentence inside a string, such as a
+  docstring, stays in the string: it never takes the quotes or the code
+  around them. A sentence in a comment stays in the comment and starts
+  after the comment starter, such as =;;=.
 - *A paragraph, a function, a class and a comment cover whole lines*, with
   the last line end, so =d= leaves no empty line and no indentation. When
   other code shares these lines, as in =foo(function () { ... }, 1);=, the

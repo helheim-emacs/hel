@@ -1093,8 +1093,26 @@ A WORD is a run of characters between whitespace."
 Return the part of COUNT that is left to move, with the sign of COUNT.
 
 The function `forward-sentence-function' defines what a sentence is."
-  (hel-motion-loop (dir count)
-    (ignore-errors (forward-sentence dir))))
+  (save-restriction
+    ;; Narrow to string or comment, since sentence can never extend beyond them.
+    (when-let* ((ppss (syntax-ppss))
+                (begin (nth 8 ppss))
+                (bounds (if (nth 3 ppss) ; inside string
+                            (when-let* ((end (ignore-errors
+                                               (scan-sexps begin 1))))
+                              (cons (1+ begin) (1- end)))
+                          ;; else
+                          (-when-let ((begin . end)
+                                      (hel-bounds-of-comment-at (point)))
+                            ;; Start after the comment starter, such as `;;'.
+                            (save-excursion
+                              (goto-char begin)
+                              (comment-normalize-vars t)
+                              (comment-search-forward end t)
+                              (cons (point) end))))))
+      (narrow-to-region (car bounds) (cdr bounds)))
+    (hel-motion-loop (dir count)
+      (ignore-errors (forward-sentence dir)))))
 
 (cl-defmethod hel-thing-parent ((_thing (eql 'sentence)) _producer sentence)
   "Return the start of the paragraph that SENTENCE belongs to."
