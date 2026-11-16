@@ -244,7 +244,7 @@ Use visual line when `visual-line-mode' is active."
       (if (< dir 0)
           (when (bobp) (user-error "Beginning of buffer"))
         (when (eobp) (user-error "End of buffer")))
-      (hel-push-point (point))
+      (hel-push-point)
       (hel-set-region (if hel--extend-selection (mark) (point))
                       (progn
                         (cond ((and (< dir 0) move-to-bound?)

@@ -1356,9 +1356,8 @@ that `match-beginning', `match-end' and `match-data' access."
 
 ;;; Mark ring
 
-(defun hel-push-point (&optional position)
+(cl-defun hel-push-point (&optional (position (point)))
   "Push POSITION (point by default) on the `mark-ring'."
-  (or position (setq position (point)))
   ;; Don't store POSITION into mark ring if it equals to the last stored one.
   (unless (and mark-ring
                (= position (car mark-ring)))
@@ -1429,10 +1428,9 @@ RING should be a list like `mark-ring', not the ring structure from
 
 ;;; Copy/paste
 
-(defun hel-push-mark (&optional position nomsg activate)
+(cl-defun hel-push-mark (&optional (position (point)) nomsg activate)
   "Set mark to the POSITION and push it on the `mark-ring'.
 If NOMSG is nil show `Mark set' message in echo area."
-  (or position (setq position (point)))
   (hel-push-point position)
   (set-marker (mark-marker) position (current-buffer))
   (or nomsg executing-kbd-macro (< 0 (minibuffer-depth))
