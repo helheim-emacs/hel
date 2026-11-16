@@ -200,7 +200,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-beginning-of-line-command))
   (interactive)
-  (hel-select-motion (point) (hel-line-begin)))
+  (hel-motion-select (point) (hel-line-begin)))
 
 ;; gs
 (hel-define-command hel-first-non-blank ()
@@ -209,11 +209,11 @@ Use visual line when `visual-line-mode' is active."
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (hel-select-motion (point)
-                     (progn (goto-char (hel-line-begin))
-                            (hel-skip-blanks 1)
-                            (backward-prefix-chars)
-                            (point))))
+  (hel-motion-select (point) (progn
+                               (goto-char (hel-line-begin))
+                               (hel-skip-blanks 1)
+                               (backward-prefix-chars)
+                               (point))))
 
 ;; gl
 (hel-define-command hel-end-of-line-command ()
@@ -223,7 +223,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-end-of-line-command))
   (interactive)
-  (hel-select-motion (point) (hel-line-end))
+  (hel-motion-select (point) (hel-line-end))
   ;; "Stick" cursor to the end of line after moving to it. Vertical
   ;; motions right after "gl" will place point at the end of each line.
   (when (and (not visual-line-mode)
@@ -244,7 +244,7 @@ Use visual line when `visual-line-mode' is active."
           (when (bobp) (user-error "Beginning of buffer"))
         (when (eobp) (user-error "End of buffer")))
       (hel-push-point)
-      (hel-select-motion (point)
+      (hel-motion-select (point)
                       (progn
                         (cond ((and (< dir 0) move-to-bound?)
                                (hel-forward-end-of-thing thing count))
@@ -404,9 +404,9 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (hel-select-motion (point)
-                         (progn (forward-thing 'hel-word)
-                                (point))))))
+      (hel-motion-select (point) (progn
+                                   (forward-thing 'hel-word)
+                                   (point))))))
 
 ;; gb
 (hel-define-command hel-avy-word-backward ()
@@ -422,10 +422,10 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (if hel-extending-selection
-          (hel-select-motion (mark) (point))
-        (hel-select (cons (point)
-                          (progn (forward-thing 'hel-word)
-                                 (point))))))))
+          (hel-motion-select (mark) (point))
+        (hel-select (cons (point) (progn
+                                    (forward-thing 'hel-word)
+                                    (point))))))))
 
 ;; gW
 (hel-define-command hel-avy-WORD-forward ()
@@ -438,9 +438,9 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (hel-select-motion (point)
-                         (progn (forward-thing 'hel-WORD)
-                                (point))))))
+      (hel-motion-select (point) (progn
+                                   (forward-thing 'hel-WORD)
+                                   (point))))))
 
 ;; gB
 (hel-define-command hel-avy-WORD-backward ()
@@ -455,10 +455,10 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (if hel-extending-selection
-          (hel-select-motion (mark) (point))
-        (hel-select (cons (point)
-                          (progn (forward-thing 'hel-WORD)
-                                 (point))))))))
+          (hel-motion-select (mark) (point))
+        (hel-select (cons (point) (progn
+                                    (forward-thing 'hel-WORD)
+                                    (point))))))))
 
 ;; gj
 (hel-define-command hel-avy-next-line (direction)
@@ -479,7 +479,7 @@ to the chosen one."
     (hel-push-point)
     (if hel-extending-selection
         (let ((lines? (hel-linewise-selection-p)))
-          (hel-select-motion (mark) pos)
+          (hel-motion-select (mark) pos)
           (if lines? (hel-expand-selection-to-full-lines)))
       ;; else
       (deactivate-mark)

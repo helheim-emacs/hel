@@ -695,8 +695,9 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (hel-select-motion (point)
-                     (progn (widget-end-of-line) (point))))
+  (hel-motion-select (point) (progn
+                               (widget-end-of-line)
+                               (point))))
 
 ;;;; Xref
 

@@ -240,7 +240,7 @@ backward when DIRECTION is -1."
     (set-mark begin)
     (goto-char end)))
 
-(defun hel-select-motion (start end)
+(defun hel-motion-select (start end)
   "Select from START to END, with point at END.
 When extending selection is active, keep the mark and only move point."
   (set-mark (if hel-extending-selection (mark) start))
@@ -602,7 +602,7 @@ If DIRECTION is positive number — get following char, otherwise preceding char
   "Move to the COUNT-th next start of a word-like THING."
   (cl-assert (< 0 count))
   (skip-chars-forward "\r\n")
-  (hel-select-motion (point)
+  (hel-motion-select (point)
                      (progn (when (hel-blank-p (following-char))
                               (cl-decf count))
                             (forward-thing thing count)
@@ -613,7 +613,7 @@ If DIRECTION is positive number — get following char, otherwise preceding char
   "Move to the COUNT-th previous start of a word-like THING."
   (cl-assert (< 0 count))
   (skip-chars-backward "\r\n")
-  (hel-select-motion (point)
+  (hel-motion-select (point)
                      (progn (forward-thing thing (- count))
                             (point))))
 
@@ -622,7 +622,7 @@ If DIRECTION is positive number — get following char, otherwise preceding char
   (interactive "p")
   (cl-assert (< 0 count))
   (skip-chars-forward "\r\n")
-  (hel-select-motion (point)
+  (hel-motion-select (point)
                      (progn (forward-thing thing count)
                             (point))))
 

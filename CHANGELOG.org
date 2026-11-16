@@ -6,7 +6,7 @@
 ** Changed
 
 - ~hel-set-region~ is removed. Use ~hel-select~ with a range and a direction,
-  or ~hel-select-motion~ for a motion that keeps the mark after =v=.
+  or ~hel-motion-select~ for a motion that keeps the mark after =v=.
 
 - The Hel API says "selection" for a selection as a value. ~hel-region~ and
   ~hel-save-region~ are renamed to ~hel-selection~ and ~hel-save-selection~.
