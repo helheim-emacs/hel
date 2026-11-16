@@ -58,6 +58,8 @@
 
 (defvar hel-insert-state)
 
+(declare-function hel-update-cursor "hel-core")
+
 ;;; Multiple cursors minor mode
 
 (define-minor-mode hel-multiple-cursors-mode
