@@ -54,7 +54,7 @@ Execute in order:
           (propertize "v" 'face 'help-key-binding))
   :multiple-cursors t
   (interactive)
-  (cond (hel--extend-selection
+  (cond (hel-extending-selection
          (hel-extend-selection -1))
         ((region-active-p)
          (deactivate-mark))
@@ -67,7 +67,7 @@ Execute in order:
 (hel-define-command hel-backward-char (count)
   "Move backward COUNT chars."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
   (hel-maybe-deactivate-mark)
   (backward-char count))
@@ -76,7 +76,7 @@ Execute in order:
 (hel-define-command hel-forward-char (count)
   "Move forward COUNT chars."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
   (hel-maybe-deactivate-mark)
   (forward-char count))
@@ -87,9 +87,9 @@ Execute in order:
 If both linewise selection (`x' key) and extending selection (`v' key)
 are active — works like `hel-expand-line-selection'."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
-  (if (and hel--extend-selection (hel-linewise-selection-p))
+  (if (and hel-extending-selection (hel-linewise-selection-p))
       (hel-expand-line-selection count)
     ;; else
     (hel-maybe-deactivate-mark)
@@ -104,7 +104,7 @@ are active — works like `hel-expand-line-selection'."
 If both linewise selection (`x' key) and extending selection (`v' key)
 are active — works like `hel-expand-line-selection-backward'."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
   (hel-next-line (- count)))
 
@@ -112,7 +112,7 @@ are active — works like `hel-expand-line-selection-backward'."
 (hel-define-command hel-forward-word-start (count)
   "Move to the COUNT-th next word start."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
   (hel--forward-word-start 'hel-word count))
 
@@ -120,7 +120,7 @@ are active — works like `hel-expand-line-selection-backward'."
 (hel-define-command hel-forward-WORD-start (count)
   "Move to the COUNT-th next WORD start."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
   (hel--forward-word-start 'hel-WORD count))
 
@@ -128,7 +128,7 @@ are active — works like `hel-expand-line-selection-backward'."
 (hel-define-command hel-backward-word-start (count)
   "Move to the COUNT-th previous word start."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
   (hel--backward-word-start 'hel-word count))
 
@@ -136,7 +136,7 @@ are active — works like `hel-expand-line-selection-backward'."
 (hel-define-command hel-backward-WORD-start (count)
   "Move to the COUNT-th previous WORD start."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
   (hel--backward-word-start 'hel-WORD count))
 
@@ -144,7 +144,7 @@ are active — works like `hel-expand-line-selection-backward'."
 (hel-define-command hel-forward-word-end (count)
   "Move to the COUNT-th next word end."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
   (hel--forward-word-end 'hel-word count))
 
@@ -152,7 +152,7 @@ are active — works like `hel-expand-line-selection-backward'."
 (hel-define-command hel-forward-WORD-end (count)
   "Move COUNT-th next WORD end."
   :multiple-cursors t
-  :merge-selections hel--extend-selection
+  :merge-selections hel-extending-selection
   (interactive "p")
   (hel--forward-word-end 'hel-WORD count))
 
@@ -421,7 +421,7 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (if hel--extend-selection
+      (if hel-extending-selection
           (hel-select-motion (mark) (point))
         (hel-select (cons (point)
                           (progn (forward-thing 'hel-word)
@@ -454,7 +454,7 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (if hel--extend-selection
+      (if hel-extending-selection
           (hel-select-motion (mark) (point))
         (hel-select (cons (point)
                           (progn (forward-thing 'hel-WORD)
@@ -477,7 +477,7 @@ to the chosen one."
               ((natnump pos)))
     (hel-disable-multiple-cursors-mode)
     (hel-push-point)
-    (if hel--extend-selection
+    (if hel-extending-selection
         (let ((lines? (hel-linewise-selection-p)))
           (hel-select-motion (mark) pos)
           (if lines? (hel-expand-selection-to-full-lines)))
@@ -906,9 +906,9 @@ With no selection upcase COUNT characters after point."
 If ARG positive number — enable, negative — disable.
 When called interactively — toggle extending selection."
   :multiple-cursors t
-  (interactive (list (if hel--extend-selection -1 1)))
-  (setq hel--extend-selection (/= arg -1))
-  (when (and hel--extend-selection
+  (interactive (list (if hel-extending-selection -1 1)))
+  (setq hel-extending-selection (/= arg -1))
+  (when (and hel-extending-selection
              (not (region-active-p)))
     (set-mark (point)))
   (unless hel-executing-command-for-fake-cursor
@@ -919,7 +919,7 @@ When called interactively — toggle extending selection."
   "Deactivate selection."
   :multiple-cursors t
   (interactive)
-  (cond (hel--extend-selection
+  (cond (hel-extending-selection
          (set-mark (point)))
         ((use-region-p)
          (deactivate-mark))

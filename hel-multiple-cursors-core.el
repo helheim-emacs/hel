@@ -206,7 +206,7 @@ Return CURSOR."
                         (make-overlay pos pos nil t nil))
                        (t
                         (make-overlay pos (1+ pos) nil t nil))))
-    (let ((face (cond (hel--extend-selection
+    (let ((face (cond (hel-extending-selection
                        'hel-extend-selection-cursor)
                       (hel-insert-state
                        'hel-insert-state-fake-cursor)

@@ -243,7 +243,7 @@ backward when DIRECTION is -1."
 (defun hel-select-motion (start end)
   "Select from START to END, with point at END.
 When extending selection is active, keep the mark and only move point."
-  (set-mark (if hel--extend-selection (mark) start))
+  (set-mark (if hel-extending-selection (mark) start))
   (goto-char end))
 
 (defun hel-selection ()
@@ -259,12 +259,12 @@ RANGE is (BEGIN . END). `hel-select' takes the returned list as its arguments:
 
 (defun hel-maybe-set-mark ()
   "Set mark at point unless extending selection is active."
-  (or hel--extend-selection
+  (or hel-extending-selection
       (set-mark (point))))
 
 (defun hel-maybe-deactivate-mark ()
   "Deactivate mark unless extending selection is active."
-  (or hel--extend-selection
+  (or hel-extending-selection
       (deactivate-mark)))
 
 (defun hel-ensure-region-direction (direction)
@@ -933,7 +933,7 @@ If no THING at point select COUNT following THINGs."
           (when (bobp) (user-error "Beginning of buffer"))
         (when (eobp) (user-error "End of buffer")))
       (hel-push-point point-pos)
-      (let ((start (if hel--extend-selection
+      (let ((start (if hel-extending-selection
                        (mark)
                      (when (-if-let ((thing-beg . thing-end)
                                      (bounds-of-thing-at-point thing))
@@ -1248,7 +1248,7 @@ See `isearch-open-necessary-overlays'."
 
 (defun hel-maybe-deactivate-mark-a (&rest _)
   "Deactivate mark unless extending selection is active. Can be used as advice."
-  (or hel--extend-selection
+  (or hel-extending-selection
       (deactivate-mark)))
 
 (declare-function hel-disable-multiple-cursors-mode "hel-multiple-cursors-core")

@@ -565,8 +565,10 @@ use `hel-state-property' function.
 
 (hel-defvar-permanent-local hel-overriding-local-map nil)
 
-(hel-defvar-permanent-local hel--extend-selection nil
-  "When this flag is set motions will extend selection.")
+(hel-defvar-permanent-local hel-extending-selection nil
+  "Non-nil when motions extend the selection instead of replacing it.
+The command `hel-extend-selection', bound to `v', toggles it. A motion
+command passes it as `:merge-selections' to `hel-define-command'.")
 
 (hel-defvar-permanent-local hel-selection-history nil
   "The history of selections.")
@@ -613,7 +615,7 @@ Default value is 0 - scroll half the screen.")
     kill-ring-yank-pointer
     yank-undo-function
     temporary-goal-column
-    hel--extend-selection
+    hel-extending-selection
     ;; Dabbrev
     dabbrev--abbrev-char-regexp
     dabbrev--check-other-buffers
