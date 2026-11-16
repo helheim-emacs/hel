@@ -516,7 +516,7 @@ A blank is a character with whitespace syntax that is not a line end."
 (cl-defun hel-skip-blanks (&optional (dir 1))
   "Move point across the blanks on its line in direction DIR.
 Return the distance traveled, with the sign of DIR."
-  (if (natnump dir)
+  (if (< 0 dir)
       (skip-syntax-forward " " (line-end-position))
     (skip-syntax-backward " " (line-beginning-position))))
 

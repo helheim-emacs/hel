@@ -1037,7 +1037,7 @@ When called interactively — toggle extending selection."
                 (let ((deactivate-mark nil)
                       (padding (make-string (- column (current-column)) ?\s)))
                   (if (and (use-region-p)
-                           (natnump (hel-region-direction)))
+                           (< 0 (hel-region-direction)))
                       (progn
                         (hel--exchange-point-and-mark)
                         (insert padding)
@@ -1238,7 +1238,7 @@ You may restore them with %s (`hel-restore-cursors')."
       ;; `set-marker-insertion-type'). Point-marker insertion type is t,
       ;; mark-marker — nil.  We want beginning of a region to be advanced
       ;; on insertion at its position, and end of a region — not.
-      (when (natnump dir)
+      (when (< 0 dir)
         (hel-with-each-cursor (hel--exchange-point-and-mark)))
       (hel-with-real-cursor-as-fake
         (let ((cursors (hel-all-fake-cursors :sort)))
