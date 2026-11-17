@@ -126,7 +126,8 @@ command.
   `interactive` form, and pass it on as the argument `extend`, optional in
   a command and required in a helper. No helper reads the flag. Only the
   command `hel-extend-selection`, the change of state and the window switch
-  write it, all in `hel-core.el`. See `docs/design/extend-as-argument.org`
+  write it, all in `hel-core.el`. See "Ranges as values" in the
+  specification.
 - `-p` for a predicate function, including a local one in `cl-flet`, and `?`
   for a local variable that holds a flag: `forward?`, `extend?`
 
@@ -248,9 +249,11 @@ to scope bindings to specific Hel states:
 ## Other Directories
 
 - `docs/`: user-facing documentation (`customization.org`,
-  `keybindings.org`), demo videos, and `design/`: the specification and
-  design notes under review (`open-questions.org`, `search-session.org`,
-  `thing-protocol-review.org`). Not part of the package.
+  `keybindings.org`), demo videos, and `design/`: the specification, the
+  open questions (`open-questions.org`), the notes of work that is still
+  open (`multiple-cursors-performance.org`,
+  `sean-parent-goals-review.org`), and `archive/` for design notes that are
+  implemented or out of date. Not part of the package.
 - `queries/`: tree-sitter text object queries, see above.
 - `test/`: the test suites, their harness `hel-test-helpers.el`, and the
   files that set up a batch Emacs for them, see Build and Test.

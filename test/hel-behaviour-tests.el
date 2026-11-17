@@ -308,7 +308,9 @@ text."
   (hel-test-with 'text-mode "foo|"
     (hel-test-expect-chars "ax<escape>" "foox|" '(("x" 1))))
   (hel-test-with 'text-mode "foo|\nbar"
-    (hel-test-expect-chars "ax<escape>" "foo\nx|bar" '(("x" 1))))
+    (hel-test-expect-chars "ax<escape>" "foox|\nbar" '(("x" 1))))
+  (hel-test-with 'text-mode "fo|o\nbar"
+    (hel-test-expect "vlax<escape>" "fo^ox|\nbar"))
   (hel-test-with 'text-mode "foo\n|bar"
     (hel-test-expect-chars "i<escape>" "foo\n|bar" '(("b" -1)))))
 
@@ -751,9 +753,15 @@ cursor character, so extending goes on."
   ("|foo^ bar" "M-;" "^foo| bar")
   ("^foo| bar" "C-;" "|foo^ bar")
   ("^foo| bar" "g;" "|foo^ bar")
-  ("foo| bar" "g;" "foo| bar")
   ;; The side of the cursor decides which end of the selection `v' moves.
   ("^foo bar| baz" "M-;vl" "f|oo bar^ baz"))
+
+(ert-deftest hel-behaviour-exchange-on-cursor-char ()
+  "On the cursor character, `M-;' moves point to its other edge."
+  (hel-test-with 'text-mode "foo| bar"
+    (hel-test-expect-chars "M-;" "foo |bar" '((" " 1))))
+  (hel-test-with 'text-mode "foo| bar"
+    (hel-test-expect-chars "M-;M-;" "foo| bar" '((" " -1)))))
 
 (hel-test-table select-line
   ;; A one-line selection has the cursor at its start.

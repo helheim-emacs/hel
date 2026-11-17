@@ -95,72 +95,6 @@ the selection keeps its other end, see `hel--put-cursor'."
     (dotimes (_ (abs count))
       (hel--step-cursor dir extend))))
 
-;; These functions switch between two kinds of coordinates: gaps and characters.
-;; A ruler shows the difference:
-;;
-;;   gap      1   2   3   4   5
-;;            │ a │ b │ c │ d │
-;;   char       1   2   3   4
-;;
-;; Emacs positions are gaps, the marks on the ruler. A range (BEGIN . END)
-;; is the stretch between two marks, and it holds END − BEGIN characters.
-;; Emacs names a character by the gap before it: "b" is character 2, because
-;; it lies between gaps 2 and 3. So character C covers the range (C . C+1).
-;;
-;; The functions think in characters: they move the head character and
-;; keep the anchor character.  Three expressions convert between the
-;; two kinds of coordinates:
-;;
-;; - (1- END) goes from a gap to a character. The last character of a range ends
-;;   at gap END, so it is character END − 1: in the selection "bc" = (2 . 4),
-;;   the last character is "c" = 3. The first character starts at BEGIN and
-;;   needs no conversion: "b" = 2.
-;; - (+ ... DIR) is one step in characters: the neighbours of character 3
-;;   are characters 2 and 4.
-;; - (1+ (max CHAR ANCHOR)) goes from a character back to a gap. The new
-;;   selection ends where its right character ends, one gap after that
-;;   character's own gap.
-;;
-;; This is also why ranges are half-open, [BEGIN, END): the ruler always
-;; has one more mark than it has spaces, so a range of N characters is
-;; (BEGIN . BEGIN+N), and an empty range is (P . P).
-(defun hel--step-cursor (dir extend)
-  "Move the cursor by one character in direction DIR.
-The cursor goes to the character next to the head of the selection, see
-`hel--put-cursor' for EXTEND.  Without EXTEND, a step past the last
-character leaves the empty selection at the end of the buffer."
-  (-let* ((((begin . end) side) (hel-selection))
-          (char (+ (if (< 0 side) (1- end) begin)
-                   dir)))
-    (cond ((< char (point-min))
-           (signal 'beginning-of-buffer nil))
-          ((< char (point-max))
-           (hel--put-cursor char dir extend))
-          ((or extend (= begin end))
-           (signal 'end-of-buffer nil))
-          (t
-           (hel--set-cursor-char (point-max) -1)))))
-
-(defun hel--put-cursor (char dir extend)
-  "Put the cursor on character CHAR.
-Without EXTEND, CHAR becomes the cursor character, and point goes to its
-edge that is nearest to point, as a block cursor moves.  A newline has
-point before it, on its line.  With EXTEND, the selection keeps the
-character at its other end and stretches to CHAR.  DIR is the direction
-of the motion, which orients a selection of one character."
-  (if extend
-      (-let* ((((begin . end) side) (hel-selection))
-              (anchor (if (< 0 side) begin (1- end))))
-        (hel-select (cons (min char anchor) (1+ (max char anchor)))
-                    (cond ((< anchor char) 1)
-                          ((< char anchor) -1)
-                          (t dir))))
-    (let ((edge (cond ((eq ?\n (char-after char)) char)
-                      ((<= char (point) (1+ char)) (point))
-                      ((< (point) char) char)
-                      (t (1+ char)))))
-      (hel--set-cursor-char edge (if (= edge char) -1 1)))))
-
 ;; j
 (hel-define-command hel-next-line (count &optional extend)
   "Move to the next COUNT line. Move upward if COUNT is negative.
@@ -571,7 +505,8 @@ to the chosen one."
 ;; a
 (hel-define-command hel-append ()
   "Switch to Insert state at the end of the selection.
-A selection of whole lines puts point before its last newline."
+When the selection ends with a newline, point goes before it, so the
+typing stays on the last line of the selection."
   :multiple-cursors nil
   (interactive "*")
   (hel-with-each-cursor
@@ -580,9 +515,9 @@ A selection of whole lines puts point before its last newline."
       ;; joins: a region keeps its other end, and leaving Insert state
       ;; reads it for the cursor character.
       (set-marker (mark-marker) begin)
-      (goto-char end))
-    (when (hel-linewise-selection-p)
-      (backward-char)))
+      (goto-char end)
+      (when (and (< begin end) (eq ?\n (char-before)))
+        (backward-char))))
   (hel-insert-state 1))
 
 ;; I
@@ -952,10 +887,15 @@ the buffer is left as it is."
 
 ;; M-;
 (hel-define-command hel-exchange-point-and-mark ()
-  "Exchange point and mark."
+  "Move point to the other end of the selection.
+On the cursor character, point goes to its other edge."
   :multiple-cursors t
   (interactive)
-  (when (use-region-p)
+  (if (not (use-region-p))
+      (-let [(begin . end) (hel-selection-bounds)]
+        (cond ((= begin end))
+              ((= (point) begin) (hel--set-cursor-char end 1))
+              (t (hel--set-cursor-char begin -1))))
     (hel--exchange-point-and-mark)
     (when (and (not hel-executing-command-for-fake-cursor)
                (called-interactively-p 'any))

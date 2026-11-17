@@ -1464,16 +1464,38 @@ moving.
   every read, never repaired: it counts only at point − 1 with no newline
   before point, and otherwise the cursor character is the character after
   point, so a command outside Hel that moves point gives that fallback. At
-  the end of the buffer the selection is empty.
+  the end of the buffer the selection is empty. The block cursor is the one
+  rule that moves the character on every key and still puts it on the
+  character that the user moved toward, so =h d= after =<Esc>= deletes the
+  character that the user looks at.
 - Insert state never moves the selection, as in Helix. The text typed
   after =a= joins the selection, so the cursor character becomes the last
   character typed; after every other command the text lands before the
   selection, and the cursor character stays the one after it. So =<Esc>=
   with nothing typed leaves the selection as it was, and the same key
   continues the typing at the same place.
+- =a= never leaves the line where the selection ends: when the selection
+  ends with a newline, the typing starts before it. =o= and =O= open a new
+  line.
+- =M-;= on the cursor character moves point to its other edge, as Helix
+  swaps the anchor and the head of a one-character selection.
 - =mm= moves the cursor character from a bracket to its match, and from
   inside a pair to the closing bracket, as in Helix. When extending, the
   head character moves and the anchor character stays, as with =h= and =l=.
+- Two levels write the selection. Two primitives store it and decide
+  nothing: ~hel-select~ stores an active region, and its counterpart for
+  a bare cursor takes point and the side of the cursor character. The
+  algorithms decide where the selection goes and end with a primitive: =h=,
+  =l= and =mm= aim at a character, the other motions, ~hel-motion-select~
+  and ~hel-jump-to~ at a gap. The two kinds differ when the head crosses
+  the anchor, see below, so neither is written with the other.
+- =v= is a flag, ~hel-extend-selection~, not a state of its own: Helix
+  needs a Select keymap because a key names one function, while in Hel the
+  ~interactive~ form of a command reads the flag and passes it on as the
+  argument EXTEND, so one command serves both modes. No helper reads the
+  flag, so Lisp code chooses the mode by the argument. The command, the
+  change of state and the window switch are the only writers, and the
+  command takes its argument as a minor mode does.
 - The commands that act on the selection take no count: a count used to
   say how many characters to take without a selection.
 - An active selection is never empty. =h= and =l= move the end character of
@@ -1489,7 +1511,16 @@ moving.
   cursors by their ID, so each fake cursor keeps its kill ring. The merge
   after a command joins overlapping selections; the main cursor survives a
   merge with its own state, because the cursors are interchangeable and
-  then no state is copied.
+  then no state is copied. The set of cursor kinds is closed and the main
+  cursor has no data of its own, so plain values serve where generic
+  functions over two structs would only dispatch. The fake cursors replay
+  a command in buffer order, which keeps the cost of ~syntax-ppss~ linear in
+  the number of cursors.
+- The search session is an object, a ~cl-defstruct~ that owns a timer,
+  overlays and a buffer. The scans that it runs are algorithms over
+  positions outside it: ~hel-matches-in-range~ collects the visible
+  matches, and ~hel-lower-bound~ and ~hel-upper-bound~ answer the queries
+  over the sorted matches, so each works without a timer or a window.
 - "Selection" means a selection as a value, "range" any range, and "region"
   a function that reads point and mark, as in Emacs.
 - ~hel-motion-loop~ checks point after each step, because Emacs motions

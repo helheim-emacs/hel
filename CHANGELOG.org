@@ -85,6 +85,12 @@
   the matching bracket, as in Helix. Inside a pair it goes to the closing
   bracket, and when extending the selection it extends the selection to the
   bracket.
+- =a= keeps the typing on the line where the selection ends: when the
+  selection ends with a newline, for example the cursor on a newline,
+  typing starts before that newline. Helix goes to the next line here; use
+  =o= for that.
+- =M-;= works on the cursor character too: it moves point to the other edge
+  of the character.
 
 - In Normal state, the character that the cursor stands on has a faint
   background, the face ~hel-cursor-char~. A newline, and the end of the
