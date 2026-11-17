@@ -514,21 +514,21 @@ use `hel-state-property' function.
 
 (hel-defvar-permanent-local hel-overriding-local-map nil)
 
-(hel-defvar-permanent-local hel-extending-selection nil
+(hel-defvar-permanent-local hel-extend-selection nil
   "Non-nil when motions extend the selection instead of replacing it.
 The command `hel-extend-selection', bound to `v', toggles it. A motion
 command passes it as `:merge-selections' to `hel-define-command'.")
 
 (hel-defvar-permanent-local hel--selection-owner nil
   "The window whose selection the buffer holds now.
-The mark, `mark-active' and `hel-extending-selection' belong to the buffer,
+The mark, `mark-active' and `hel-extend-selection' belong to the buffer,
 but each window that shows the buffer has a selection of its own.  The other
 windows keep theirs in the window parameter `hel--selection'.")
 
 (defvar hel--selection-record nil
   "The selection of the current buffer before the current command.
 It is a list (BUFFER MARK ACTIVE EXTENDING): the buffer, the position of the
-mark, `mark-active' and `hel-extending-selection'.  It is nil outside of a
+mark, `mark-active' and `hel-extend-selection'.  It is nil outside of a
 command and before a command in a buffer without Hel.")
 
 (hel-defvar-permanent-local hel-selection-history nil
@@ -550,6 +550,13 @@ FIRST and LAST are the first and the last selected objects.")
 
 (hel-defvar-permanent-local hel--selection-was-active-on-insert nil
   "Whether a selection was active the last time Hel switched to Insert state.")
+
+(hel-defvar-permanent-local hel--insert-side -1
+  "The side of point where leaving Insert state puts the cursor character.
+Insert state never moves the selection.  `hel-append' types inside it,
+so the cursor character becomes the last character before point (1).
+Every other command types before it, so the cursor character stays the
+one after point (-1).")
 
 (hel-defvar-permanent-local hel-scroll-count 0
   "Hold last used prefix for `hel-scroll-up' and `hel-scroll-down' commands.
@@ -590,7 +597,7 @@ Default value is 0 - scroll half the screen.")
     kill-ring-yank-pointer
     yank-undo-function
     temporary-goal-column
-    hel-extending-selection
+    hel-extend-selection
     hel-selection-history
     ;; Dabbrev
     dabbrev--abbrev-char-regexp

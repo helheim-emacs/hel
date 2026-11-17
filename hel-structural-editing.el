@@ -658,15 +658,14 @@ it takes the nearest node in DIR. Return non-nil if the selection changed."
                  (hel-select (hel-range (near range) (far target)) dir))))
         t))))
 
-(defun hel--tree-select-sibling (producer count)
+(defun hel--tree-select-sibling (producer count extend)
   "Select the COUNT-th sibling of the node under the selection.
 A negative COUNT goes backward. At the last sibling, keep the selection.
 Keep the direction of an active region; at a bare cursor, the direction is
 that of the motion. When no node is under the selection, first select the
-nearest node in the direction of the motion. When extending the selection
-is on, extend the selection instead of replacing it. PRODUCER finds the
-nodes."
-  (if hel-extending-selection
+nearest node in the direction of the motion. With EXTEND, extend the
+selection instead of replacing it. PRODUCER finds the nodes."
+  (if extend
       (let ((origin (point)))
         (when (/= count
                   (hel-motion-loop (dir count)
@@ -704,7 +703,7 @@ nodes."
   "Put a cursor on each range that FN returns, for every cursor.
 FN takes no arguments and runs at each cursor with its selection."
   (hel-with-each-cursor
-    (setq hel-extending-selection nil)
+    (hel-extend-selection -1)
     (when-let* ((ranges (funcall fn)))
       (hel-select-ranges ranges (if (use-region-p)
                                      (hel-region-direction)

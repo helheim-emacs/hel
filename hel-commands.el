@@ -60,7 +60,7 @@ Execute in order:
           (propertize "v" 'face 'help-key-binding))
   :multiple-cursors t
   (interactive)
-  (cond (hel-extending-selection
+  (cond (hel-extend-selection
          (hel-extend-selection -1))
         ((region-active-p)
          (deactivate-mark))
@@ -70,56 +70,32 @@ Execute in order:
 ;;; Motions
 
 ;; h
-(hel-define-command hel-backward-char (count)
+(hel-define-command hel-backward-char (count &optional extend)
   "Move the cursor character backward COUNT characters.
-When extending the selection is on, move the head character of the
-selection instead, see `hel--step-head-char'."
+When extending the selection is on, the selection keeps its other end,
+see `hel--put-cursor'."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-forward-char (- count)))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-forward-char (- count) extend))
 
 ;; l
-(hel-define-command hel-forward-char (count)
+(hel-define-command hel-forward-char (count &optional extend)
   "Move the cursor character forward COUNT characters.
 Move backward if COUNT is negative. When extending the selection is on,
-move the head character of the selection instead, see
-`hel--step-head-char'."
+the selection keeps its other end, see `hel--put-cursor'."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   ;; Not `hel-motion-loop': a reversal of the cursor character is a step
   ;; that leaves point in place.
-  (let ((step (if hel-extending-selection
-                  #'hel--step-head-char
-                #'hel--step-cursor-char))
-        (dir (hel-sign count)))
+  (let ((dir (hel-sign count)))
     (dotimes (_ (abs count))
-      (funcall step dir))))
+      (hel--step-cursor dir extend))))
 
-(defun hel--step-cursor-char (dir)
-  "Move the cursor character by one character in direction DIR.
-Point goes to the edge of the new cursor character that is nearest to
-it.  A cursor character on a newline has point before it, on its line.
-An active region collapses: the character next to its head character
-becomes the cursor character."
-  (-let* ((((begin . end) side) (hel-selection))
-          (new (+ (if (< 0 side) (1- end) begin)
-                  dir)))
-    (cond ((< new (point-min))
-           (signal 'beginning-of-buffer nil))
-          ((<= (point-max) new)
-           (if (= begin end)
-               (signal 'end-of-buffer nil)
-             (hel--set-cursor-char (point-max) -1)))
-          (t
-           (let ((edge (cond ((eq ?\n (char-after new)) new)
-                             ((<= new (point) (1+ new)) (point))
-                             ((< (point) new) new)
-                             (t (1+ new)))))
-             (hel--set-cursor-char edge (if (= edge new) -1 1)))))))
-
-;; This function switches between two kinds of coordinates: gaps and characters.
+;; These functions switch between two kinds of coordinates: gaps and characters.
 ;; A ruler shows the difference:
 ;;
 ;;   gap      1   2   3   4   5
@@ -131,8 +107,8 @@ becomes the cursor character."
 ;; Emacs names a character by the gap before it: "b" is character 2, because
 ;; it lies between gaps 2 and 3. So character C covers the range (C . C+1).
 ;;
-;; The function thinks in characters: it moves the head character and
-;; keeps the anchor character.  Three expressions convert between the
+;; The functions think in characters: they move the head character and
+;; keep the anchor character.  Three expressions convert between the
 ;; two kinds of coordinates:
 ;;
 ;; - (1- END) goes from a gap to a character. The last character of a range ends
@@ -141,29 +117,52 @@ becomes the cursor character."
 ;;   needs no conversion: "b" = 2.
 ;; - (+ ... DIR) is one step in characters: the neighbours of character 3
 ;;   are characters 2 and 4.
-;; - (1+ (max HEAD ANCHOR)) goes from a character back to a gap. The new
+;; - (1+ (max CHAR ANCHOR)) goes from a character back to a gap. The new
 ;;   selection ends where its right character ends, one gap after that
 ;;   character's own gap.
 ;;
 ;; This is also why ranges are half-open, [BEGIN, END): the ruler always
 ;; has one more mark than it has spaces, so a range of N characters is
 ;; (BEGIN . BEGIN+N), and an empty range is (P . P).
-(defun hel--step-head-char (dir)
-  "Move the head character of the selection by one character in DIR.
-The anchor character, at the other end of the selection, stays in it."
+(defun hel--step-cursor (dir extend)
+  "Move the cursor by one character in direction DIR.
+The cursor goes to the character next to the head of the selection, see
+`hel--put-cursor' for EXTEND.  Without EXTEND, a step past the last
+character leaves the empty selection at the end of the buffer."
   (-let* ((((begin . end) side) (hel-selection))
-          (anchor (if (< 0 side) begin (1- end)))
-          (head (+ (if (< 0 side) (1- end) begin)
+          (char (+ (if (< 0 side) (1- end) begin)
                    dir)))
-    (if (or (< head (point-min)) (<= (point-max) head))
-        (signal (if (< dir 0) 'beginning-of-buffer 'end-of-buffer) nil)
-      (hel-select (cons (min head anchor) (1+ (max head anchor)))
-                  (cond ((< anchor head) 1)
-                        ((< head anchor) -1)
-                        (t dir))))))
+    (cond ((< char (point-min))
+           (signal 'beginning-of-buffer nil))
+          ((< char (point-max))
+           (hel--put-cursor char dir extend))
+          ((or extend (= begin end))
+           (signal 'end-of-buffer nil))
+          (t
+           (hel--set-cursor-char (point-max) -1)))))
+
+(defun hel--put-cursor (char dir extend)
+  "Put the cursor on character CHAR.
+Without EXTEND, CHAR becomes the cursor character, and point goes to its
+edge that is nearest to point, as a block cursor moves.  A newline has
+point before it, on its line.  With EXTEND, the selection keeps the
+character at its other end and stretches to CHAR.  DIR is the direction
+of the motion, which orients a selection of one character."
+  (if extend
+      (-let* ((((begin . end) side) (hel-selection))
+              (anchor (if (< 0 side) begin (1- end))))
+        (hel-select (cons (min char anchor) (1+ (max char anchor)))
+                    (cond ((< anchor char) 1)
+                          ((< char anchor) -1)
+                          (t dir))))
+    (let ((edge (cond ((eq ?\n (char-after char)) char)
+                      ((<= char (point) (1+ char)) (point))
+                      ((< (point) char) char)
+                      (t (1+ char)))))
+      (hel--set-cursor-char edge (if (= edge char) -1 1)))))
 
 ;; j
-(hel-define-command hel-next-line (count)
+(hel-define-command hel-next-line (count &optional extend)
   "Move to the next COUNT line. Move upward if COUNT is negative.
 The cursor character stays on its side of point, so it keeps its column.
 When extending the selection is on, extend the selection from its
@@ -171,13 +170,14 @@ anchor, see `hel--selection-anchor'. If both linewise selection (`x' key)
 and extending selection (`v' key) are active — works like
 `hel-expand-line-selection'."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (if (and hel-extending-selection (hel-linewise-selection-p))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (if (and extend (hel-linewise-selection-p))
       (hel-expand-line-selection count)
-    (let ((anchor (and hel-extending-selection
+    (let ((anchor (and extend
                        (hel--selection-anchor (hel-sign count))))
-          (dir (unless hel-extending-selection
+          (dir (unless extend
                  (deactivate-mark)
                  ;; Within a chain of vertical motions, the mark is where
                  ;; the previous motion put it, and it keeps the side even
@@ -194,88 +194,97 @@ and extending selection (`v' key) are active — works like
         (hel--set-cursor-char (point) dir)))))
 
 ;; k
-(hel-define-command hel-previous-line (count)
+(hel-define-command hel-previous-line (count &optional extend)
   "Move to the previous COUNT line. Move downward if COUNT is negative.
 If both linewise selection (`x' key) and extending selection (`v' key)
 are active — works like `hel-expand-line-selection-backward'."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-next-line (- count)))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-next-line (- count) extend))
 
 ;; w
-(hel-define-command hel-forward-word-start (count)
+(hel-define-command hel-forward-word-start (count &optional extend)
   "Move to the COUNT-th next word start."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-mark-to-thing-edge 'word count :begin nil))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'word count :begin nil extend))
 
 ;; W
-(hel-define-command hel-forward-WORD-start (count)
+(hel-define-command hel-forward-WORD-start (count &optional extend)
   "Move to the COUNT-th next WORD start."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-mark-to-thing-edge 'WORD count :begin nil))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'WORD count :begin nil extend))
 
 ;; b
-(hel-define-command hel-backward-word-start (count)
+(hel-define-command hel-backward-word-start (count &optional extend)
   "Move to the COUNT-th previous word start."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-mark-to-thing-edge 'word (- count) :begin nil))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'word (- count) :begin nil extend))
 
 ;; B
-(hel-define-command hel-backward-WORD-start (count)
+(hel-define-command hel-backward-WORD-start (count &optional extend)
   "Move to the COUNT-th previous WORD start."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-mark-to-thing-edge 'WORD (- count) :begin nil))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'WORD (- count) :begin nil extend))
 
 ;; e
-(hel-define-command hel-forward-word-end (count)
+(hel-define-command hel-forward-word-end (count &optional extend)
   "Move to the COUNT-th next word end."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-mark-to-thing-edge 'word count :end nil))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'word count :end nil extend))
 
 ;; E
-(hel-define-command hel-forward-WORD-end (count)
+(hel-define-command hel-forward-WORD-end (count &optional extend)
   "Move COUNT-th next WORD end."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-mark-to-thing-edge 'WORD count :end nil))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'WORD count :end nil extend))
 
 ;; no key in Helix, "ge" in Vim
-(hel-define-command hel-backward-word-end (count)
+(hel-define-command hel-backward-word-end (count &optional extend)
   "Move to the COUNT-th previous word end."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-mark-to-thing-edge 'word (- count) :end nil))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'word (- count) :end nil extend))
 
 ;; no key in Helix, "gE" in Vim
-(hel-define-command hel-backward-WORD-end (count)
+(hel-define-command hel-backward-WORD-end (count &optional extend)
   "Select from point back to the end of the COUNT-th previous WORD."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive "p")
-  (hel-mark-to-thing-edge 'WORD (- count) :end nil))
+  :merge-selections hel-extend-selection
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'WORD (- count) :end nil extend))
 
 ;; gg
-(hel-define-command hel-beginning-of-buffer (num)
+(hel-define-command hel-beginning-of-buffer (num &optional extend)
   "Move point to the beginning of the buffer.
 With numeric arg NUM, put point NUM/10 of the way from the beginning.
 If the buffer is narrowed, this command uses the beginning of the
 accessible part of the buffer.
 Push mark at previous position, unless extending selection."
   :multiple-cursors nil
-  (interactive "P")
+  (interactive (list current-prefix-arg hel-extend-selection))
   (hel-disable-multiple-cursors-mode)
   (hel-push-point)
   (let ((pos (if num
@@ -287,16 +296,15 @@ Push mark at previous position, unless extending selection."
                    (forward-line 1)
                    (point))
                (point-min))))
-    (hel-maybe-deactivate-mark (hel-sign (- pos (point))))
-    (goto-char pos))
+    (hel-jump-to pos extend))
   (unless num
     (recenter 0)))
 
 ;; G
-(hel-define-command hel-end-of-buffer (count)
+(hel-define-command hel-end-of-buffer (count &optional extend)
   "Move point to the COUNT line, or to the end of the buffer."
   :multiple-cursors nil
-  (interactive "P")
+  (interactive (list current-prefix-arg hel-extend-selection))
   (hel-disable-multiple-cursors-mode)
   (hel-push-point)
   (let ((pos (if count
@@ -305,41 +313,41 @@ Push mark at previous position, unless extending selection."
                    (forward-line (1- (prefix-numeric-value count)))
                    (point))
                (point-max))))
-    (hel-maybe-deactivate-mark (hel-sign (- pos (point))))
-    (goto-char pos)))
+    (hel-jump-to pos extend)))
 
 ;; gh
-(hel-define-command hel-beginning-of-line-command ()
+(hel-define-command hel-beginning-of-line-command (&optional extend)
   "Move point to beginning of current line.
 Use visual line when `visual-line-mode' is active."
   :multiple-cursors t
   :merge-selections t
   (declare (interactive-only hel-beginning-of-line-command))
-  (interactive)
-  (hel-motion-select (point) (hel-line-begin)))
+  (interactive (list hel-extend-selection))
+  (hel-motion-select (point) (hel-line-begin) extend))
 
 ;; gs
-(hel-define-command hel-first-non-blank ()
+(hel-define-command hel-first-non-blank (&optional extend)
   "Move point to beginning of current line skipping indentation.
 Use visual line when `visual-line-mode' is active."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
+  (interactive (list hel-extend-selection))
   (hel-motion-select (point) (save-excursion
                                (goto-char (hel-line-begin))
                                (hel-skip-blanks 1)
                                (backward-prefix-chars)
-                               (point))))
+                               (point))
+                     extend))
 
 ;; gl
-(hel-define-command hel-end-of-line-command ()
+(hel-define-command hel-end-of-line-command (&optional extend)
   "Move point to end of current line.
 Use visual line when `visual-line-mode' is active."
   :multiple-cursors t
   :merge-selections t
   (declare (interactive-only hel-end-of-line-command))
-  (interactive)
-  (hel-motion-select (point) (hel-line-end))
+  (interactive (list hel-extend-selection))
+  (hel-motion-select (point) (hel-line-end) extend)
   ;; "Stick" cursor to the end of line after moving to it. Vertical
   ;; motions right after "gl" will place point at the end of each line.
   (when (and (not visual-line-mode)
@@ -348,25 +356,38 @@ Use visual line when `visual-line-mode' is active."
           this-command 'next-line)))
 
 ;; mm
-;; TODO: The most bare-boned version. Need upgrade.
-(hel-define-command hel-jump-to-match-item ()
-  "Jump between matching brackets."
+(hel-define-command hel-jump-to-match-item (&optional extend)
+  "Move the cursor character to the bracket that matches it.
+From an opening bracket go to its closing bracket, and back.  From any
+other character go to the closing bracket of the innermost pair around
+it.  When extending the selection is on, move the head character of the
+selection instead, and keep its anchor character."
   :multiple-cursors t
-  (interactive)
-  (hel-maybe-deactivate-mark)
-  (ignore-errors
-    (cond
-     ;; before open bracket
-     ((and (not (eobp))
-           (eq 4 (syntax-class (syntax-after (point)))))
-      (forward-list 1))
-     ;; after close bracket
-     ((and (not (bobp))
-           (eq 5 (syntax-class (syntax-after (1- (point))))))
-      (forward-list -1))
-     (t
-      (up-list 1))))
+  :merge-selections hel-extend-selection
+  (interactive (list hel-extend-selection))
+  (-let* ((((begin . end) side) (hel-selection))
+          (head (if (< 0 side) (1- end) begin)))
+    (-when-let (char (hel--matching-bracket head))
+      (let ((dir (if (< head char) 1 -1)))
+        (if extend
+            (hel--put-cursor char dir t)
+          ;; `show-paren-mode' shows the pair of a bracket on the outer
+          ;; side of point: after a closing bracket, before an opening one.
+          ;; The jump goes forward to a closing bracket and backward to an
+          ;; opening one, so the outer side is the side DIR.
+          (hel--set-cursor-char (if (< 0 dir) (1+ char) char) dir)))))
   (hel-reveal-point-when-on-top))
+
+(defun hel--matching-bracket (char)
+  "Return the bracket that matches the bracket at character CHAR.
+At any other character, return the closing bracket of the innermost
+pair around CHAR.  Return nil when there is no such bracket.  The
+syntax table decides what a bracket is."
+  (ignore-errors
+    (pcase (syntax-class (syntax-after char))
+      (4 (1- (scan-lists char 1 0)))
+      (5 (scan-lists (1+ char) -1 0))
+      (_ (1- (scan-lists char 1 1))))))
 
 ;; C-s
 (hel-define-command hel-save-point-to-mark-ring ()
@@ -376,7 +397,7 @@ Use visual line when `visual-line-mode' is active."
   (hel-push-point))
 
 ;; C-o
-(hel-define-command hel-backward-mark-ring ()
+(hel-define-command hel-backward-mark-ring (&optional extend)
   "Jump to the top position on `mark-ring'.
 If point is already there, rotate `mark-ring' forward (like revolver cylinder)
 and jump to the new top position.
@@ -390,19 +411,19 @@ from `mark-ring' directly into `point' skipping `mark'.
 
 \(Does not affect global mark ring)."
   :multiple-cursors t
-  (interactive)
-  (hel--jump-over-mark-ring))
+  (interactive (list hel-extend-selection))
+  (hel--jump-over-mark-ring nil extend))
 
 ;; C-i
-(hel-define-command hel-forward-mark-ring ()
+(hel-define-command hel-forward-mark-ring (&optional extend)
   "Jump to the top position on `mark-ring'.
 If point is already there, rotate `mark-ring' backward and jump to new top
 position. See `hel-backward-mark-ring'.
 
 \(Does not affect global mark ring)."
   :multiple-cursors t
-  (interactive)
-  (hel--jump-over-mark-ring t))
+  (interactive (list hel-extend-selection))
+  (hel--jump-over-mark-ring t extend))
 
 ;; C-S-o
 (hel-define-command hel-backward-global-mark-ring ()
@@ -425,10 +446,10 @@ backward and jump to new top location."
 ;;; Avy (Easymotion)
 
 ;; gw
-(hel-define-command hel-avy-word-forward ()
+(hel-define-command hel-avy-word-forward (&optional extend)
   "Move to a word start after the point, choosing it with Avy."
   :multiple-cursors nil
-  (interactive)
+  (interactive (list hel-extend-selection))
   (let ((orig-point (point)))
     (when (let ((avy-all-windows nil))
             (-> (avy--regex-candidates avy-goto-word-0-regexp
@@ -438,13 +459,14 @@ backward and jump to new top location."
       (hel-push-point orig-point)
       (hel-motion-select (point) (progn
                                    (hel-word-motion 1)
-                                   (point))))))
+                                   (point))
+                         extend))))
 
 ;; gb
-(hel-define-command hel-avy-word-backward ()
+(hel-define-command hel-avy-word-backward (&optional extend)
   "Move to a word start before the point, choosing it with Avy."
   :multiple-cursors nil
-  (interactive)
+  (interactive (list hel-extend-selection))
   (let ((orig-point (point)))
     (when (let ((avy-all-windows nil))
             (-> (avy--regex-candidates avy-goto-word-0-regexp
@@ -453,17 +475,17 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (if hel-extending-selection
-          (hel-motion-select (mark) (point))
+      (if extend
+          (hel-motion-select (mark) (point) t)
         (hel-select (cons (point) (progn
                                     (hel-word-motion 1)
                                     (point))))))))
 
 ;; gW
-(hel-define-command hel-avy-WORD-forward ()
+(hel-define-command hel-avy-WORD-forward (&optional extend)
   "Move to a WORD start after the point, choosing it with Avy."
   :multiple-cursors nil
-  (interactive)
+  (interactive (list hel-extend-selection))
   (let ((orig-point (point)))
     (when (let ((avy-all-windows nil))
             (-> (avy--regex-candidates "[^ \r\n\t]+" (point) (window-end nil t))
@@ -472,13 +494,14 @@ backward and jump to new top location."
       (hel-push-point orig-point)
       (hel-motion-select (point) (progn
                                    (hel-WORD-motion 1)
-                                   (point))))))
+                                   (point))
+                         extend))))
 
 ;; gB
-(hel-define-command hel-avy-WORD-backward ()
+(hel-define-command hel-avy-WORD-backward (&optional extend)
   "Move to a WORD start before the point, choosing it with Avy."
   :multiple-cursors nil
-  (interactive)
+  (interactive (list hel-extend-selection))
   (let ((orig-point (point)))
     (when (let ((avy-all-windows nil))
             (-> (avy--regex-candidates "[^ \r\n\t]+" (window-start) (point))
@@ -486,20 +509,21 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (if hel-extending-selection
-          (hel-motion-select (mark) (point))
+      (if extend
+          (hel-motion-select (mark) (point) t)
         (hel-select (cons (point) (progn
                                     (hel-WORD-motion 1)
                                     (point))))))))
 
 ;; gj
-(hel-define-command hel-avy-next-line (direction)
+(hel-define-command hel-avy-next-line (direction &optional extend)
   "Move to a following line, selected using Avy.
 When both linewise selection is active (via `x') and selection expansion
 is enabled (via `v'), the selection will expand linewise to include all lines
 to the chosen one."
   :multiple-cursors nil
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (cl-callf hel-sign direction)
   (when-let* ((pos (save-excursion
                      (let ((goal-column (window-hscroll)))
@@ -509,9 +533,9 @@ to the chosen one."
               ((natnump pos)))
     (hel-disable-multiple-cursors-mode)
     (hel-push-point)
-    (if hel-extending-selection
+    (if extend
         (let ((lines? (hel-linewise-selection-p)))
-          (hel-motion-select (mark) pos)
+          (hel-motion-select (mark) pos t)
           (if lines? (hel-expand-selection-to-full-lines)))
       ;; else
       (deactivate-mark)
@@ -552,9 +576,10 @@ A selection of whole lines puts point before its last newline."
   (interactive "*")
   (hel-with-each-cursor
     (-let [(begin . end) (hel-selection-bounds)]
-      ;; A region keeps its other end.
-      (when (use-region-p)
-        (set-marker (mark-marker) begin))
+      ;; The mark keeps the start of the selection, which the typed text
+      ;; joins: a region keeps its other end, and leaving Insert state
+      ;; reads it for the cursor character.
+      (set-marker (mark-marker) begin)
       (goto-char end))
     (when (hel-linewise-selection-p)
       (backward-char)))
@@ -936,33 +961,18 @@ the buffer is left as it is."
                (called-interactively-p 'any))
       (hel-reveal-point-when-on-top))))
 
-;; v
-(hel-define-command hel-extend-selection (arg)
-  "Enable or disable extending selections.
-If ARG positive number — enable, negative — disable.
-When called interactively — toggle extending selection."
-  :multiple-cursors t
-  (interactive (list (if hel-extending-selection -1 1)))
-  (setq hel-extending-selection (/= arg -1))
-  ;; Show at once the selection that the next motions extend.
-  (when (and hel-extending-selection
-             (not (use-region-p)))
-    (apply #'hel-select (hel-selection)))
-  (unless hel-executing-command-for-fake-cursor
-    (hel-update-cursor)))
-
 ;; ;
-(hel-define-command hel-collapse-selection ()
+(hel-define-command hel-collapse-selection (&optional extend)
   "Collapse the selection to the character at its head.
 The head character is the last character of a forward selection and the
 first character of a backward one. It becomes the cursor character.
 Without a selection, stop the search, unless extending the selection is
 on."
   :multiple-cursors t
-  (interactive)
+  (interactive (list hel-extend-selection))
   (cond ((use-region-p)
          (hel--set-cursor-char (point) (hel-region-direction)))
-        (hel-extending-selection)
+        (extend)
         (hel-search--session
          (hel-search-stop))))
 
@@ -1439,24 +1449,26 @@ COUNT, select COUNT sentences."
   (hel-mark-text-object 'sentence :around count))
 
 ;; ]s
-(hel-define-command hel-mark-sentence-forward (count)
+(hel-define-command hel-mark-sentence-forward (count &optional extend)
   "Select from point to the end of the sentence under the cursor.
 When point is already there, select the whole next sentence. With COUNT,
 go on to the end of the COUNT-th sentence."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'sentence count :end t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'sentence count :end t extend))
 
 ;; [s
-(hel-define-command hel-mark-sentence-backward (count)
+(hel-define-command hel-mark-sentence-backward (count &optional extend)
   "Select from point to the start of the sentence under the cursor.
 When point is already there, select the whole previous sentence. With
 COUNT, go on to the start of the COUNT-th sentence."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'sentence (- count) :begin t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'sentence (- count) :begin t extend))
 
 ;; mip
 (hel-define-command hel-mark-paragraph (count)
@@ -1478,24 +1490,26 @@ select COUNT paragraphs."
   (hel-mark-text-object 'paragraph :around count))
 
 ;; }
-(hel-define-command hel-forward-paragraph (count)
+(hel-define-command hel-forward-paragraph (count &optional extend)
   "Select from point to the beginning of the COUNT-th next paragraph.
 Without a next paragraph, select to the end of the buffer."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (unless (hel--report-buffer-edge count)
-    (hel-mark-to-thing-edge 'paragraph count :begin nil)))
+    (hel-mark-to-thing-edge 'paragraph count :begin nil extend)))
 
 ;; {
-(hel-define-command hel-backward-paragraph (count)
+(hel-define-command hel-backward-paragraph (count &optional extend)
   "Select to the beginning of the COUNT-th previous paragraph.
 Without a previous paragraph, select to the start of the buffer."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (unless (hel--report-buffer-edge (- count))
-    (hel-mark-to-thing-edge 'paragraph (- count) :begin nil)))
+    (hel-mark-to-thing-edge 'paragraph (- count) :begin nil extend)))
 
 (defun hel--report-buffer-edge (dir)
   "Return non-nil if point is at the buffer edge in DIR, and say so.
@@ -1526,24 +1540,26 @@ when no function follows. With COUNT, select COUNT functions."
   (hel-mark-text-object 'function :around count))
 
 ;; ]f
-(hel-define-command hel-mark-function-forward (count)
+(hel-define-command hel-mark-function-forward (count &optional extend)
   "Select from point to the end of the function under the cursor.
 When point is already there, select the whole next function. With COUNT,
 go on to the end of the COUNT-th function."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'function count :end t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'function count :end t extend))
 
 ;; [f
-(hel-define-command hel-mark-function-backward (count)
+(hel-define-command hel-mark-function-backward (count &optional extend)
   "Select from point to the start of the function under the cursor.
 When point is already there, select the whole previous function. With
 COUNT, go on to the start of the COUNT-th function."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'function (- count) :begin t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'function (- count) :begin t extend))
 
 ;; mit
 (hel-define-command hel-mark-class (count)
@@ -1563,24 +1579,26 @@ With COUNT, select COUNT classes."
   (hel-mark-text-object 'class :around count))
 
 ;; ]t
-(hel-define-command hel-mark-class-forward (count)
+(hel-define-command hel-mark-class-forward (count &optional extend)
   "Select from point to the end of the class under the cursor.
 When point is already there, select the whole next class. With COUNT,
 go on to the end of the COUNT-th class."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'class count :end t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'class count :end t extend))
 
 ;; [t
-(hel-define-command hel-mark-class-backward (count)
+(hel-define-command hel-mark-class-backward (count &optional extend)
   "Select from point to the start of the class under the cursor.
 When point is already there, select the whole previous class. With
 COUNT, go on to the start of the COUNT-th class."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'class (- count) :begin t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'class (- count) :begin t extend))
 
 ;; mia
 (hel-define-command hel-mark-argument (count)
@@ -1601,24 +1619,26 @@ COUNT arguments."
   (hel-mark-text-object 'argument :around count))
 
 ;; ]a
-(hel-define-command hel-mark-argument-forward (count)
+(hel-define-command hel-mark-argument-forward (count &optional extend)
   "Select from point to the end of the argument under the cursor.
 When point is already there, select the whole next argument. With COUNT,
 go on to the end of the COUNT-th argument."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'argument count :end t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'argument count :end t extend))
 
 ;; [a
-(hel-define-command hel-mark-argument-backward (count)
+(hel-define-command hel-mark-argument-backward (count &optional extend)
   "Select from point to the start of the argument under the cursor.
 When point is already there, select the whole previous argument. With
 COUNT, go on to the start of the COUNT-th argument."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'argument (- count) :begin t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'argument (- count) :begin t extend))
 
 ;; mie
 (hel-define-command hel-mark-entry (count)
@@ -1641,24 +1661,26 @@ entries."
   (hel-mark-text-object 'entry :around count))
 
 ;; ]e
-(hel-define-command hel-mark-entry-forward (count)
+(hel-define-command hel-mark-entry-forward (count &optional extend)
   "Select from point to the end of the entry under the cursor.
 When point is already there, select the whole next entry. With COUNT, go
 on to the end of the COUNT-th entry."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'entry count :end t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'entry count :end t extend))
 
 ;; [e
-(hel-define-command hel-mark-entry-backward (count)
+(hel-define-command hel-mark-entry-backward (count &optional extend)
   "Select from point to the start of the entry under the cursor.
 When point is already there, select the whole previous entry. With COUNT,
 go on to the start of the COUNT-th entry."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'entry (- count) :begin t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'entry (- count) :begin t extend))
 
 ;; mic
 (hel-define-command hel-mark-comment (count)
@@ -1681,24 +1703,26 @@ comments."
   (hel-mark-text-object 'comment :around count))
 
 ;; ]c
-(hel-define-command hel-mark-comment-forward (count)
+(hel-define-command hel-mark-comment-forward (count &optional extend)
   "Select from point to the end of the comment under the cursor.
 When point is already there, select the whole next comment. With COUNT,
 go on to the end of the COUNT-th comment."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'comment count :end t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'comment count :end t extend))
 
 ;; [c
-(hel-define-command hel-mark-comment-backward (count)
+(hel-define-command hel-mark-comment-backward (count &optional extend)
   "Select from point to the start of the comment under the cursor.
 When point is already there, select the whole previous comment. With
 COUNT, go on to the start of the COUNT-th comment."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
-  (hel-mark-to-thing-edge 'comment (- count) :begin t))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-mark-to-thing-edge 'comment (- count) :begin t extend))
 
 ;;;; Mark pairs
 
@@ -1941,28 +1965,30 @@ The regions are those of `hel-expand-selection-backward'."
 ;;;; Structural editing
 
 ;; M-n or C-l
-(hel-define-command hel-select-next-sibling (count)
+(hel-define-command hel-select-next-sibling (count &optional extend)
   "Select the next sibling of the node under the selection.
 At the last sibling, keep the selection. Repeat COUNT times. A negative
 COUNT selects the previous siblings. When no node is under the selection,
 as on a space between two nodes, first select the node after it."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (when-let* ((producer (hel-node-producer)))
-    (hel--tree-select-sibling producer count)))
+    (hel--tree-select-sibling producer count extend)))
 
 ;; M-p or C-h
-(hel-define-command hel-select-previous-sibling (count)
+(hel-define-command hel-select-previous-sibling (count &optional extend)
   "Select the previous sibling of the node under the selection.
 At the first sibling, keep the selection. Repeat COUNT times. When no
 node is under the selection, as on a space between two nodes, first
 select the node before it."
   :multiple-cursors t
   :merge-selections t
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (when-let* ((producer (hel-node-producer)))
-    (hel--tree-select-sibling producer (- count))))
+    (hel--tree-select-sibling producer (- count) extend)))
 
 ;; M-a
 (hel-define-command hel-select-all-siblings ()

@@ -269,18 +269,76 @@ selection."
   (hel-test-with 'text-mode "|foo^ bar"
     (hel-test-expect-chars ";" "|foo bar" '(("f" -1)))))
 
+(ert-deftest hel-behaviour-cursor-char-match-bracket ()
+  "`mm' moves the cursor character to the matching bracket.  From
+inside a pair it goes to the closing bracket."
+  (hel-test-with 'text-mode "|(count)"
+    (hel-test-expect-chars "mm" "(count)|" '((")" 1)))
+    (hel-test-expect-chars "mm" "|(count)" '(("(" -1))))
+  (hel-test-with 'text-mode "(co|unt)"
+    (hel-test-expect-chars "mm" "(count)|" '((")" 1))))
+  (hel-test-with 'text-mode "(a (b) |c)"
+    (hel-test-expect-chars "mm" "(a (b) c)|" '((")" 1))))
+  (hel-test-with 'text-mode "|foo"
+    (hel-test-expect-chars "mm" "|foo" '(("f" -1))))
+  ;; An active region starts from its head character.
+  (hel-test-with 'text-mode "^foo (bar)|"
+    (hel-test-expect-chars "mm" "foo |(bar)" '(("(" -1)))))
+
+(ert-deftest hel-behaviour-extend-match-bracket ()
+  "When extending, `mm' moves the head character and keeps the anchor."
+  (hel-test-with 'text-mode "|(count)"
+    (hel-test-expect "vmm" "^(count)|"))
+  (hel-test-with 'text-mode "(count|)"
+    (hel-test-expect "vmm" "|(count)^")))
+
 (ert-deftest hel-behaviour-cursor-char-after-insert ()
-  "Leaving Insert state makes the character before point the cursor
-character.  At the start of a line, that character is a newline, so the
-cursor character is the one after point."
+  "Insert state never moves the selection.  After `a' the typed text
+joins the cursor character, which becomes the last character typed;
+after every other command the cursor character stays after the typed
+text."
   (hel-test-with 'text-mode "fo|o"
-    (hel-test-expect-chars "ix<escape>" "fox|o" '(("x" 1))))
+    (hel-test-expect-chars "ix<escape>" "fox|o" '(("o" -1))))
+  (hel-test-with 'text-mode "fo|o bar"
+    (hel-test-expect-chars "ax<escape>" "foox| bar" '(("x" 1))))
+  (hel-test-with 'text-mode "|foo\nbar"
+    (hel-test-expect-chars "Ax<escape>" "foox|\nbar" '(("\n" -1))))
+  (hel-test-with 'text-mode "fo|o\nbar"
+    (hel-test-expect-chars "ox<escape>" "foo\nx|\nbar" '(("\n" -1))))
+  (hel-test-with 'text-mode "foo|"
+    (hel-test-expect-chars "ax<escape>" "foox|" '(("x" 1))))
+  (hel-test-with 'text-mode "foo|\nbar"
+    (hel-test-expect-chars "ax<escape>" "foo\nx|bar" '(("x" 1))))
   (hel-test-with 'text-mode "foo\n|bar"
     (hel-test-expect-chars "i<escape>" "foo\n|bar" '(("b" -1)))))
 
+(ert-deftest hel-behaviour-cursor-char-after-insert-continues ()
+  "Pressing the same key again continues the typing at the same place."
+  (hel-test-with 'text-mode "|abc"
+    (hel-test-expect "ix<escape>iy<escape>" "xy|abc"))
+  (hel-test-with 'text-mode "|abc"
+    (hel-test-expect "ax<escape>ay<escape>" "axy|bc")))
+
+(ert-deftest hel-behaviour-cursor-char-after-empty-insert ()
+  "Leaving Insert state with nothing typed restores the cursor character."
+  (pcase-dolist (`(,input ,motion ,key)
+                 '(("fo|o" "" "i") ("fo|o" "" "a")
+                   ("f|oo" "h" "i") ("f|oo" "h" "a")
+                   ("foo|\nbar" "" "i") ("foo|\nbar" "" "a")
+                   ("|foo" "" "i") ("|foo" "" "a")
+                   ("foo|" "" "i") ("foo|" "" "a")))
+    (hel-test-with 'text-mode input
+      (hel-test-press motion)
+      (let ((before (hel-selection-bounds)))
+        (hel-test-press (concat key "<escape>"))
+        (should (equal (list input motion key (hel-selection-bounds))
+                       (list input motion key before)))))))
+
 (ert-deftest hel-behaviour-cursor-char-after-insert-for-each-cursor ()
   (hel-test-with 'text-mode "fo|o\nbar"
-    (hel-test-expect-chars "Cix<escape>" "fox¦o\nbax|r" '(("x" 1) ("x" 1)))))
+    (hel-test-expect-chars "Cix<escape>" "fox¦o\nbax|r" '(("o" -1) ("r" -1))))
+  (hel-test-with 'text-mode "fo|o\nbar"
+    (hel-test-expect-chars "Cax<escape>" "foox¦\nbarx|" '(("x" 1) ("x" 1)))))
 
 ;; The structural commands and the text objects start from the selection, so
 ;; at a bare point they start from the cursor character.  In each row the
@@ -561,7 +619,7 @@ region: the history records that the region was active."
   ;; `:' runs a command by name, for all cursors too.
   ("|foo" ":forward-char RET" "f|oo")
   ;; In the minibuffer `Esc' goes to Normal state, and Hel keys edit the input.
-  ("|foo bar foo" "/fooo<escape>dRET" "^foo| bar foo")
+  ("|foo bar foo" "/fooo<escape>hdRET" "^foo| bar foo")
   ;; The second `Esc' cancels the search.
   ("|foo bar" "/bar<escape><escape>" "|foo bar"))
 
@@ -664,7 +722,7 @@ cursor character, so extending goes on."
                        (insert "!"))))
     (hel-test-expect "vw" "^foo |bar baz")
     (hel-test-press! "C-c x")
-    (should hel-extending-selection)
+    (should hel-extend-selection)
     (should-not (region-active-p))
     (hel-test-expect "w" "foo ^bar |baz!")
     (hel-test-press! "C-c x")
@@ -1288,22 +1346,23 @@ cursor character, so extending goes on."
 
 (hel-test-table match
   ("|(foo)" "mm" "(foo)|")
-  ("(foo)|" "mm" "|(foo)")
+  ("(foo|)" "mm" "|(foo)")
   ("|[foo]" "mm" "[foo]|")
-  ("[foo]|" "mm" "|[foo]")
+  ("[foo|]" "mm" "|[foo]")
   ("|{foo}" "mm" "{foo}|")
-  ("{foo}|" "mm" "|{foo}")
-  ;; Inside of brackets `mm' goes after the closing one.
+  ("{foo|}" "mm" "|{foo}")
+  ;; Inside of brackets `mm' goes to the closing one.
   ("(f|oo)" "mm" "(foo)|")
-  ("(a (b|) c)" "mm" "(a (b)| c)")
+  ("(a (b|) c)" "mm" "(a |(b) c)")
   ("(a |(b) c)" "mm" "(a (b)| c)")
   ;; Nesting and lines.
   ("|(a (b)\n c)" "mm" "(a (b)\n c)|")
-  ("(a (b)\n c)|" "mm" "|(a (b)\n c)")
-  ;; `mm' drops the selection.
+  ("(a (b)\n c|)" "mm" "|(a (b)\n c)")
+  ;; `mm' drops the selection and starts from its head character.
   ("^(foo)|" "mm" "|(foo)")
-  ;; Nothing to match.
+  ;; Nothing to match, and the empty selection at the end of the buffer.
   ("fo|o" "mm" "fo|o")
+  ("(foo)|" "mm" "(foo)|")
   (:mode c-mode "|{ a(b); }" "mm" "{ a(b); }|")
   (:mode emacs-lisp-mode "|(a \")\" b)" "mm" "(a \")\" b)|"))
 

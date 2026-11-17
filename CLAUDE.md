@@ -122,6 +122,11 @@ command.
   COUNT things takes a signed `count`, as Emacs motions do, and computes
   `dir` inside: `hel-thing-reach`
 - `hel-fake-cursor-*` for cursor manipulation functions
+- Only commands read the variable `hel-extend-selection`, in their
+  `interactive` form, and pass it on as the argument `extend`, optional in
+  a command and required in a helper. No helper reads the flag. Only the
+  command `hel-extend-selection`, the change of state and the window switch
+  write it, all in `hel-core.el`. See `docs/design/extend-as-argument.org`
 - `-p` for a predicate function, including a local one in `cl-flet`, and `?`
   for a local variable that holds a flag: `forward?`, `extend?`
 

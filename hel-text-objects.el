@@ -568,11 +568,11 @@ KIND is:
             (hel-reveal-point-when-on-top))))
     (hel--no-thing-producer-message thing)))
 
-(defun hel-mark-to-thing-edge (thing count edge skip-gap?)
+(defun hel-mark-to-thing-edge (thing count edge skip-gap? extend)
   "Select from point to the EDGE of the COUNT-th THING.
 A negative COUNT goes backward. EDGE and SKIP-GAP? are as in
-`hel-thing-reach'. When extending the selection is on, extend the
-selection instead of replacing it, and go on to the next edge when the
+`hel-thing-reach'. With EXTEND, extend the selection instead of
+replacing it, and go on to the next edge when the
 motion would stop on the anchor of the selection, where the selection
 would be empty. When no thing exists in the direction, the selection
 stays as it is."
@@ -582,14 +582,14 @@ stays as it is."
                   (-when-let ((begin . end) (hel-thing-reach thing producer pos
                                                              count edge skip-gap?))
                     (if (< count 0) (cons end begin) (cons begin end)))))
-        (let ((anchor (and hel-extending-selection
+        (let ((anchor (and extend
                            (hel--selection-anchor (hel-sign count)))))
           (-when-let* (((start . end) (reach (point) count))
                        ((start . end) (if (eql end anchor)
                                           (reach end (hel-sign count))
                                         (cons start end))))
             (when (hel-thing-jump-p thing) (hel-push-point))
-            (hel-motion-select start end)
+            (hel-motion-select start end extend)
             (hel-reveal-point-when-on-top))))
     ;; else
     (hel--no-thing-producer-message thing)))

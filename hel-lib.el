@@ -239,14 +239,24 @@ backward when DIRECTION is -1."
     (set-mark begin)
     (goto-char end)))
 
-(defun hel-motion-select (start end)
+(defun hel-motion-select (start end extend)
   "Select from START to END, with point at END.
-When extending the selection is on, the selection keeps its anchor in
-place of START, see `hel--selection-anchor'."
-  (set-mark (if hel-extending-selection
+With EXTEND, the selection keeps its anchor in place of START, see
+`hel--selection-anchor'."
+  (set-mark (if extend
                 (hel--selection-anchor (hel-sign (- end (point))))
               start))
   (goto-char end))
+
+(defun hel-jump-to (pos extend)
+  "Move point to POS.
+Without EXTEND, drop the selection, so the cursor character is the one
+at POS.  With EXTEND, stretch the selection from its anchor to POS, see
+`hel--selection-anchor'."
+  (if extend
+      (set-mark (hel--selection-anchor (hel-sign (- pos (point)))))
+    (deactivate-mark))
+  (goto-char pos))
 
 (defun hel--selection-anchor (dir)
   "Return the end of the selection that a motion in DIR extends it from.
@@ -304,24 +314,6 @@ are numbers; MARK may be nil."
          (list (cons point
                      (min (1+ point) (point-max)))
                -1))))
-
-(defun hel-maybe-set-mark (&optional dir)
-  "Set mark at point unless extending selection is active.
-When extending and DIR is non-nil, put the mark at the anchor of the
-selection for a motion in DIR, see `hel--selection-anchor'."
-  (cond ((not hel-extending-selection)
-         (set-mark (point)))
-        (dir
-         (set-mark (hel--selection-anchor dir)))))
-
-(defun hel-maybe-deactivate-mark (&optional dir)
-  "Deactivate mark unless extending selection is active.
-When extending and DIR is non-nil, put the mark at the anchor of the
-selection for a motion in DIR, see `hel--selection-anchor'."
-  (cond ((not hel-extending-selection)
-         (deactivate-mark))
-        (dir
-         (set-mark (hel--selection-anchor dir)))))
 
 (defun hel-ensure-region-direction (direction)
   "Exchange point and mark if the region direction mismatches DIRECTION.
@@ -762,16 +754,15 @@ line(s). With no region, select current line."
         (set-marker old nil))))
   nil)
 
-(defun hel--jump-over-mark-ring (&optional backward?)
+(defun hel--jump-over-mark-ring (backward? extend)
   "Jump to the top position on `mark-ring'.
 If point is already there, rotate `mark-ring' forward (or BACKWARD)
-and jump to the new top position."
+and jump to the new top position.  EXTEND is as in `hel-jump-to'."
   (when mark-ring
-    (hel-maybe-deactivate-mark)
     (when (= (point) (car mark-ring))
       (cl-callf hel-rotate-ring mark-ring backward?))
     (hel-recenter-point-on-jump
-      (goto-char (car mark-ring)))))
+      (hel-jump-to (car mark-ring) extend))))
 
 (defun hel--jump-over-global-mark-ring (&optional backward?)
   "Jump to the top location on the `global-mark-ring'.
@@ -1041,7 +1032,7 @@ The result is a (BEGIN . END) pair."
 
 (defun hel-maybe-deactivate-mark-a (&rest _)
   "Deactivate mark unless extending selection is active. Can be used as advice."
-  (or hel-extending-selection
+  (or hel-extend-selection
       (deactivate-mark)))
 
 (declare-function hel-disable-multiple-cursors-mode "hel-multiple-cursors-core")

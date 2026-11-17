@@ -219,7 +219,7 @@ character has the face `hel-cursor-char', as the main cursor has."
          (end (if (eq (char-after begin) ?\n)
                   begin
                 (cdr bounds)))
-         (face (cond (hel-extending-selection
+         (face (cond (hel-extend-selection
                       'hel-extend-selection-cursor)
                      (hel-insert-state
                       'hel-insert-state-fake-cursor)

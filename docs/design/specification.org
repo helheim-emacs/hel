@@ -1465,6 +1465,15 @@ moving.
   before point, and otherwise the cursor character is the character after
   point, so a command outside Hel that moves point gives that fallback. At
   the end of the buffer the selection is empty.
+- Insert state never moves the selection, as in Helix. The text typed
+  after =a= joins the selection, so the cursor character becomes the last
+  character typed; after every other command the text lands before the
+  selection, and the cursor character stays the one after it. So =<Esc>=
+  with nothing typed leaves the selection as it was, and the same key
+  continues the typing at the same place.
+- =mm= moves the cursor character from a bracket to its match, and from
+  inside a pair to the closing bracket, as in Helix. When extending, the
+  head character moves and the anchor character stays, as with =h= and =l=.
 - The commands that act on the selection take no count: a count used to
   say how many characters to take without a selection.
 - An active selection is never empty. =h= and =l= move the end character of

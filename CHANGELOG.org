@@ -2,7 +2,7 @@
 ** Added
 
 - Extensions can use more of Hel. ~hel-node-producer~ returns the producer
-  that the ~hel-node-~ operations take. ~hel-extending-selection~ is non-nil
+  that the ~hel-node-~ operations take. ~hel-extend-selection~ is non-nil
   while =v= makes motions extend the selection. ~hel-word-motion~,
   ~hel-WORD-motion~, ~hel-sentence-motion~, ~hel-paragraph-motion~,
   ~hel-function-motion~ and ~hel-sexp-motion~ move point over COUNT things
@@ -76,8 +76,15 @@
   and =h= and =l= move that character by one, as a block cursor moves: on a
   reversal the character moves and the bar stays. =j= and =k= keep the
   character on its side of the bar, so it keeps its column. =;= leaves the
-  cursor on the character at the head of the selection, and leaving Insert
-  state leaves it on the character before the bar.
+  cursor on the character at the head of the selection. Insert state never
+  moves the selection, as in Helix: after =i=, =I=, =A=, =o=, =O= and =c=
+  the cursor stays on the character after the typed text, and after =a= it
+  stands on the last character typed. So =<Esc>= with nothing typed leaves
+  the cursor where it was.
+- =mm= starts from the character under the cursor and moves the cursor onto
+  the matching bracket, as in Helix. Inside a pair it goes to the closing
+  bracket, and when extending the selection it extends the selection to the
+  bracket.
 
 - In Normal state, the character that the cursor stands on has a faint
   background, the face ~hel-cursor-char~. A newline, and the end of the
@@ -159,6 +166,20 @@
 
 - ~hel-set-region~ is removed. Use ~hel-select~ with a range and a direction,
   or ~hel-motion-select~ for a motion that keeps the mark after =v=.
+
+- Only commands read the variable ~hel-extend-selection~, which =v= sets. A
+  command reads it in its ~interactive~ form and takes it as the optional
+  argument EXTEND, so Lisp code can call a motion such as
+  ~hel-forward-word-start~ in either mode. The helpers below the commands
+  take EXTEND as a required argument: ~hel-motion-select~ and
+  ~hel-mark-to-thing-edge~. ~hel-maybe-set-mark~ and
+  ~hel-maybe-deactivate-mark~ are removed. Use ~hel-motion-select~, or
+  ~hel-jump-to~ for a motion that leaves no selection. Only
+  the command ~hel-extend-selection~ and the change of state change the
+  variable. The variable and the command share one name, as a minor mode
+  and its variable do, and the command reads its argument as a minor mode
+  does: ~toggle~ toggles, zero or a negative number disables, and anything
+  else enables.
 
 - The Hel API says "selection" for a selection as a value. ~hel-region~ and
   ~hel-save-region~ are renamed to ~hel-selection~ and ~hel-save-selection~.

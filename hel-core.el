@@ -308,7 +308,7 @@ When ARG is non-positive integer and Hel is in %s — disable it.\n\n%s"
            ,@body
            ;; Switch color and shape of all cursors.
            ;; main cursor
-           (setq hel-extending-selection nil)
+           (setq hel-extend-selection nil)
            (hel-update-cursor)
            ;; fake cursors
            (when hel-multiple-cursors-mode
@@ -316,7 +316,7 @@ When ARG is non-positive integer and Hel is in %s — disable it.\n\n%s"
                (hel-save-excursion
                  (dolist (cursor (hel-all-fake-cursors))
                    (hel-with-fake-cursor cursor
-                     (setq hel-extending-selection nil))))))
+                     (setq hel-extend-selection nil))))))
            (run-hooks ',enter-hook))
          (hel-update-active-keymaps)
          (force-mode-line-update)))))
@@ -458,7 +458,7 @@ MODE and STATE should be symbols."
   :keymap (define-keymap :full t :suppress t)
   :cursor (list hel-normal-state-cursor-type
                 (lambda ()
-                  (if hel-extending-selection
+                  (if hel-extend-selection
                       'hel-extend-selection-cursor
                     'hel-normal-state-main-cursor))))
 
@@ -473,7 +473,8 @@ MODE and STATE should be symbols."
         (setq hel-undo--previous-command-kind 'other
               hel--selection-was-active-on-insert
               (and hel-reactivate-selection-after-insert-state
-                   (region-active-p)))
+                   (region-active-p))
+              hel--insert-side (if (eq this-command 'hel-append) 1 -1))
         (hel-with-each-cursor
           (deactivate-mark)))
     ;; else
@@ -481,17 +482,52 @@ MODE and STATE should be symbols."
     (if hel--selection-was-active-on-insert
         (hel-with-each-cursor
           (activate-mark))
-      ;; The cursor character is the character before point, usually the
-      ;; last one typed.
       (hel-with-each-cursor
-        (hel--set-cursor-char (point) 1)))))
+        (cond ((not (and (< 0 hel--insert-side)
+                         ;; `hel-append' left the start of the selection in
+                         ;; the mark; an empty selection has no text.
+                         (< (mark t) (point))))
+               (hel--set-cursor-char (point) -1))
+              ;; A cursor character on a newline has point before it.
+              ((eq ?\n (char-before))
+               (hel--set-cursor-char (1- (point)) -1))
+              (t
+               (hel--set-cursor-char (point) 1)))))))
 
 (hel-define-state emacs
   "Emacs state."
   :cursor (list hel-emacs-state-cursor-type
                 'hel-emacs-state-main-cursor) ; face
-  (setq hel-extending-selection nil)
+  (setq hel-extend-selection nil)
   (deactivate-mark))
+
+;;; Extending the selection
+
+;; The variable `hel-extend-selection' belongs to this layer.  Commands read
+;; it in their `interactive' form and pass it on as an argument.  It changes
+;; only through the change of state and through the command of the same
+;; name, as a minor mode and its variable share a name.
+
+;; v
+(hel-define-command hel-extend-selection (&optional arg)
+  "Toggle extending the selection: motions then stretch it, not replace it.
+ARG works as for a minor mode.  Interactively, toggle, or with a prefix
+argument enable when it is positive and disable otherwise.  From Lisp,
+toggle when ARG is `toggle', disable when ARG is zero or negative, and
+enable otherwise, also when ARG is nil."
+  :multiple-cursors t
+  (interactive (list (if current-prefix-arg
+                         (prefix-numeric-value current-prefix-arg)
+                       'toggle)))
+  (setq hel-extend-selection (if (eq arg 'toggle)
+                                 (not hel-extend-selection)
+                               (not (and (numberp arg) (< arg 1)))))
+  ;; Show at once the selection that the next motions extend.
+  (when (and hel-extend-selection
+             (not (use-region-p)))
+    (apply #'hel-select (hel-selection)))
+  (unless hel-executing-command-for-fake-cursor
+    (hel-update-cursor)))
 
 ;;; Keymaps
 
@@ -753,7 +789,7 @@ a Hel modal state. Can be a symbol or list of symbols.
   (unless hel-executing-command-for-fake-cursor
     (setq hel-this-command this-command
           hel--selection-record (list (current-buffer) (mark t) mark-active
-                                      hel-extending-selection))
+                                      hel-extend-selection))
     (cond (hel-normal-state
            (hel--single-undo-step-beginning))
           (hel-insert-state
@@ -810,7 +846,7 @@ a Hel modal state. Can be a symbol or list of symbols.
   "The selection of a window that does not own its buffer.
 BUFFER is the buffer that the selection belongs to.  POINT is a marker at
 the point of the window, and MARK a marker at the mark.  ACTIVE and
-EXTENDING are the values of `mark-active' and `hel-extending-selection'."
+EXTENDING are the values of `mark-active' and `hel-extend-selection'."
   buffer point mark active extending)
 
 (defun hel--switch-selection-owner ()
@@ -826,7 +862,7 @@ shows another buffer counts as no owner."
   (let ((window (selected-window))
         (owner hel--selection-owner)
         (buffer (current-buffer))
-        (was-extending? hel-extending-selection))
+        (was-extending? hel-extend-selection))
     (when (eq (window-buffer window) buffer)
       (when (and (window-live-p owner)
                  (eq (window-buffer owner) buffer))
@@ -835,7 +871,7 @@ shows another buffer counts as no owner."
         (pcase-let ((`(,mark ,active ,extending)
                      (if (eq (car hel--selection-record) buffer)
                          (cdr hel--selection-record)
-                       (list (mark t) mark-active hel-extending-selection))))
+                       (list (mark t) mark-active hel-extend-selection))))
           (hel--save-window-selection owner mark active extending)
           (when (and (eql mark (mark t))
                      (eq active mark-active))
@@ -843,13 +879,13 @@ shows another buffer counts as no owner."
       (hel--forget-window-selection window)
       (setq hel--selection-owner window)
       ;; The color of the cursor shows whether motions extend.
-      (unless (eq was-extending? hel-extending-selection)
+      (unless (eq was-extending? hel-extend-selection)
         (hel-update-cursor)))))
 
 (defun hel--save-window-selection (window mark active extending)
   "Save in WINDOW the selection with MARK, ACTIVE and EXTENDING.
 MARK is a position or nil.  ACTIVE and EXTENDING are the values of
-`mark-active' and `hel-extending-selection'."
+`mark-active' and `hel-extend-selection'."
   (let ((saved (or (window-parameter window 'hel--selection)
                    (set-window-parameter
                     window 'hel--selection
@@ -876,11 +912,11 @@ the mark and turn extending off, but keep the mark where it is."
          ;; must not become the primary selection.
          (select-active-regions nil))
     (deactivate-mark)
-    (setq hel-extending-selection nil)
+    (setq hel-extend-selection nil)
     (when valid?
       (set-marker (mark-marker)
                   (marker-position (hel--window-selection-mark saved)))
-      (setq hel-extending-selection (hel--window-selection-extending saved))
+      (setq hel-extend-selection (hel--window-selection-extending saved))
       (when (hel--window-selection-active saved)
         (activate-mark)))))
 

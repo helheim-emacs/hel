@@ -41,8 +41,10 @@
 (defvar hel--in-animate-scroll nil
   "Non-nil inside `hel--animate-scroll' loop.")
 
-(defun hel-smooth-scroll (delta duration)
+(defun hel-smooth-scroll (delta duration extend)
   "Smoothly scroll the view by DELTA pixels over DURATION seconds.
+When point has to move, the selection goes with it if EXTEND is
+non-nil.
 When there are multiple cursors in the buffer the scroll is capped
 to one screen so the main cursor stay in sync with fake ones."
   (unless hel--in-animate-scroll
@@ -59,7 +61,7 @@ to one screen so the main cursor stay in sync with fake ones."
             ;; Do not scroll more than available space.
             (setq delta (* (hel-sign delta)
                            (1- window-space)))
-          (hel-maybe-deactivate-mark)))
+          (unless extend (deactivate-mark))))
       (if hel-multiple-cursors-mode
           ;; Whatever happens, cursor must not move, so
           ;; it stays in sync with the fake cursors.
@@ -221,7 +223,7 @@ Signals `beginning-of-buffer' or `end-of-buffer' at the buffer boundary."
 ;;; Commands
 
 ;; C-d
-(hel-define-command hel-scroll-down (&optional count)
+(hel-define-command hel-scroll-down (&optional count extend)
   "Smoothly scroll the window and the cursor COUNT lines downwards.
 If COUNT is not specified the function scrolls down `hel-scroll-count'
 lines, which is the last used COUNT. If the scroll count is zero
@@ -231,21 +233,21 @@ If multiple cursors are active, scroll is restricted only within
 current screen to prevent desynchronization between main cursor
 and fake ones."
   :multiple-cursors nil
-  (interactive "P")
+  (interactive (list current-prefix-arg hel-extend-selection))
   (setq count (if (natnump count)
                   (setq hel-scroll-count count)
                 hel-scroll-count))
   (let ((delta (if (zerop count)
                    (/ (window-body-height nil t) 2)
                  (* count (default-line-height)))))
-    (hel-smooth-scroll delta hel-scroll-half-page-duration)
+    (hel-smooth-scroll delta hel-scroll-half-page-duration extend)
     (list delta hel-scroll-half-page-duration)))
 
 (put 'hel-scroll-down 'scroll-command t)
 (put 'hel-scroll-down 'hel-scroll t)
 
 ;; C-u
-(hel-define-command hel-scroll-up (&optional count)
+(hel-define-command hel-scroll-up (&optional count extend)
   "Smoothly scroll the window and the cursor COUNT lines upwards.
 If COUNT is not specified the function scrolls up `hel-scroll-count'
 lines, which is the last used COUNT. If the scroll count is zero
@@ -255,54 +257,57 @@ If multiple cursors are active, scroll is restricted only within
 current screen to prevent desynchronization between main cursor
 and fake ones."
   :multiple-cursors nil
-  (interactive "P")
+  (interactive (list current-prefix-arg hel-extend-selection))
   (setq count (if (natnump count)
                   (setq hel-scroll-count count)
                 hel-scroll-count))
   (let ((delta (- (if (zerop count)
                       (/ (window-body-height nil t) 2)
                     (* count (default-line-height))))))
-    (hel-smooth-scroll delta hel-scroll-half-page-duration)
+    (hel-smooth-scroll delta hel-scroll-half-page-duration extend)
     (list delta hel-scroll-half-page-duration)))
 
 (put 'hel-scroll-up 'scroll-command t)
 (put 'hel-scroll-up 'hel-scroll t)
 
 ;; C-f
-(hel-define-command hel-scroll-page-down (&optional count)
+(hel-define-command hel-scroll-page-down (&optional count extend)
   "Smoothly scroll the window COUNT pages downwards.
 If multiple cursors are active, rotate the main selection forward COUNT times
 instead."
   :multiple-cursors nil
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (or count (setq count 1))
   (let ((delta (* count (window-body-height) (default-line-height))))
-    (hel-smooth-scroll delta hel-scroll-page-duration)
+    (hel-smooth-scroll delta hel-scroll-page-duration extend)
     (list delta hel-scroll-page-duration)))
 
 (put 'hel-scroll-page-down 'scroll-command t)
 (put 'hel-scroll-page-down 'hel-scroll t)
 
 ;; C-b
-(hel-define-command hel-scroll-page-up (&optional count)
+(hel-define-command hel-scroll-page-up (&optional count extend)
   "Smoothly scroll the window COUNT pages upwards.
 If multiple cursors are active, rotate the main selection COUNT times
 backward instead."
   :multiple-cursors nil
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (or count (setq count 1))
   (let ((delta (- (* count (window-body-height) (default-line-height)))))
-    (hel-smooth-scroll delta hel-scroll-page-duration)
+    (hel-smooth-scroll delta hel-scroll-page-duration extend)
     (list delta hel-scroll-page-duration)))
 
 (put 'hel-scroll-page-up 'scroll-command t)
 (put 'hel-scroll-page-up 'hel-scroll t)
 
 ;; C-e
-(hel-define-command hel-scroll-line-down (&optional count)
+(hel-define-command hel-scroll-line-down (&optional count extend)
   "Scroll the window COUNT lines downwards."
   :multiple-cursors nil
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (or count (setq count 1))
   (let ((beginning-of-window? (or (null (posn-at-point))
                                   (= 0 (cdr (posn-col-row (posn-at-point))))))
@@ -311,21 +316,22 @@ backward instead."
                  hel-multiple-cursors-mode)
       (if (= count 1)
           (unless hel--in-animate-scroll
-            (if beginning-of-window? (hel-maybe-deactivate-mark))
+            (if (and beginning-of-window? (not extend)) (deactivate-mark))
             (let ((scroll-preserve-screen-position nil))
               (scroll-up 1)))
         ;; else
-        (hel-smooth-scroll delta hel-scroll-line-duration)))
+        (hel-smooth-scroll delta hel-scroll-line-duration extend)))
     (list delta hel-scroll-line-duration)))
 
 (put 'hel-scroll-line-down 'scroll-command t)
 (put 'hel-scroll-line-down 'hel-scroll t)
 
 ;; C-y
-(hel-define-command hel-scroll-line-up (&optional count)
+(hel-define-command hel-scroll-line-up (&optional count extend)
   "Scroll the window COUNT lines upwards."
   :multiple-cursors nil
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (or count (setq count 1))
   (let ((end-of-window? (= (1- (window-body-height))
                            (or (cdr (posn-col-row (posn-at-point)))
@@ -335,11 +341,11 @@ backward instead."
                  hel-multiple-cursors-mode)
       (if (= count 1)
           (unless hel--in-animate-scroll
-            (if end-of-window? (hel-maybe-deactivate-mark))
+            (if (and end-of-window? (not extend)) (deactivate-mark))
             (let ((scroll-preserve-screen-position nil))
               (scroll-down 1)))
         ;; else
-        (hel-smooth-scroll delta hel-scroll-line-duration)))
+        (hel-smooth-scroll delta hel-scroll-line-duration extend)))
     (list delta hel-scroll-line-duration)))
 
 (put 'hel-scroll-line-up 'scroll-command t)

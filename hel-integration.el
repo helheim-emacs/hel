@@ -474,7 +474,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 (hel-define-command helheim-wdired-exit ()
   :multiple-cursors t
   (interactive)
-  (cond (hel-extending-selection
+  (cond (hel-extend-selection
          (hel-extend-selection -1))
         ((use-region-p)
          (deactivate-mark))
@@ -737,14 +737,15 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
   (widget-put (get 'editable-field 'widget-type) :keymap widget-field-keymap))
 
 ;; gl
-(hel-define-command hel-widget-end-of-line ()
+(hel-define-command hel-widget-end-of-line (&optional extend)
   "Move point to end of field or end of line, whichever is first."
   :multiple-cursors t
   :merge-selections t
-  (interactive)
+  (interactive (list hel-extend-selection))
   (hel-motion-select (point) (save-excursion
                                (widget-end-of-line)
-                               (point))))
+                               (point))
+                     extend))
 
 ;;;; Xref
 

@@ -521,11 +521,12 @@ index in `hel-search-counter' depends on point.")
       (setq this-command prev-command))))
 
 ;; n
-(hel-define-command hel-search-next (count)
+(hel-define-command hel-search-next (count &optional extend)
   "Select next COUNT search match."
   :multiple-cursors nil
   :merge-selections t
-  (interactive "p")
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
   (when-let* ((regexp (hel-last-search-pattern)))
     (if (memq last-command '(hel-search-forward    ; /
                              hel-search-backward   ; ?
@@ -555,18 +556,19 @@ index in `hel-search-counter' depends on point.")
                       (match (hel-search-session-next-match-from-pos
                               hel-search--session pos dir)))
             (-let [(_ start end closed-overlays) match]
-              (when (and hel-extending-selection (use-region-p))
+              (when (and extend (use-region-p))
                 (hel-create-fake-cursor-from-point))
               (hel-select (cons start end) region-dir)
               (-each closed-overlays #'hel-open-overlay))))))))
 
 ;; N
-(hel-define-command hel-search-previous (count)
+(hel-define-command hel-search-previous (count &optional extend)
   "Select previous COUNT search match."
   :multiple-cursors nil
   :merge-selections t
-  (interactive "p")
-  (hel-search-next (- count)))
+  (interactive (list (prefix-numeric-value current-prefix-arg)
+                     hel-extend-selection))
+  (hel-search-next (- count) extend))
 
 ;; *
 (hel-define-command hel-construct-search-pattern ()
@@ -646,7 +648,7 @@ Do not auto-detect word boundaries in the search pattern."
                                    (append main others)))))
       (deactivate-mark)
       (-each (hel-all-fake-cursors) #'hel--delete-fake-cursor)
-      (setq hel-extending-selection nil)
+      (hel-extend-selection -1)
       (if (setq regions (hel-select-interactively-in-ranges regions invert))
           (progn
             (-each regions
@@ -844,48 +846,60 @@ If INVERT is non-nil — remove selections that match regexp."
 ;;; Find char: f F t T
 
 ;; f
-(hel-define-command hel-find-char-forward ()
+(hel-define-command hel-find-char-forward (&optional extend)
   "Prompt user for CHAR and move to the next occurrence of it.
 Right after this command while hints are active, you can use n and N
 keys to repeat motion forward/backward."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive)
-  (hel-maybe-set-mark 1)
-  (hel-find-char (read-char "f" t) 1 nil))
+  :merge-selections hel-extend-selection
+  (interactive (list hel-extend-selection))
+  (hel-motion-select (point)
+                     (save-excursion
+                       (hel-find-char (read-char "f" t) 1 nil)
+                       (point))
+                     extend))
 
 ;; F
-(hel-define-command hel-find-char-backward ()
+(hel-define-command hel-find-char-backward (&optional extend)
   "Prompt user for CHAR and move to the previous occurrence of it.
 Right after this command while hints are active, you can use n and N
 keys to repeat motion forward/backward."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive)
-  (hel-maybe-set-mark -1)
-  (hel-find-char (read-char "F" t) -1 nil))
+  :merge-selections hel-extend-selection
+  (interactive (list hel-extend-selection))
+  (hel-motion-select (point)
+                     (save-excursion
+                       (hel-find-char (read-char "F" t) -1 nil)
+                       (point))
+                     extend))
 
 ;; t
-(hel-define-command hel-till-char-forward ()
+(hel-define-command hel-till-char-forward (&optional extend)
   "Prompt user for CHAR and move before the next occurrence of it.
 Right after this command while hints are active, you can use n and N
 keys to repeat motion forward/backward."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive)
-  (hel-maybe-set-mark 1)
-  (hel-find-char (read-char "t" t) 1 t))
+  :merge-selections hel-extend-selection
+  (interactive (list hel-extend-selection))
+  (hel-motion-select (point)
+                     (save-excursion
+                       (hel-find-char (read-char "t" t) 1 t)
+                       (point))
+                     extend))
 
 ;; T
-(hel-define-command hel-till-char-backward ()
+(hel-define-command hel-till-char-backward (&optional extend)
   "Prompt user for CHAR and move before the previous occurrence of it.
 Right after this command while hints are active, you can use n and N
 keys to repeat motion forward/backward."
   :multiple-cursors t
-  :merge-selections hel-extending-selection
-  (interactive)
-  (hel-maybe-set-mark -1)
-  (hel-find-char (read-char "T" t) -1 t))
+  :merge-selections hel-extend-selection
+  (interactive (list hel-extend-selection))
+  (hel-motion-select (point)
+                     (save-excursion
+                       (hel-find-char (read-char "T" t) -1 t)
+                       (point))
+                     extend))
 
 (defun hel-find-char (char direction exclusive?)
   (let* ((case (let (case-fold-search)

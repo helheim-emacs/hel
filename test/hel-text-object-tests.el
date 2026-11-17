@@ -2333,7 +2333,7 @@ the comment from that start."
           (hel-mark-text-object 'hel-to-probe :inner 1)
           (should (equal (hel-test-selection) "Three four."))
           (hel-test-goto "four")
-          (hel-mark-to-thing-edge 'hel-to-probe 1 :end t)
+          (hel-mark-to-thing-edge 'hel-to-probe 1 :end t nil)
           (should (equal (hel-test-selection) "four."))))
     (put 'hel-to-probe 'hel-thing-sources nil)))
 

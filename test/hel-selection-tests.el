@@ -45,25 +45,68 @@
 (ert-deftest hel-select-ignores-extending ()
   (hel-test-with #'fundamental-mode hel-selection-tests--text
     (set-mark 15)
-    (let ((hel-extending-selection t))
+    (let ((hel-extend-selection t))
       (hel-select (cons 3 7))
       (should (equal (hel-selection-tests--state) '(3 7 t))))))
 
 (ert-deftest hel-motion-select-new-selection ()
+  "Without EXTEND, `hel-motion-select' replaces the selection, whatever
+the flag of extending says."
   (hel-test-with #'fundamental-mode hel-selection-tests--text
-    (hel-motion-select 10 15)
-    (should (equal (hel-selection-tests--state) '(10 15 t)))
-    (hel-motion-select 15 10)
-    (should (equal (hel-selection-tests--state) '(15 10 t)))))
+    (let ((hel-extend-selection t))
+      (hel-motion-select 10 15 nil)
+      (should (equal (hel-selection-tests--state) '(10 15 t)))
+      (hel-motion-select 15 10 nil)
+      (should (equal (hel-selection-tests--state) '(15 10 t))))))
 
 (ert-deftest hel-motion-select-keeps-mark-when-extending ()
+  "With EXTEND, `hel-motion-select' keeps the anchor, whatever the flag
+of extending says."
   (hel-test-with #'fundamental-mode hel-selection-tests--text
     (hel-select (cons 5 10))
-    (let ((hel-extending-selection t))
-      (hel-motion-select 10 15)
+    (let ((hel-extend-selection nil))
+      (hel-motion-select 10 15 t)
       (should (equal (hel-selection-tests--state) '(5 15 t)))
-      (hel-motion-select 15 2)
+      (hel-motion-select 15 2 t)
       (should (equal (hel-selection-tests--state) '(5 2 t))))))
+
+(ert-deftest hel-jump-to-takes-extend ()
+  "`hel-jump-to' drops the selection without EXTEND and stretches it with
+EXTEND, whatever the flag of extending says."
+  (hel-test-with #'fundamental-mode hel-selection-tests--text
+    (hel-select (cons 5 10))
+    (let ((hel-extend-selection t))
+      (hel-jump-to 15 nil)
+      (should (equal (point) 15))
+      (should-not (region-active-p)))
+    (hel-select (cons 5 10))
+    (let ((hel-extend-selection nil))
+      (hel-jump-to 15 t)
+      (should (equal (hel-selection-tests--state) '(5 15 t))))))
+
+(ert-deftest hel-extend-selection-argument ()
+  "`hel-extend-selection' reads its argument as a minor mode does."
+  (hel-test-with #'fundamental-mode hel-selection-tests--text
+    (pcase-dolist (`(,before ,arg ,after)
+                   '((nil nil t) (t nil t) (nil 1 t) (nil 2 t)
+                     (t 0 nil) (t -1 nil) (t -2 nil)
+                     (nil toggle t) (t toggle nil)))
+      (setq hel-extend-selection before)
+      (hel-extend-selection arg)
+      (should (equal (list before arg (and hel-extend-selection t))
+                     (list before arg after))))))
+
+(ert-deftest hel-command-takes-extend ()
+  "A command called from Lisp uses its EXTEND argument, not the flag."
+  (hel-test-with #'fundamental-mode "|foo bar baz"
+    (hel-mode 1)
+    (let ((hel-extend-selection nil))
+      (hel-forward-word-start 1 t)
+      (hel-forward-word-start 1 t)
+      (should (equal (hel-test-selection) "foo bar ")))
+    (let ((hel-extend-selection t))
+      (hel-forward-word-start 1 nil)
+      (should (equal (hel-test-selection) "baz")))))
 
 (ert-deftest hel-selection-shape ()
   (hel-test-with #'fundamental-mode hel-selection-tests--text
@@ -287,7 +330,7 @@ buffer is there: then the cursor character is the one after point."
 
 (defun hel-selection-tests--window-state ()
   "Return the selection, whether it is active, and whether motions extend."
-  (list (hel-selection) (and (region-active-p) t) hel-extending-selection))
+  (list (hel-selection) (and (region-active-p) t) hel-extend-selection))
 
 (defun hel-selection-tests--split ()
   "Show the current buffer in a second window, and return it.
@@ -338,7 +381,7 @@ The first window stays selected and owns the selection of the buffer."
     (let ((before (hel-selection-tests--window-state)))
       (should (nth 2 before))
       (hel-test-press! "C-x o")
-      (should-not hel-extending-selection)
+      (should-not hel-extend-selection)
       (should-not (region-active-p))
       (hel-test-press! "C-x o")
       (should (equal (hel-selection-tests--window-state) before)))))
@@ -356,7 +399,7 @@ The first window stays selected and owns the selection of the buffer."
       (should (= (point) 15))
       ;; A jump: no region and no extending, and the mark stays.
       (should-not (region-active-p))
-      (should-not hel-extending-selection)
+      (should-not hel-extend-selection)
       (should (= (mark t) mark)))))
 
 (ert-deftest hel-window-selection-command-sets-region ()

@@ -412,7 +412,9 @@ around the cursor. =M-i= returns to the selection before.
 
 ** Surround
 
-- =mm= :: Go to matching bracket.
+- =mm= :: Move the cursor to the matching bracket. Inside a pair of
+  brackets, move it to the closing bracket. When extending the selection,
+  extend it to that bracket.
 
 - =ms= :: Surround selection.
 

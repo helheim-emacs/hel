@@ -29,17 +29,16 @@
   "Run KEYS from START in TEXT and return the marked text after each key.
 START is the text at whose first match the cursor stands. A key is a
 command, called with the count 1, or a list of a command and a count.
-With EXTEND non-nil, the keys extend a selection that starts at the
-cursor, as after `v'."
+With EXTEND non-nil, the commands extend a selection that starts at
+the cursor."
   (hel-test-with #'fundamental-mode (hel-test-mark text start)
-    (setq hel-extending-selection extend)
     (when extend
       (set-mark (point))
       (activate-mark))
     (mapcar (lambda (key)
               (if (consp key)
-                  (funcall (car key) (cadr key))
-                (funcall key 1))
+                  (funcall (car key) (cadr key) extend)
+                (funcall key 1 extend))
               (hel-test-render))
             keys)))
 

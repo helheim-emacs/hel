@@ -861,7 +861,7 @@ before the pair (The syntax producer)."
     (unwind-protect
         (progn
           (hel-test-run #'hel-select-all-siblings)
-          (should-not hel-extending-selection)
+          (should-not hel-extend-selection)
           (should (= 2 (length (hel-all-fake-cursors)))))
       (hel-remove-all-fake-cursors))))
 
@@ -1300,7 +1300,7 @@ selection extends."
                                              hel-mark-word hel-mark-around-argument
                                              hel-mark-function-forward))
     (should (eq t (get command 'merge-selections))))
-  (should (eq 'hel-extending-selection
+  (should (eq 'hel-extend-selection
               (get 'hel-backward-word-end 'merge-selections))))
 
 (ert-deftest hel-eldoc-registration ()
