@@ -65,7 +65,7 @@ flickering."
      (prog1 (progn ,@body)
        ;; Update the screen so that the temporary value for
        ;; `scroll-conservatively' is taken into account.
-       (unless hel-executing-command-for-fake-cursor
+       (unless hel-executing-command-for-secondary-cursor
          (redisplay)))))
 
 (defmacro hel-save-selection (&rest body)
@@ -176,15 +176,6 @@ that `match-beginning', `match-end' and `match-data' access."
     (-all? (lambda (x) (funcall test first x))
            (cdr list))))
 
-(defun hel-cursor-is-bar-p ()
-  "Return non-nil if `cursor-type' is bar."
-  (let ((cursor-type (if (eq cursor-type t)
-                         (frame-parameter nil 'cursor-type)
-                       cursor-type)))
-    (or (eq cursor-type 'bar)
-        (and (consp cursor-type)
-             (eq (car cursor-type) 'bar)))))
-
 (defun hel-range (a b)
   "Return the range between positions A and B, which can come in any order."
   (cons (min a b) (max a b)))
@@ -283,7 +274,7 @@ FUN on each invocation should move point."
   "Reveal point when it's only partially visible.
 For some reason, Emacs can become slow while point is partially visible, so this
 function prevents that. It is intended to be used as `:after' advice."
-  (unless hel-executing-command-for-fake-cursor
+  (unless hel-executing-command-for-secondary-cursor
     (redisplay)
     (when (zerop (cdr (posn-col-row (posn-at-point))))
       (recenter 0))))
@@ -586,24 +577,21 @@ backward when DIRECTION is -1."
     (set-mark begin)
     (goto-char end)))
 
-(defun hel-motion-select (start end extend)
-  "Select from START to END, with point at END.
-With EXTEND, the selection keeps its anchor in place of START, see
-`hel--selection-anchor'."
-  (set-mark (if extend
-                (hel--selection-anchor (hel-sign (- end (point))))
-              start))
-  (goto-char end))
-
-(defun hel-jump-to (pos extend)
-  "Move point to POS.
-Without EXTEND, drop the selection, so the cursor character is the one
-at POS.  With EXTEND, stretch the selection from its anchor to POS, see
-`hel--selection-anchor'."
-  (if extend
-      (set-mark (hel--selection-anchor (hel-sign (- pos (point)))))
-    (deactivate-mark))
-  (goto-char pos))
+(defun hel-move-to-pos (from to extend)
+  "Move the cursor to the position TO, as a motion that passes over text.
+Without EXTEND, select the text from FROM to TO, with point at TO; when
+FROM is nil, leave a bare cursor at TO, on the character after it.  With
+EXTEND, stretch the selection from its anchor to TO, see
+`hel--selection-anchor', and ignore FROM."
+  (cond (extend
+         (let ((anchor (hel--selection-anchor (hel-sign (- to (point))))))
+           (hel-select (cons (min anchor to) (max anchor to))
+                       (if (< to anchor) -1 1))))
+        (from
+         (hel-select (cons (min from to) (max from to))
+                     (if (< to from) -1 1)))
+        (t
+         (hel-set-cursor to -1))))
 
 (defun hel--selection-anchor (dir)
   "Return the end of the selection that a motion in DIR extends it from.
@@ -617,13 +605,14 @@ a bare point it is the cursor character."
           ((< 0 side) begin)
           (t end))))
 
-(defun hel--set-cursor-char (pos dir)
-  "Move point to POS, and make the character on side DIR the cursor character.
-DIR is 1 for the character before POS and -1 for the character after
-it, as the direction of a selection says at which end point is."
+(defun hel-set-cursor (pos side)
+  "Leave a bare cursor at POS: point there, and no active region.
+The cursor character is the one on side SIDE of POS: SIDE is 1 for the
+character before POS and -1 for the character after it, as the direction
+of a selection says at which end point is."
   (deactivate-mark)
   (goto-char pos)
-  (set-marker (mark-marker) (- pos dir)))
+  (set-marker (mark-marker) (- pos side)))
 
 ;; These functions switch between two kinds of coordinates: gaps and characters.
 ;; A ruler shows the difference:
@@ -654,42 +643,28 @@ it, as the direction of a selection says at which end point is."
 ;; This is also why ranges are half-open, [BEGIN, END): the ruler always
 ;; has one more mark than it has spaces, so a range of N characters is
 ;; (BEGIN . BEGIN+N), and an empty range is (P . P).
-(defun hel--step-cursor (dir extend)
-  "Move the cursor by one character in direction DIR.
-The cursor goes to the character next to the head of the selection, see
-`hel--put-cursor' for EXTEND.  Without EXTEND, a step past the last
-character leaves the empty selection at the end of the buffer."
-  (-let* ((((begin . end) side) (hel-selection))
-          (char (+ (if (< 0 side) (1- end) begin)
-                   dir)))
-    (cond ((< char (point-min))
-           (signal 'beginning-of-buffer nil))
-          ((< char (point-max))
-           (hel--put-cursor char dir extend))
-          ((or extend (= begin end))
-           (signal 'end-of-buffer nil))
-          (t
-           (hel--set-cursor-char (point-max) -1)))))
-
-(defun hel--put-cursor (char dir extend)
-  "Put the cursor on character CHAR.
+(defun hel-move-onto-char (char extend)
+  "Move the cursor onto the character CHAR.
 Without EXTEND, CHAR becomes the cursor character, and point goes to its
 edge that is nearest to point, as a block cursor moves.  A newline has
 point before it, on its line.  With EXTEND, the selection keeps the
-character at its other end and stretches to CHAR.  DIR is the direction
-of the motion, which orients a selection of one character."
+character at its other end and stretches to CHAR.  When CHAR is that
+character, the selection of one character faces the way the head moved."
   (if extend
       (-let* ((((begin . end) side) (hel-selection))
+              (head (if (< 0 side) (1- end) begin))
               (anchor (if (< 0 side) begin (1- end))))
         (hel-select (cons (min char anchor) (1+ (max char anchor)))
                     (cond ((< anchor char) 1)
                           ((< char anchor) -1)
-                          (t dir))))
+                          ((< char head) -1)
+                          ((< head char) 1)
+                          (t side))))
     (let ((edge (cond ((eq ?\n (char-after char)) char)
                       ((<= char (point) (1+ char)) (point))
                       ((< (point) char) char)
                       (t (1+ char)))))
-      (hel--set-cursor-char edge (if (= edge char) -1 1)))))
+      (hel-set-cursor edge (if (= edge char) -1 1)))))
 
 (defun hel-selection ()
   "Return the selection as (RANGE DIRECTION).
@@ -814,12 +789,12 @@ line(s). With no region, select current line."
 (defun hel--jump-over-mark-ring (backward? extend)
   "Jump to the top position on `mark-ring'.
 If point is already there, rotate `mark-ring' forward (or BACKWARD)
-and jump to the new top position.  EXTEND is as in `hel-jump-to'."
+and jump to the new top position.  EXTEND is as in `hel-move-to-pos'."
   (when mark-ring
     (when (= (point) (car mark-ring))
       (cl-callf hel-rotate-ring mark-ring backward?))
     (hel-recenter-point-on-jump
-      (hel-jump-to (car mark-ring) extend))))
+      (hel-move-to-pos nil (car mark-ring) extend))))
 
 (defun hel--jump-over-global-mark-ring (&optional backward?)
   "Jump to the top location on the `global-mark-ring'.

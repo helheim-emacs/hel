@@ -73,7 +73,7 @@ Execute in order:
 (hel-define-command hel-backward-char (count &optional extend)
   "Move the cursor character backward COUNT characters.
 When extending the selection is on, the selection keeps its other end,
-see `hel--put-cursor'."
+see `hel-move-onto-char'."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list (prefix-numeric-value current-prefix-arg)
@@ -84,7 +84,9 @@ see `hel--put-cursor'."
 (hel-define-command hel-forward-char (count &optional extend)
   "Move the cursor character forward COUNT characters.
 Move backward if COUNT is negative. When extending the selection is on,
-the selection keeps its other end, see `hel--put-cursor'."
+the selection keeps its other end, see `hel-move-onto-char'.  Without
+extending, a step past the last character leaves the empty selection at
+the end of the buffer."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list (prefix-numeric-value current-prefix-arg)
@@ -93,7 +95,17 @@ the selection keeps its other end, see `hel--put-cursor'."
   ;; that leaves point in place.
   (let ((dir (hel-sign count)))
     (dotimes (_ (abs count))
-      (hel--step-cursor dir extend))))
+      (-let* ((((begin . end) side) (hel-selection))
+              (char (+ (if (< 0 side) (1- end) begin)
+                       dir)))
+        (cond ((< char (point-min))
+               (signal 'beginning-of-buffer nil))
+              ((< char (point-max))
+               (hel-move-onto-char char extend))
+              ((or extend (= begin end))
+               (signal 'end-of-buffer nil))
+              (t
+               (hel-set-cursor (point-max) -1)))))))
 
 ;; j
 (hel-define-command hel-next-line (count &optional extend)
@@ -125,7 +137,7 @@ and extending selection (`v' key) are active — works like
       (funcall-interactively 'next-line count)
       (if anchor
           (set-mark anchor)
-        (hel--set-cursor-char (point) dir)))))
+        (hel-set-cursor (point) dir)))))
 
 ;; k
 (hel-define-command hel-previous-line (count &optional extend)
@@ -230,7 +242,7 @@ Push mark at previous position, unless extending selection."
                    (forward-line 1)
                    (point))
                (point-min))))
-    (hel-jump-to pos extend))
+    (hel-move-to-pos nil pos extend))
   (unless num
     (recenter 0)))
 
@@ -247,7 +259,7 @@ Push mark at previous position, unless extending selection."
                    (forward-line (1- (prefix-numeric-value count)))
                    (point))
                (point-max))))
-    (hel-jump-to pos extend)))
+    (hel-move-to-pos nil pos extend)))
 
 ;; gh
 (hel-define-command hel-beginning-of-line-command (&optional extend)
@@ -257,7 +269,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-beginning-of-line-command))
   (interactive (list hel-extend-selection))
-  (hel-motion-select (point) (hel-line-begin) extend))
+  (hel-move-to-pos (point) (hel-line-begin) extend))
 
 ;; gs
 (hel-define-command hel-first-non-blank (&optional extend)
@@ -266,12 +278,12 @@ Use visual line when `visual-line-mode' is active."
   :multiple-cursors t
   :merge-selections t
   (interactive (list hel-extend-selection))
-  (hel-motion-select (point) (save-excursion
-                               (goto-char (hel-line-begin))
-                               (hel-skip-blanks 1)
-                               (backward-prefix-chars)
-                               (point))
-                     extend))
+  (hel-move-to-pos (point) (save-excursion
+                             (goto-char (hel-line-begin))
+                             (hel-skip-blanks 1)
+                             (backward-prefix-chars)
+                             (point))
+                   extend))
 
 ;; gl
 (hel-define-command hel-end-of-line-command (&optional extend)
@@ -281,7 +293,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-end-of-line-command))
   (interactive (list hel-extend-selection))
-  (hel-motion-select (point) (hel-line-end) extend)
+  (hel-move-to-pos (point) (hel-line-end) extend)
   ;; "Stick" cursor to the end of line after moving to it. Vertical
   ;; motions right after "gl" will place point at the end of each line.
   (when (and (not visual-line-mode)
@@ -302,14 +314,14 @@ selection instead, and keep its anchor character."
   (-let* ((((begin . end) side) (hel-selection))
           (head (if (< 0 side) (1- end) begin)))
     (-when-let (char (hel--matching-bracket head))
-      (let ((dir (if (< head char) 1 -1)))
-        (if extend
-            (hel--put-cursor char dir t)
-          ;; `show-paren-mode' shows the pair of a bracket on the outer
-          ;; side of point: after a closing bracket, before an opening one.
-          ;; The jump goes forward to a closing bracket and backward to an
-          ;; opening one, so the outer side is the side DIR.
-          (hel--set-cursor-char (if (< 0 dir) (1+ char) char) dir)))))
+      (if extend
+          (hel-move-onto-char char t)
+        ;; `show-paren-mode' shows the pair of a bracket on the outer side
+        ;; of point: after a closing bracket, before an opening one.  The
+        ;; jump goes forward to a closing bracket and backward to an
+        ;; opening one, so the outer side is the side of the jump.
+        (let ((side (if (< head char) 1 -1)))
+          (hel-set-cursor (if (< 0 side) (1+ char) char) side)))))
   (hel-reveal-point-when-on-top))
 
 (defun hel--matching-bracket (char)
@@ -391,10 +403,10 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (hel-motion-select (point) (progn
-                                   (hel-word-motion 1)
-                                   (point))
-                         extend))))
+      (hel-move-to-pos (point) (progn
+                                 (hel-word-motion 1)
+                                 (point))
+                       extend))))
 
 ;; gb
 (hel-define-command hel-avy-word-backward (&optional extend)
@@ -410,7 +422,7 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (if extend
-          (hel-motion-select (mark) (point) t)
+          (hel-move-to-pos (mark) (point) t)
         (hel-select (cons (point) (progn
                                     (hel-word-motion 1)
                                     (point))))))))
@@ -426,10 +438,10 @@ backward and jump to new top location."
                 (avy-process)))
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
-      (hel-motion-select (point) (progn
-                                   (hel-WORD-motion 1)
-                                   (point))
-                         extend))))
+      (hel-move-to-pos (point) (progn
+                                 (hel-WORD-motion 1)
+                                 (point))
+                       extend))))
 
 ;; gB
 (hel-define-command hel-avy-WORD-backward (&optional extend)
@@ -444,7 +456,7 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (if extend
-          (hel-motion-select (mark) (point) t)
+          (hel-move-to-pos (mark) (point) t)
         (hel-select (cons (point) (progn
                                     (hel-WORD-motion 1)
                                     (point))))))))
@@ -469,7 +481,7 @@ to the chosen one."
     (hel-push-point)
     (if extend
         (let ((lines? (hel-linewise-selection-p)))
-          (hel-motion-select (mark) pos t)
+          (hel-move-to-pos (mark) pos t)
           (if lines? (hel-expand-selection-to-full-lines)))
       ;; else
       (deactivate-mark)
@@ -539,17 +551,17 @@ typing stays on the last line of the selection."
 depending on DIRECTION."
   ;; Remain only one cursor on each line.
   (when hel-multiple-cursors-mode
-    (hel-with-real-cursor-as-fake
+    (hel-with-main-cursor-as-secondary
       ;; Lines are identified by their beginning position. Buffer positions
       ;; start from 1, so 0 as initial value is out of scope.
       (let ((current-line 0))
-        (-each (hel-all-fake-cursors :sort)
+        (-each (hel-all-secondary-cursors :sort)
           (lambda (cursor)
             (let ((line (save-excursion
-                          (goto-char (overlay-get cursor 'point))
+                          (goto-char (hel--secondary-cursor-point cursor))
                           (line-beginning-position))))
               (if (= line current-line)
-                  (hel--delete-fake-cursor cursor)
+                  (hel--delete-secondary-cursor cursor)
                 (setq current-line line))))))))
   (hel-with-each-cursor
     (if (< direction 0)
@@ -894,10 +906,10 @@ On the cursor character, point goes to its other edge."
   (if (not (use-region-p))
       (-let [(begin . end) (hel-selection-bounds)]
         (cond ((= begin end))
-              ((= (point) begin) (hel--set-cursor-char end 1))
-              (t (hel--set-cursor-char begin -1))))
+              ((= (point) begin) (hel-set-cursor end 1))
+              (t (hel-set-cursor begin -1))))
     (hel--exchange-point-and-mark)
-    (when (and (not hel-executing-command-for-fake-cursor)
+    (when (and (not hel-executing-command-for-secondary-cursor)
                (called-interactively-p 'any))
       (hel-reveal-point-when-on-top))))
 
@@ -911,7 +923,7 @@ on."
   :multiple-cursors t
   (interactive (list hel-extend-selection))
   (cond ((use-region-p)
-         (hel--set-cursor-char (point) (hel-region-direction)))
+         (hel-set-cursor (point) (hel-region-direction)))
         (extend)
         (hel-search--session
          (hel-search-stop))))
@@ -983,7 +995,7 @@ on."
               (when (<= end (point))
                 (goto-char border)
                 (throw 'done nil))
-              (hel-create-fake-cursor border (mark))
+              (hel-create-secondary-cursor (cons (mark) border) 1 t)
               (set-marker (mark-marker) (point)))))))))
 
 ;; _
@@ -1005,24 +1017,27 @@ on."
   "Align selections by column."
   :multiple-cursors nil
   (interactive)
-  (hel-with-real-cursor-as-fake
+  (hel-with-main-cursor-as-secondary
     (hel-save-window-scroll
-      (dolist (cursors (->> (hel-all-fake-cursors :sort)
+      (dolist (cursors (->> (hel-all-secondary-cursors :sort)
                             ;; split cursors into groups by line
                             ;; (lines are identified by their beginning position)
                             (-partition-by (lambda (cursor)
                                              (save-excursion
-                                               (goto-char (overlay-get cursor 'point))
+                                               (goto-char
+                                                (hel--secondary-cursor-point
+                                                 cursor))
                                                (line-beginning-position))))
                             ;; Transpose columns and rows to align all first
                             ;; cursors in each line, than all second and so on.
                             (hel-transpose)))
         (let ((column (-reduce-from (lambda (column cursor)
-                                      (goto-char (overlay-get cursor 'point))
+                                      (goto-char
+                                       (hel--secondary-cursor-point cursor))
                                       (max column (current-column)))
                                     0 cursors)))
           (dolist (cursor cursors)
-            (hel-with-fake-cursor cursor
+            (hel-with-secondary-cursor cursor
               (unless (= (current-column) column)
                 (let ((deactivate-mark nil)
                       (padding (make-string (- column (current-column)) ?\s)))
@@ -1062,9 +1077,9 @@ on."
                               while (zerop (forward-line direction))
                               when (= (move-to-column column) column)
                               return (point))))
-              ((not (hel-fake-cursor-at pos))))
-    (unless (hel-fake-cursor-at (point))
-      (hel-create-fake-cursor-from-point))
+              ((not (hel-secondary-cursor-at pos))))
+    (unless (hel-secondary-cursor-at (point))
+      (hel-create-secondary-cursor))
     (deactivate-mark)
     (goto-char pos)))
 
@@ -1082,11 +1097,11 @@ on."
         (if (< region-dir 0)
             (-setq (point . mark) bounds)
           (-setq (mark . point) bounds))
-        (if-let* ((cursor (hel-fake-cursor-at point))
-                  ((= mark (overlay-get cursor 'mark))))
-            nil ;; Do nothing — fake cursor is already at desired position.
+        (if-let* ((cursor (hel-secondary-cursor-at point))
+                  ((= mark (hel--secondary-cursor-mark cursor))))
+            nil ;; Do nothing — secondary cursor is already at desired position.
           ;; else
-          (hel-create-fake-cursor-from-point)
+          (hel-create-secondary-cursor)
           (goto-char point)
           (set-marker (mark-marker) mark))))))
 
@@ -1116,19 +1131,19 @@ at START-COLUMN, ends at END-COLUMN and consists of NUMBER-OF-LINES."
           (cons end start)))))
 
 ;; ,
-(defalias 'hel-remove-all-fake-cursors #'hel-disable-multiple-cursors-mode
-  (format "Delete all fake cursors from current buffer.
+(defalias 'hel-remove-all-secondary-cursors #'hel-disable-multiple-cursors-mode
+  (format "Delete all secondary cursors from current buffer.
 You may restore them with %s (`hel-restore-cursors')."
           (propertize "g v" 'face 'help-key-binding)))
 
 ;; M-,
 (hel-define-command hel-remove-main-cursor ()
-  "Delete main cursor and activate the next fake one."
+  "Delete main cursor and activate the next secondary one."
   :multiple-cursors nil
   (interactive)
   (when hel-multiple-cursors-mode
-    (hel-restore-point-from-fake-cursor (or (hel-next-fake-cursor (point))
-                                            (hel-first-fake-cursor)))
+    (hel-make-cursor-main (or (hel-next-secondary-cursor (point))
+                              (hel-first-secondary-cursor)))
     (hel-auto-multiple-cursors-mode)))
 
 ;; gv
@@ -1145,14 +1160,14 @@ You may restore them with %s (`hel-restore-cursors')."
   :multiple-cursors nil
   (interactive)
   (when hel-multiple-cursors-mode
-    (let ((beg (let ((cursor (hel-first-fake-cursor)))
-                 (min (overlay-get cursor 'point)
-                      (overlay-get cursor 'mark)
+    (let ((beg (let ((cursor (hel-first-secondary-cursor)))
+                 (min (hel--secondary-cursor-point cursor)
+                      (hel--secondary-cursor-mark cursor)
                       (point)
                       (if (use-region-p) (mark) most-positive-fixnum))))
-          (end (let ((cursor (hel-last-fake-cursor)))
-                 (max (overlay-get cursor 'point)
-                      (overlay-get cursor 'mark)
+          (end (let ((cursor (hel-last-secondary-cursor)))
+                 (max (hel--secondary-cursor-point cursor)
+                      (hel--secondary-cursor-mark cursor)
                       (point)
                       (if (use-region-p) (mark) 0)))))
       (hel-disable-multiple-cursors-mode)
@@ -1165,8 +1180,8 @@ You may restore them with %s (`hel-restore-cursors')."
   (interactive)
   (when hel-multiple-cursors-mode
     (hel-recenter-point-on-jump
-      (hel-create-fake-cursor-from-point)
-      (hel-restore-point-from-fake-cursor (hel-first-fake-cursor)))))
+      (hel-create-secondary-cursor)
+      (hel-make-cursor-main (hel-first-secondary-cursor)))))
 
 ;; G
 (hel-define-command hel-last-selection ()
@@ -1175,8 +1190,8 @@ You may restore them with %s (`hel-restore-cursors')."
   (interactive)
   (when hel-multiple-cursors-mode
     (hel-recenter-point-on-jump
-      (hel-create-fake-cursor-from-point)
-      (hel-restore-point-from-fake-cursor (hel-last-fake-cursor)))))
+      (hel-create-secondary-cursor)
+      (hel-make-cursor-main (hel-last-secondary-cursor)))))
 
 ;; )
 (hel-define-command hel-rotate-selections-forward (count)
@@ -1186,10 +1201,10 @@ You may restore them with %s (`hel-restore-cursors')."
   (when hel-multiple-cursors-mode
     (hel-recenter-point-on-jump
       (dotimes (_ count)
-        (let ((cursor (or (hel-next-fake-cursor (point))
-                          (hel-first-fake-cursor))))
-          (hel-create-fake-cursor-from-point)
-          (hel-restore-point-from-fake-cursor cursor))))))
+        (let ((cursor (or (hel-next-secondary-cursor (point))
+                          (hel-first-secondary-cursor))))
+          (hel-create-secondary-cursor)
+          (hel-make-cursor-main cursor))))))
 
 ;; (
 (hel-define-command hel-rotate-selections-backward (count)
@@ -1199,10 +1214,10 @@ You may restore them with %s (`hel-restore-cursors')."
   (when hel-multiple-cursors-mode
     (hel-recenter-point-on-jump
       (dotimes (_ count)
-        (let ((cursor (or (hel-previous-fake-cursor (point))
-                          (hel-last-fake-cursor))))
-          (hel-create-fake-cursor-from-point)
-          (hel-restore-point-from-fake-cursor cursor))))))
+        (let ((cursor (or (hel-previous-secondary-cursor (point))
+                          (hel-last-secondary-cursor))))
+          (hel-create-secondary-cursor)
+          (hel-make-cursor-main cursor))))))
 
 ;; M-)
 (hel-define-command hel-rotate-selections-content-forward (count)
@@ -1222,16 +1237,15 @@ You may restore them with %s (`hel-restore-cursors')."
   (when (and hel-multiple-cursors-mode
              (use-region-p))
     (let ((dir (hel-region-direction)))
-      ;; To correctly rotate the content of adjacent selections, we all
-      ;; regions need to have negative direction.  This is due to marker
-      ;; insertion type of point and mark markers of fake cursor (see
-      ;; `set-marker-insertion-type'). Point-marker insertion type is t,
-      ;; mark-marker — nil.  We want beginning of a region to be advanced
-      ;; on insertion at its position, and end of a region — not.
+      ;; To rotate the content of adjacent selections, all regions need
+      ;; a negative direction.  Text inserted at the point of a secondary cursor
+      ;; goes before it, and text inserted at its mark goes after it, see
+      ;; `hel--save-cursor'.  The beginning of a region must move on an
+      ;; insertion at its position, and the end must not.
       (when (< 0 dir)
         (hel-with-each-cursor (hel--exchange-point-and-mark)))
-      (hel-with-real-cursor-as-fake
-        (let ((cursors (hel-all-fake-cursors :sort)))
+      (hel-with-main-cursor-as-secondary
+        (let ((cursors (hel-all-secondary-cursors :sort)))
           (when backward
             (cl-callf nreverse cursors))
           (dotimes (_ count)
@@ -1243,15 +1257,16 @@ You may restore them with %s (`hel-restore-cursors')."
 (defun hel--rotate-selections-content-1 (cursors)
   "Rotate regions content for all CURSORS."
   (let* ((first-cursor (car cursors))
-         (content (buffer-substring (overlay-get first-cursor 'point)
-                                    (overlay-get first-cursor 'mark))))
+         (content (buffer-substring (hel--secondary-cursor-point first-cursor)
+                                    (hel--secondary-cursor-mark first-cursor))))
     (dolist (cursor (cdr cursors))
-      (setq content (hel-exchange-fake-selection-content cursor content)))
-    (hel-exchange-fake-selection-content first-cursor content)))
+      (setq content (hel--exchange-region-content cursor content)))
+    (hel--exchange-region-content first-cursor content)))
 
-(defun hel-exchange-fake-selection-content (cursor content)
-  "Exchange the CURSORs region content with CONTENT and return the old one."
-  (hel-with-fake-cursor cursor
+(defun hel--exchange-region-content (cursor content)
+  "Replace the text in the region of the secondary CURSOR with CONTENT.
+Return the text that was there."
+  (hel-with-secondary-cursor cursor
     (let ((deactivate-mark nil) ;; Do not deactivate mark after insertion.
           (dir (hel-region-direction))
           (new-content (buffer-substring (point) (mark))))
@@ -1264,7 +1279,7 @@ You may restore them with %s (`hel-restore-cursors')."
 
 ;; M-<right-mouse>
 (hel-define-command hel-toggle-cursor-on-click (event)
-  "Add a cursor where you click, or remove a fake cursor that is
+  "Add a cursor where you click, or remove a secondary cursor that is
 already there."
   :multiple-cursors nil
   (interactive "e")
@@ -1277,9 +1292,10 @@ already there."
     (select-window (posn-window position))
     (when-let* ((pos (posn-point position))
                 ((numberp pos)))
-      (if-let* ((cursor (hel-fake-cursor-at pos)))
-          (hel-delete-fake-cursor cursor)
-        (hel-create-fake-cursor pos)))))
+      (if-let* ((cursor (hel-secondary-cursor-at pos)))
+          (hel-delete-secondary-cursor cursor)
+        (hel-create-secondary-cursor (cons pos (min (1+ pos) (point-max)))
+                                     -1 nil)))))
 
 ;;;; Digit arguments
 

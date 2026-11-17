@@ -2,7 +2,7 @@
 ;;
 ;;; Commentary:
 ;;
-;; Every command runs once for the real cursor and once more for each fake
+;; Every command runs once for the main cursor and once more for each secondary
 ;; cursor, one after another, in the single thread of Emacs.  These
 ;; benchmarks measure how the time of a key sequence grows with the number
 ;; of cursors.
@@ -49,7 +49,7 @@ Each scenario is a plist with the keys :name, :doc, :keys, :mode, :line and
   "Define a benchmark scenario NAME, described by DOC.
 KEYS is the key sequence, in the format of `kbd'.  MODE is the major mode of
 the buffer.  LINE is a `format' string for each line of the buffer, which
-gets the line number.  CURSORS nil puts only the real cursor at the start
+gets the line number.  CURSORS nil puts only the main cursor at the start
 of the buffer; by default, each line starts with a cursor."
   (declare (indent 1))
   `(progn
@@ -178,7 +178,7 @@ Return the buffer, which is current and shown in the selected window."
       (save-excursion
         (forward-line 1)
         (while (not (eobp))
-          (hel-create-fake-cursor (point))
+          (hel-create-secondary-cursor (cons (point) (1+ (point))) -1 nil)
           (forward-line 1)))
       (hel-auto-multiple-cursors-mode))
     (setq buffer-undo-list nil

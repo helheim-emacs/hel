@@ -41,15 +41,28 @@
   "Return the current Hel state: `normal', `insert' or `emacs'."
   hel-state)
 
-(defun hel-test-fake-cursors ()
+(defun hel-test-add-secondary-cursor (point &optional mark)
+  "Create a secondary cursor with POINT and MARK, and return it.
+MARK nil means POINT.  The region of the cursor is active when
+`mark-active' is non-nil.  A secondary cursor copies the cursor of
+Emacs, so Emacs stands at POINT and MARK for a moment.  This makes any
+state, also one that no command leaves, such as a far inactive mark."
+  (let ((active mark-active))
+    (hel-save-main-cursor
+      (goto-char point)
+      (set-marker (mark-marker) (or mark point))
+      (setq mark-active active)
+      (hel-create-secondary-cursor))))
+
+(defun hel-test-secondary-cursors ()
   "Return the secondary cursors as a list of (POINT . MARK), sorted by POINT.
 MARK is nil when the cursor has no selection, or its selection is empty."
   (sort (mapcar (lambda (cursor)
-                  (let ((point (marker-position (overlay-get cursor 'point)))
+                  (let ((point (hel--secondary-cursor-point cursor))
                         (mark (and (overlay-get cursor 'mark-active)
-                                   (marker-position (overlay-get cursor 'mark)))))
+                                   (hel--secondary-cursor-mark cursor))))
                     (cons point (unless (eql point mark) mark))))
-                (hel-all-fake-cursors))
+                (hel-all-secondary-cursors))
         (lambda (a b) (< (car a) (car b)))))
 
 (defun hel-test-selection ()
@@ -64,12 +77,12 @@ A cursor without a selection gives the empty string."
                        (cons (region-beginning) (hel-test-selection))
                      (cons (point) ""))
                    (mapcar (lambda (cursor)
-                             (let ((point (marker-position (overlay-get cursor 'point)))
-                                   (mark (marker-position (overlay-get cursor 'mark))))
+                             (let ((point (hel--secondary-cursor-point cursor))
+                                   (mark (hel--secondary-cursor-mark cursor)))
                                (cons (min point mark)
                                      (buffer-substring-no-properties
                                       (min point mark) (max point mark)))))
-                           (hel-all-fake-cursors)))))
+                           (hel-all-secondary-cursors)))))
     (mapcar #'cdr (sort all (lambda (a b) (< (car a) (car b)))))))
 
 (defun hel-test-cursor-chars ()
@@ -79,13 +92,13 @@ an active region TEXT is its cursor character.  DIRECTION is 1 when point
 is at the end of TEXT and -1 when it is at the beginning."
   (let ((all (cons (cons (point) (hel-selection))
                    (mapcar (lambda (cursor)
-                             (let ((point (marker-position (overlay-get cursor 'point))))
+                             (let ((point (hel--secondary-cursor-point cursor)))
                                (cons point
                                      (hel--selection-from
                                       point
-                                      (marker-position (overlay-get cursor 'mark))
+                                      (hel--secondary-cursor-mark cursor)
                                       (overlay-get cursor 'mark-active)))))
-                           (hel-all-fake-cursors)))))
+                           (hel-all-secondary-cursors)))))
     (mapcar (pcase-lambda (`(,_ (,begin . ,end) ,dir))
               (list (buffer-substring-no-properties begin end) dir))
             (sort all (lambda (a b) (< (car a) (car b)))))))
@@ -114,12 +127,12 @@ nil when it draws no cell."
 (defun hel-test-drawn-cursor-char (&optional window)
   "Return the cursor character that WINDOW shows, as `hel-test--drawing' does.
 WINDOW is the selected window by default."
-  (hel-test--drawing (window-parameter window 'hel--cursor-char-overlay)))
+  (hel-test--drawing (window-parameter window 'hel--cursor-highlight-overlay)))
 
-(defun hel-test-drawn-fake-cursors ()
-  "Return the drawing of every fake cursor, as `hel-test--drawing' does.
+(defun hel-test-drawn-secondary-cursors ()
+  "Return the drawing of every secondary cursor, as `hel-test--drawing' does.
 The list is in buffer order."
-  (mapcar #'hel-test--drawing (hel-all-fake-cursors t)))
+  (mapcar #'hel-test--drawing (hel-all-secondary-cursors t)))
 
 ;;; Marked text
 
@@ -168,7 +181,7 @@ share, each with the cursor at another place."
     (push (cons (point) ?|) marks)
     (when (use-region-p)
       (push (cons (mark) ?^) marks))
-    (pcase-dolist (`(,point . ,mark) (hel-test-fake-cursors))
+    (pcase-dolist (`(,point . ,mark) (hel-test-secondary-cursors))
       (push (cons point ?¦) marks)
       (when mark (push (cons mark ?¬) marks)))
     (let* ((order '(?¦ ?| ?¬ ?^))
@@ -253,7 +266,7 @@ afterwards.  A tree-sitter MODE without its grammar skips the test."
 The cursor character is the first character of NEEDLE."
   (goto-char (point-min))
   (search-forward needle)
-  (hel--set-cursor-char (match-beginning 0) -1))
+  (hel-set-cursor (match-beginning 0) -1))
 
 (defun hel-test-select (needle)
   "Select the first NEEDLE, with point at its end."

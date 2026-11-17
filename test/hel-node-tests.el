@@ -218,23 +218,23 @@ shrinks."
       (should (= (region-end) end)))))
 
 (ert-deftest hel-expand-history-per-cursor ()
-  (should (memq 'hel-selection-history hel-fake-cursor-variables))
+  (should (memq 'hel-selection-history hel-cursor-variables))
   (hel-test-with #'emacs-lisp-mode (hel-test-mark "(f (a x) (b y))" "a x")
     (hel-local-mode 1)
     (hel-normal-state)
-    (let ((fake (hel-create-fake-cursor (save-excursion
-                                          (search-forward "b y")
-                                          (match-beginning 0)))))
+    (let ((secondary (hel-test-add-secondary-cursor (save-excursion
+                                                    (search-forward "b y")
+                                                    (match-beginning 0)))))
       (unwind-protect
           (progn
             (hel-expand-selection-backward 1)
-            (hel-save-excursion
-              (hel-with-fake-cursor fake
+            (hel-save-main-cursor
+              (hel-with-secondary-cursor secondary
                 (hel-expand-selection-backward 1)))
             (hel-shrink-selection 1)
             (should (eq (hel-test-selection) nil))
             (should (equal (buffer-substring (point) (1+ (point))) "a")))
-        (hel-remove-all-fake-cursors)))))
+        (hel-remove-all-secondary-cursors)))))
 
 ;;; Expand and shrink: tree-sitter
 
@@ -392,7 +392,7 @@ character.  Without a mark, that is the character after point."
     (hel-mark-word 1)
     (should (equal (hel-test-selection) ".")))
   (hel-test-with #'text-mode (hel-test-mark "foo.\n" ".")
-    (hel--set-cursor-char (point) 1)
+    (hel-set-cursor (point) 1)
     (hel-mark-word 1)
     (should (equal (hel-test-selection) "foo"))))
 
@@ -504,7 +504,7 @@ The line ends between its lines belong to it, and the last one does not."
           (hel-test-select "[1, 2]")
           (hel-select-all-children)
           (should (equal (hel-node-tests--all-selections) '("1" "2"))))
-      (hel-remove-all-fake-cursors))))
+      (hel-remove-all-secondary-cursors))))
 
 (ert-deftest hel-select-all-children-of-leaf ()
   "A node without named children keeps the selection."
@@ -514,7 +514,7 @@ The line ends between its lines belong to it, and the last one does not."
     (hel-test-select "abc")
     (hel-select-all-children)
     (should (equal (hel-test-selection) "abc"))
-    (should-not (hel-all-fake-cursors))))
+    (should-not (hel-all-secondary-cursors))))
 
 ;;; Node commands without a parser
 
@@ -790,7 +790,7 @@ the leaf, the only argument."
     (hel-test-with #'python-ts-mode text
       (hel-test-run #'hel-select-all-children)
       (should (equal (hel-test-render) text))
-      (should-not (hel-all-fake-cursors)))))
+      (should-not (hel-all-secondary-cursors)))))
 
 (ert-deftest hel-select-all-children-no-replay ()
   "M-I on [[1, 2], [3, 4]], run through the replay of Hel for all
@@ -862,8 +862,8 @@ before the pair (The syntax producer)."
         (progn
           (hel-test-run #'hel-select-all-siblings)
           (should-not hel-extend-selection)
-          (should (= 2 (length (hel-all-fake-cursors)))))
-      (hel-remove-all-fake-cursors))))
+          (should (= 2 (length (hel-all-secondary-cursors)))))
+      (hel-remove-all-secondary-cursors))))
 
 (ert-deftest hel-v-sibling-extends ()
   "Rule 7: after `v', M-n grows the selection and keeps the mark."
@@ -1241,11 +1241,11 @@ history)."
   (should (hel-test-unchanged-p #'hel-shrink-selection
                                 "x = 1;^   |\ny = 2;\n" #'c-mode)))
 
-(ert-deftest hel-fake-cursor-history ()
-  "A fake cursor's expand does not change the history of the main
+(ert-deftest hel-secondary-cursor-history ()
+  "A secondary cursor's expand does not change the history of the main
 cursor (rule 4)."
   (hel-test-with #'text-mode "f|oo bar\nbaz qux\n"
-    (hel-create-fake-cursor 14)         ; in "qux"
+    (hel-test-add-secondary-cursor 14)         ; in "qux"
     (hel-test-run #'hel-expand-selection-backward)
     (should (equal (hel-test-selections) '("foo" "qux")))
     (hel-disable-multiple-cursors-mode)

@@ -520,7 +520,7 @@ stays inactive."
   (-let [((begin . end) dir active) entry]
     (if active
         (hel-select (cons begin end) dir)
-      (hel--set-cursor-char (if (< 0 dir) end begin) dir))))
+      (hel-set-cursor (if (< 0 dir) end begin) dir))))
 
 (defun hel-mark-text-object (thing kind count)
   "Select COUNT THINGs at the cursor, inner or around as KIND says.
@@ -589,7 +589,7 @@ stays as it is."
                                           (reach end (hel-sign count))
                                         (cons start end))))
             (when (hel-thing-jump-p thing) (hel-push-point))
-            (hel-motion-select start end extend)
+            (hel-move-to-pos start end extend)
             (hel-reveal-point-when-on-top))))
     ;; else
     (hel--no-thing-producer-message thing)))

@@ -557,7 +557,7 @@ index in `hel-search-counter' depends on point.")
                               hel-search--session pos dir)))
             (-let [(_ start end closed-overlays) match]
               (when (and extend (use-region-p))
-                (hel-create-fake-cursor-from-point))
+                (hel-create-secondary-cursor))
               (hel-select (cons start end) region-dir)
               (-each closed-overlays #'hel-open-overlay))))))))
 
@@ -647,7 +647,7 @@ Do not auto-detect word boundaries in the search pattern."
                                                    cursors)]
                                    (append main others)))))
       (deactivate-mark)
-      (-each (hel-all-fake-cursors) #'hel--delete-fake-cursor)
+      (-each (hel-all-secondary-cursors) #'hel--delete-secondary-cursor)
       (hel-extend-selection -1)
       (if (setq regions (hel-select-interactively-in-ranges regions invert))
           (progn
@@ -773,15 +773,15 @@ Shows a live preview, a match count, and scrolls the first match into view."
 If INVERT is non-nil — remove selections that match regexp."
   (unless hel-multiple-cursors-mode
     (user-error "No multiple selections"))
-  (hel-with-real-cursor-as-fake
-    (let* ((cursors (hel-all-fake-cursors))
+  (hel-with-main-cursor-as-secondary
+    (let* ((cursors (hel-all-secondary-cursors))
            (regions-overlays (-map (lambda (cursor)
-                                     (overlay-get cursor 'fake-region))
+                                     (overlay-get cursor 'secondary-region))
                                    cursors))
            (regions-content (-map (lambda (cursor)
                                     (buffer-substring-no-properties
-                                     (overlay-get cursor 'point)
-                                     (overlay-get cursor 'mark)))
+                                     (hel--secondary-cursor-point cursor)
+                                     (hel--secondary-cursor-mark cursor)))
                                   cursors))
            timer)
       (cl-flet*
@@ -833,14 +833,14 @@ If INVERT is non-nil — remove selections that match regexp."
             (-each (-zip-pair cursors flags)
               (-lambda ((cursor . flag))
                 (if (not flag)
-                    (hel--delete-fake-cursor cursor)
-                  (hel--set-cursor-overlay cursor)
-                  (-> (overlay-get cursor 'fake-region)
+                    (hel--delete-secondary-cursor cursor)
+                  (hel--draw-secondary-cursor cursor)
+                  (-> (overlay-get cursor 'secondary-region)
                       (overlay-put 'face 'region)))))
           ;; Else restore all cursors
           (dolist (cursor cursors)
-            (hel--set-cursor-overlay cursor)
-            (-> (overlay-get cursor 'fake-region)
+            (hel--draw-secondary-cursor cursor)
+            (-> (overlay-get cursor 'secondary-region)
                 (overlay-put 'face 'region))))))))
 
 ;;; Find char: f F t T
@@ -853,11 +853,11 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list hel-extend-selection))
-  (hel-motion-select (point)
-                     (save-excursion
-                       (hel-find-char (read-char "f" t) 1 nil)
-                       (point))
-                     extend))
+  (hel-move-to-pos (point)
+                   (save-excursion
+                     (hel-find-char (read-char "f" t) 1 nil)
+                     (point))
+                   extend))
 
 ;; F
 (hel-define-command hel-find-char-backward (&optional extend)
@@ -867,11 +867,11 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list hel-extend-selection))
-  (hel-motion-select (point)
-                     (save-excursion
-                       (hel-find-char (read-char "F" t) -1 nil)
-                       (point))
-                     extend))
+  (hel-move-to-pos (point)
+                   (save-excursion
+                     (hel-find-char (read-char "F" t) -1 nil)
+                     (point))
+                   extend))
 
 ;; t
 (hel-define-command hel-till-char-forward (&optional extend)
@@ -881,11 +881,11 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list hel-extend-selection))
-  (hel-motion-select (point)
-                     (save-excursion
-                       (hel-find-char (read-char "t" t) 1 t)
-                       (point))
-                     extend))
+  (hel-move-to-pos (point)
+                   (save-excursion
+                     (hel-find-char (read-char "t" t) 1 t)
+                     (point))
+                   extend))
 
 ;; T
 (hel-define-command hel-till-char-backward (&optional extend)
@@ -895,11 +895,11 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list hel-extend-selection))
-  (hel-motion-select (point)
-                     (save-excursion
-                       (hel-find-char (read-char "T" t) -1 t)
-                       (point))
-                     extend))
+  (hel-move-to-pos (point)
+                   (save-excursion
+                     (hel-find-char (read-char "T" t) -1 t)
+                     (point))
+                   extend))
 
 (defun hel-find-char (char direction exclusive?)
   (let* ((case (let (case-fold-search)

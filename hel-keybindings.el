@@ -273,7 +273,7 @@ use it."
 (hel-keymap-set hel-multiple-cursors-mode-map :state 'normal
   "K"   #'hel-keep-selections
   "M-K" #'hel-remove-selections
-  ","   #'hel-remove-all-fake-cursors
+  ","   #'hel-remove-all-secondary-cursors
   "M-," #'hel-remove-main-cursor
   "g g" #'hel-first-selection
   "g e" #'hel-last-selection

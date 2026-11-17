@@ -51,16 +51,9 @@ buffer local variable."
 
 ;;; Appearence
 
-(defcustom hel-match-fake-cursor-style t
-  "If non-nil, attempt to match the `cursor-type' that the user has selected.
-We only can match `bar' and `box' types.
-If nil, the `box' cursor type will be used for all fake cursors."
-  :type 'boolean
-  :group 'hel)
-
-(defcustom hel-bar-fake-cursor ?\u2000
-  "Character used as the fake cursor when `cursor-type' is `bar'
-and `hel-match-fake-cursor-style' is non-nil.
+(defcustom hel-bar-secondary-cursor ?\u2000
+  "Character that shows a secondary cursor as a bar.
+Secondary cursors are bars in Insert state on a graphic display.
 
 The value must be either a character or a single-character string,
 representing a narrow space. Recommended candidates are:
@@ -73,9 +66,8 @@ The appearance depends heavily on:
 2. The font Emacs selects for this narrow space — it should be
    a variable-pitch font. Use `describe-char' to verify the chosen font.
 
-Note: This all is a hack since Emacs can't render two characters in one
-cell. The bar fake cursor character is virtually inserted between cells,
-shifting subsequent content to the right."
+Emacs cannot draw two characters in one cell, so the bar character is
+shown between two cells and moves the rest of the line to the right."
   :type '(set character string)
   :group 'hel
   :set (lambda (symbol value)
@@ -85,47 +77,6 @@ shifting subsequent content to the right."
                                     value)
                                    (t
                                     (char-to-string ?\u2000))))))
-
-(let ((type '(choice (const :tag "Frame default" t) (const :tag "Filled box" box)
-                     (cons :tag "Box with specified size" (const box) integer)
-                     (const :tag "Hollow cursor" hollow) (const :tag "Vertical bar" bar)
-                     (cons :tag "Vertical bar with specified height" (const bar) integer)
-                     (const :tag "Horizontal bar" hbar)
-                     (cons :tag "Horizontal bar with specified width" (const hbar) integer)
-                     (const :tag "None " nil))))
-  (defcustom hel-normal-state-cursor-type 'bar
-    "`cursor-type' used when Hel is in Normal state."
-    :type type
-    :group 'hel
-    :set (lambda (symbol value)
-           (set-default symbol value)
-           (when (bound-and-true-p hel-state-properties)
-             (setcar (-> hel-state-properties
-                         (map-elt 'normal)
-                         (map-elt :cursor))
-                     value))))
-  (defcustom hel-insert-state-cursor-type 'box
-    "`cursor-type' used when Hel is in Insert state."
-    :type type
-    :group 'hel
-    :set (lambda (symbol value)
-           (set-default symbol value)
-           (when (bound-and-true-p hel-state-properties)
-             (setcar (-> hel-state-properties
-                         (map-elt 'insert)
-                         (map-elt :cursor))
-                     value))))
-  (defcustom hel-emacs-state-cursor-type '(hbar . 4)
-    "`cursor-type' used when Hel is in Emacs state."
-    :type type
-    :group 'hel
-    :set (lambda (symbol value)
-           (set-default symbol value)
-           (when (bound-and-true-p hel-state-properties)
-             (setcar (-> hel-state-properties
-                         (map-elt 'emacs)
-                         (map-elt :cursor))
-                     value)))))
 
 (defface hel-normal-state-main-cursor
   `((t :background ,(face-background 'cursor)))
@@ -151,19 +102,19 @@ Hel is in Emacs state. All other attributes are ignored."
 (\"v\" key) is active."
   :group 'hel)
 
-(defface hel-normal-state-fake-cursor
+(defface hel-normal-state-secondary-cursor
   '((t :foreground "black"
        :background "#ea0064"))
-  "Face for fake cursors when Hel is in Normal state."
+  "Face for secondary cursors when Hel is in Normal state."
   :group 'hel)
 
-(defface hel-insert-state-fake-cursor
+(defface hel-insert-state-secondary-cursor
   '((t :foreground "white"
        :background "SkyBlue3"))
-  "Face for fake cursors when Hel is in Insert state."
+  "Face for secondary cursors when Hel is in Insert state."
   :group 'hel)
 
-(defface hel-cursor-char
+(defface hel-cursor-highlight
   '((((class color) (min-colors 88) (background light))
      :background "gray85")
     (((class color) (min-colors 88) (background dark))
@@ -494,11 +445,7 @@ use `hel-state-property' function.
 `:keymap'        Symbol `hel-STATE-state-map' with keymap in its variable cell
                that will be active while Hel is in STATE.
 
-`:cursor'        Cursor apperance when Hel is in STATE.
-               Can be a cursor type as per `cursor-type', a color string
-               as passed to `set-cursor-color', a zero-argument function for
-               changing the cursor, a list of all the above, or a symbol
-               with such list in its variable cell.
+`:cursor'        The faces of the cursors in STATE: a list (MAIN SECONDARY).
 
 `:input-method'  When non-nil Hell will activate the enabled input method
                in STATE.
@@ -578,10 +525,10 @@ Default value is 0 - scroll half the screen.")
   (add-to-list 'savehist-additional-variables 'hel-regex-history))
 
 (hel-defvar-permanent-local hel--cursors-table nil
-  "Hash table mapping fake cursors IDs to cursors overlays.")
+  "Hash table mapping secondary cursors IDs to cursors overlays.")
 
-(defvar hel--fake-cursor-last-used-id 0
-  "Last used fake cursor ID.")
+(defvar hel--secondary-cursor-last-used-id 0
+  "Last used secondary cursor ID.")
 
 (defvar hel-commands-to-run-for-all-cursors nil
   "Commands to execute for all cursors.")
@@ -589,7 +536,7 @@ Default value is 0 - scroll half the screen.")
 (defvar hel-commands-to-run-once nil
   "Commands to execute only once while multiple cursors are active.")
 
-(defvar hel-fake-cursor-variables
+(defvar hel-cursor-variables
   '(transient-mark-mode ; for `region-active-p'
     mark-active
     mark-ring
@@ -617,11 +564,11 @@ Default value is 0 - scroll half the screen.")
   "Non-nil when `hel-whitelist-file' file has already been loaded.")
 
 (defvar-local hel-this-command nil
-  "Like `this-command' but for fake cursors.
-The command that that will be executed for each fake cursor.")
+  "Like `this-command' but for secondary cursors.
+The command that that will be executed for each secondary cursor.")
 
-(defvar hel-executing-command-for-fake-cursor nil
-  "Non-nil if `this-command' is currently executing for fake cursor.")
+(defvar hel-executing-command-for-secondary-cursor nil
+  "Non-nil if `this-command' is currently executing for secondary cursor.")
 
 (hel-defvar-permanent-local hel--temporarily-disabled-minor-modes nil
   "The list of temporarily disabled minor-modes while there are

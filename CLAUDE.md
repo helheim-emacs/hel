@@ -25,7 +25,7 @@ hel-lib.el                    utilities, hel-motion-loop, highlight system,
                               lines, mark ring
 hel-macros.el                 hel-define-command, hel-define-advice,
                               hel-advice-add
-hel-multiple-cursors-core.el  fake cursor engine, undo/redo integration
+hel-multiple-cursors-core.el  secondary cursors, undo/redo integration
 hel-core.el                   state machine, hel-define-state,
                               hel-keymap-set, pre/post-command hooks, hel-mode
 hel-text-objects.el           the thing protocol, run producers, text objects,
@@ -69,9 +69,11 @@ keymaps for these keys and activates the nested keymaps it finds.
 
 ### Multiple Cursors
 
-Fake cursors are overlays that store point, mark, kill-ring, and buffer-local
-state. The real cursor's command runs first; `hel--post-command-hook` then
-replays it for each fake cursor, in buffer order.
+Secondary cursors are overlays that store point, mark, kill-ring, and
+buffer-local state; point and the mark are empty overlays, not markers.
+`hel--save-cursor` and `hel--load-cursor` move the state between Emacs and
+an overlay. The main cursor's command runs first; `hel--post-command-hook`
+then replays it for each secondary cursor, in buffer order.
 
 Command dispatch uses the `multiple-cursors` symbol property:
 
@@ -90,7 +92,7 @@ command.
 - `hel--pre-command-hook` sets the mark when the selection is being extended.
   In Normal state it opens a single undo step; in Insert state it may split
   the current undo step.
-- `hel--post-command-hook` runs the command for all fake cursors, merges
+- `hel--post-command-hook` runs the command for all secondary cursors, merges
   overlapping selections, closes the undo step in Normal state, and updates
   the active keymaps.
 
@@ -121,7 +123,7 @@ command.
 - A function that takes one step takes `dir`. A function that goes over
   COUNT things takes a signed `count`, as Emacs motions do, and computes
   `dir` inside: `hel-thing-reach`
-- `hel-fake-cursor-*` for cursor manipulation functions
+- `hel-secondary-cursor-*` for cursor manipulation functions
 - Only commands read the variable `hel-extend-selection`, in their
   `interactive` form, and pass it on as the argument `extend`, optional in
   a command and required in a helper. No helper reads the flag. Only the
@@ -196,7 +198,7 @@ make deps                     # install the dependencies into .deps/
   visual line commands that do not move.
 - An endless loop in the code under test freezes the live Emacs. Try a new
   loop with `make` first; `TIMEOUT` ends a batch run.
-- Every command runs once more for each fake cursor, so speed matters.
+- Every command runs once more for each secondary cursor, so speed matters.
   Before and after a change to code that runs for every cursor, run
   `make bench` on the scenarios that use it and compare the tables.
 - `make` reads the dependencies from `.deps/` when it exists, and otherwise
@@ -252,7 +254,8 @@ to scope bindings to specific Hel states:
   `keybindings.org`), demo videos, and `design/`: the specification, the
   open questions (`open-questions.org`), the notes of work that is still
   open (`multiple-cursors-performance.org`,
-  `sean-parent-goals-review.org`), and `archive/` for design notes that are
+  `sean-parent-goals-review.org`, `cursor-side.org`), and `archive/` for
+  design notes that are
   implemented or out of date. Not part of the package.
 - `queries/`: tree-sitter text object queries, see above.
 - `test/`: the test suites, their harness `hel-test-helpers.el`, and the

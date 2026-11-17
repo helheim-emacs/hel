@@ -71,6 +71,45 @@
   ~hel-mark-pair~ selects one.
 
 ** Changed
+- Hel names its cursors /main/ and /secondary/. Every name with /fake/
+  says /secondary/, and every name with /real/ says /main/: for example
+  ~hel-all-fake-cursors~ is ~hel-all-secondary-cursors~,
+  ~hel-create-fake-cursor~ is ~hel-create-secondary-cursor~,
+  ~hel-with-fake-cursor~ is ~hel-with-secondary-cursor~,
+  ~hel-with-real-cursor-as-fake~ is ~hel-with-main-cursor-as-secondary~,
+  ~hel-remove-all-fake-cursors~ is ~hel-remove-all-secondary-cursors~, and
+  the faces ~hel-normal-state-fake-cursor~ and ~hel-insert-state-fake-cursor~
+  are ~hel-normal-state-secondary-cursor~ and
+  ~hel-insert-state-secondary-cursor~. ~hel-fake-cursor-variables~ is
+  ~hel-cursor-variables~, because it lists the state of every cursor.
+  ~hel-fake-selection-p~ is ~hel-secondary-region-p~: Emacs uses "secondary
+  selection" for the text that =M-mouse-1= selects.
+
+- The state decides the shape of the cursors. In Normal state the main cursor
+  is a bar with a highlight on its character, and secondary cursors are boxes.
+  With an active region the box of a secondary cursor covers the character at
+  the head of the selection, inside it, as in Helix. In Insert state every
+  cursor is a bar on a graphic display and a box over the character after
+  point in a text terminal. Emacs state uses an underscore.
+  ~hel-normal-state-cursor-type~, ~hel-insert-state-cursor-type~,
+  ~hel-emacs-state-cursor-type~, ~hel-match-fake-cursor-style~ and
+  ~hel-cursor-is-bar-p~ are removed. The =:cursor= property of a state lists
+  two faces, for the main and the secondary cursors. ~hel-update-cursor~ is
+  renamed to ~hel-draw-cursor~, and ~hel-bar-fake-cursor~ to
+  ~hel-bar-secondary-cursor~.
+
+- ~hel-create-secondary-cursor~ takes a selection: RANGE, DIR and ACTIVE,
+  as ~hel-select~ and the cursor values have them. Without arguments it
+  copies the main cursor where it stands. ~hel-create-fake-cursor-from-point~
+  is removed; call ~hel-create-secondary-cursor~ with no arguments.
+
+- Editing with thousands of cursors is faster: the time per cursor of
+  a command that edits stays nearly the same as the cursors grow, where
+  before it grew with their number.
+
+- Entering Emacs state removes the secondary cursors, so a buffer in Emacs
+  state always has one cursor. This also holds for =magit-blame-mode= and
+  the inline hunks of =diff-hl=, which kept the cursors before.
 
 - Without a selection, the cursor stands on one character next to the bar,
   and =h= and =l= move that character by one, as a block cursor moves: on a
@@ -93,7 +132,7 @@
   of the character.
 
 - In Normal state, the character that the cursor stands on has a faint
-  background, the face ~hel-cursor-char~. A newline, and the end of the
+  background, the face ~hel-cursor-highlight~. A newline, and the end of the
   buffer, show as a cell after the last character of the line. Fake cursors
   cover their own cursor character in the same way.
 
@@ -170,17 +209,28 @@
 - =]p= and =[p= run the same commands as =}= and ={=. ~hel-forward-paragraph-end~
   and ~hel-backward-paragraph-end~ are removed.
 
-- ~hel-set-region~ is removed. Use ~hel-select~ with a range and a direction,
-  or ~hel-motion-select~ for a motion that keeps the mark after =v=.
+- ~hel-save-excursion~ is renamed to ~hel-save-main-cursor~, and
+  ~hel-restore-point-from-fake-cursor~ to ~hel-make-cursor-main~.
+  ~hel-move-fake-cursor~ and ~hel-update-fake-cursor-state~ are removed:
+  run code for a cursor with ~hel-with-secondary-cursor~ inside
+  ~hel-save-main-cursor~, or move cursors with ~hel-set-cursor-selections~.
+
+- ~hel-set-region~ is removed. Four functions place the cursor:
+  ~hel-select~ stores an active region from a range and a direction, and
+  ~hel-set-cursor~ stores a bare cursor from a position and the side of
+  the cursor character. ~hel-move-to-pos~ moves the cursor to a position,
+  and ~hel-move-onto-char~ moves it onto a character. Both select or extend
+  the selection as a motion does, and with no start ~hel-move-to-pos~ leaves
+  a bare cursor. The function that applied a look to the cursor is renamed
+  to ~hel--apply-cursor-look~ and is internal.
 
 - Only commands read the variable ~hel-extend-selection~, which =v= sets. A
   command reads it in its ~interactive~ form and takes it as the optional
   argument EXTEND, so Lisp code can call a motion such as
   ~hel-forward-word-start~ in either mode. The helpers below the commands
-  take EXTEND as a required argument: ~hel-motion-select~ and
-  ~hel-mark-to-thing-edge~. ~hel-maybe-set-mark~ and
-  ~hel-maybe-deactivate-mark~ are removed. Use ~hel-motion-select~, or
-  ~hel-jump-to~ for a motion that leaves no selection. Only
+  take EXTEND as a required argument: ~hel-move-to-pos~,
+  ~hel-move-onto-char~ and ~hel-mark-to-thing-edge~. ~hel-maybe-set-mark~
+  and ~hel-maybe-deactivate-mark~ are removed. Use ~hel-move-to-pos~. Only
   the command ~hel-extend-selection~ and the change of state change the
   variable. The variable and the command share one name, as a minor mode
   and its variable do, and the command reads its argument as a minor mode

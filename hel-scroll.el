@@ -46,7 +46,7 @@
 When point has to move, the selection goes with it if EXTEND is
 non-nil.
 When there are multiple cursors in the buffer the scroll is capped
-to one screen so the main cursor stay in sync with fake ones."
+to one screen so the main cursor stay in sync with secondary ones."
   (unless hel--in-animate-scroll
     (let* ((y-at-point (or (cdr (posn-x-y (posn-at-point)))
                            0)) ; because sometimes `posn-at-point' returns nil
@@ -64,7 +64,7 @@ to one screen so the main cursor stay in sync with fake ones."
           (unless extend (deactivate-mark))))
       (if hel-multiple-cursors-mode
           ;; Whatever happens, cursor must not move, so
-          ;; it stays in sync with the fake cursors.
+          ;; it stays in sync with the secondary cursors.
           (hel-save-selection
             (hel--animate-scroll delta duration))
         (hel--animate-scroll delta duration t)))))
@@ -231,7 +231,7 @@ the command scrolls half the screen.
 
 If multiple cursors are active, scroll is restricted only within
 current screen to prevent desynchronization between main cursor
-and fake ones."
+and secondary ones."
   :multiple-cursors nil
   (interactive (list current-prefix-arg hel-extend-selection))
   (setq count (if (natnump count)
@@ -255,7 +255,7 @@ the command scrolls half the screen.
 
 If multiple cursors are active, scroll is restricted only within
 current screen to prevent desynchronization between main cursor
-and fake ones."
+and secondary ones."
   :multiple-cursors nil
   (interactive (list current-prefix-arg hel-extend-selection))
   (setq count (if (natnump count)

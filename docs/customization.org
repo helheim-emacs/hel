@@ -111,23 +111,16 @@ an element there wins over both variables above.
 
 ** Cursor Settings
 
+The state decides the shape of the cursors, and the faces decide their
+colours, see [[*Faces][Faces]].
+
 #+begin_quote
 [!IMPORTANT]
-- ~hel-bar-fake-cursor~ ::
-  Character used as fake cursor when ~cursor-type~ is ~bar~
-  and ~hel-match-fake-cursor-style~ is non-nil.\\
-  Default is =U+2000= (EN QUAD), which should be bound to a variable-pitch font.
+- ~hel-bar-secondary-cursor~ ::
+  Character that shows a secondary cursor as a bar, in Insert state on
+  a graphic display.\\
+  Default is =U+2000= (EN QUAD), which should be bound to a variable-pitch font.
 #+end_quote
-
-- ~hel-normal-state-cursor-type~ :: ~cursor-type~ in Normal state.
-
-- ~hel-insert-state-cursor-type~ :: ~cursor-type~ in Insert state.
-
-- ~hel-emacs-state-cursor-type~ :: ~cursor-type~ in Emacs state.
-
-- ~hel-match-fake-cursor-style~ ::
-  If non-nil, attempt to match fake cursor style to real cursor type (only
-  bar and box).
 
 ** Multiple Cursors Settings
 
@@ -189,12 +182,16 @@ an element there wins over both variables above.
 
 - ~hel-emacs-state-main-cursor~ :: Main cursor face when Hel in *Emacs* state.
 
-- ~hel-normal-state-fake-cursor~ :: Fake cursors face when Hel in *Normal* state.
+- ~hel-normal-state-secondary-cursor~ :: Secondary cursors face when Hel in *Normal* state.
 
-- ~hel-insert-state-fake-cursor~ :: Fake cursors face when Hel in *Insert* state.
+- ~hel-insert-state-secondary-cursor~ :: Secondary cursors face when Hel in *Insert* state.
 
 - ~hel-extend-selection-cursor~ ::
   Face used for all cursors when extending selection (=v= key) is active.
+
+- ~hel-cursor-highlight~ ::
+  Face of the character under the main cursor in Normal state, next to the
+  bar.
 
 - ~hel-search-highlight~ ::
   Face for highlighting matches during interactive search with =/=, =?=, =*=, =M-*=, =n=, =N=.

@@ -708,7 +708,7 @@ FN takes no arguments and runs at each cursor with its selection."
       (hel-select-ranges ranges (if (use-region-p)
                                      (hel-region-direction)
                                    1))))
-  (hel-update-cursor))
+  (hel-draw-cursor))
 
 (defun hel--tree-select-all-siblings (producer)
   "Put a cursor on the node at each cursor and on its siblings.

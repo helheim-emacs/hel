@@ -1,4 +1,4 @@
-;;; hel-multiple-cursors-core.el --- Fake cursor engine -*- lexical-binding: t -*-
+;;; hel-multiple-cursors-core.el --- Multiple cursors -*- lexical-binding: t -*-
 ;;
 ;; Copyright © 2025-2026 Yuriy Artemyev
 ;;
@@ -28,14 +28,13 @@
 ;; The core functionality for multiple cursors. The code is inspired by
 ;; `multiple-cursors.el' package from Magnar Sveen.
 ;;
-;; How multiple cursors works internally. Command is first executed for
-;; real cursor by Emacs command loop. Then in `post-command-hook' it is executed
-;; for all fake cursors. Fake cursor is an overlay that emulates cursor and
-;; stores inside point, mark, kill-ring and some other variables (full list
-;; is in `hel-fake-cursor-variables'). Executing command for fake cursor looks
-;; as follows: set point and mark to positions saved in fake cursor overlay,
-;; restore all variables from it, execute command in this environment, store
-;; point, mark and new state into fake cursor overlay.
+;; How multiple cursors work.  A buffer has one main cursor, whose state
+;; is point, the mark and the variables of `hel-cursor-variables'
+;; in Emacs, and any number of secondary cursors, each an overlay that holds
+;; the same state.  Emacs runs a command for the main cursor.  Then
+;; `post-command-hook' runs it for each secondary cursor: it loads the
+;; cursor into Emacs with `hel--load-cursor', runs the command, and saves
+;; the cursor back with `hel--save-cursor'.
 ;;
 ;; How command will be executed is controlled by the `multiple-cursors' symbol
 ;; property with three cases:
@@ -44,7 +43,7 @@
 ;; - no value  property not present: prompt the user and permanently store
 ;;             the choice in `hel-whitelist-file'
 ;;
-;; ID 0 always corresponds to the real cursor.
+;; ID 0 always corresponds to the main cursor.
 ;;
 ;;; Code:
 
@@ -59,34 +58,36 @@
 (defvar hel-insert-state)
 (defvar hel-normal-state)
 
-(declare-function hel-update-cursor "hel-core")
+(declare-function hel-draw-cursor "hel-core")
+(declare-function hel--cursor-look "hel-core")
+(declare-function hel--cursor-highlight "hel-core")
 
 ;;; Multiple cursors minor mode
 
 (define-minor-mode hel-multiple-cursors-mode
   "Minor mode, which is active when there are multiple cursors in the buffer.
 No need to activate it manually: it is activated automatically when you create
-first fake cursor with `hel-create-fake-cursor', and disabled when you
-delete last one with `hel-delete-fake-cursor'."
+first secondary cursor with `hel-create-secondary-cursor', and disabled when you
+delete last one with `hel-delete-secondary-cursor'."
   :interactive nil
   :keymap (make-sparse-keymap)
   (if hel-multiple-cursors-mode
       (hel--disable-minor-modes-incompatible-with-multiple-cursors)
     ;; else
-    (when (hel-any-fake-cursors-p)
+    (when (hel-any-secondary-cursors-p)
       (setq hel--cursor-selections-history (hel-cursor-selections))
-      (hel--delete-all-fake-cursors))
+      (hel--delete-all-secondary-cursors))
     (hel--enable-minor-modes-incompatible-with-multiple-cursors)))
 
 (defun hel-auto-multiple-cursors-mode ()
   "Enable `hel-multiple-cursors' if there are multiple cursors,
 disable if only one."
   (when (xor hel-multiple-cursors-mode
-             (hel-any-fake-cursors-p))
+             (hel-any-secondary-cursors-p))
     (hel-multiple-cursors-mode 'toggle)))
 
 (defun hel-disable-multiple-cursors-mode ()
-  "Remove all fake cursors from the current buffer.
+  "Remove all secondary cursors from the current buffer.
 You may restore them with `hel-restore-cursors'."
   (interactive)
   (when hel-multiple-cursors-mode
@@ -108,27 +109,27 @@ in the buffer."
       (funcall mode 1))
     (setq hel--temporarily-disabled-minor-modes nil)))
 
-;;; Fake cursor object
+;;; Secondary cursor object
 
-(defun hel--new-fake-cursor-id ()
+(defun hel--new-secondary-cursor-id ()
   "Return new unique cursor id.
 IDs' are used to keep track of cursors for undo."
-  (cl-incf hel--fake-cursor-last-used-id))
+  (cl-incf hel--secondary-cursor-last-used-id))
 
 (defvar hel--max-cursors-original nil
   "This variable maintains the original maximum number of cursors.
-When `hel-create-fake-cursor' is called and `hel-max-cursors-number' is
+When `hel-create-secondary-cursor' is called and `hel-max-cursors-number' is
 overridden, this value serves as a backup so that `hel-max-cursors-number'
-can take on a new value. When `hel--delete-all-fake-cursors' is called,
+can take on a new value. When `hel--delete-all-secondary-cursors' is called,
 the values are reset.")
 
-(defun hel-create-fake-cursor (point &optional mark id)
-  "Create a fake cursor at POINT position.
-If MARK is passed a fake active region overlay between POINT
-and MARK will be created.
-The ID, if specified, will be assigned to the new cursor.
-Otherwise, the new unique ID will be created.
-The current state is stored in the overlay for later retrieval."
+(defun hel-create-secondary-cursor (&optional range dir active)
+  "Create a secondary cursor as a copy of the main cursor, and return it.
+The new cursor takes the kill ring and the other variables of
+`hel-cursor-variables' from the main cursor.  Without RANGE it also
+takes its selection.  With RANGE it gets the selection RANGE in the
+direction DIR, an active region when ACTIVE is non-nil and the cursor
+character otherwise, see `hel--set-secondary-cursor'."
   (unless hel--max-cursors-original
     (setq hel--max-cursors-original hel-max-cursors-number))
   (when hel-max-cursors-number
@@ -136,207 +137,223 @@ The current state is stored in the overlay for later retrieval."
                 ((<= hel-max-cursors-number num)))
       (if (yes-or-no-p (format "%d active cursors. Continue? " num))
           (setq hel-max-cursors-number (read-number "Enter a new, temporary maximum: "))
-        (hel--delete-all-fake-cursors)
+        (hel--delete-all-secondary-cursors)
         (error "Aborted: too many cursors"))))
-  (prog1 (hel--create-fake-cursor-1 id point mark)
+  (prog1 (hel--create-secondary-cursor-1 nil range dir active)
     (unless hel-multiple-cursors-mode
       (hel-multiple-cursors-mode 1))))
 
-(defun hel--create-fake-cursor-1 (id point mark)
-  "Create a fake cursor with ID at POINT and fake region between POINT and MARK.
-This function is the guts of the `hel-create-fake-cursor'."
-  (or id (setq id (hel--new-fake-cursor-id)))
-  (save-excursion
-    (goto-char point)
-    (let ((cursor (make-overlay point point nil t nil)))
-      (overlay-put cursor 'id id)
-      (overlay-put cursor 'type 'fake-cursor)
-      (overlay-put cursor 'priority 101)
-      (hel--store-cursor-state cursor point mark)
-      (hel--set-cursor-overlay cursor)
-      (hel--set-fake-selection-overlay cursor)
-      (puthash id cursor hel--cursors-table)
-      cursor)))
+(defun hel--create-secondary-cursor-1 (id &optional range dir active)
+  "Create a secondary cursor with ID as a copy of the main cursor.
+ID nil means a new ID.  RANGE, DIR and ACTIVE give it its own selection,
+as in `hel-create-secondary-cursor'.  This function is the guts of
+`hel-create-secondary-cursor'."
+  (let ((cursor (hel--save-cursor (make-overlay (point) (point) nil t nil)))
+        (id (or id (hel--new-secondary-cursor-id))))
+    (overlay-put cursor 'id id)
+    (overlay-put cursor 'type 'secondary-cursor)
+    (overlay-put cursor 'priority 101)
+    (puthash id cursor hel--cursors-table)
+    (if range
+        (hel--set-secondary-cursor cursor range dir active)
+      (hel--draw-secondary-cursor cursor))))
 
-(defun hel--delete-all-fake-cursors ()
-  "Remove all fake cursors overlays form current buffer.
+(defun hel--delete-all-secondary-cursors ()
+  "Remove all secondary cursors overlays form current buffer.
 It is likely that you need `hel-disable-multiple-cursors-mode', not this one."
   (when hel--max-cursors-original
     (setq hel-max-cursors-number hel--max-cursors-original
           hel--max-cursors-original nil))
   (maphash (lambda (_ cursor)
-             (hel--delete-fake-cursor cursor))
+             (hel--delete-secondary-cursor cursor))
            hel--cursors-table))
 
-(defun hel-create-fake-cursor-from-point (&optional id)
-  "Create a fake cursor with an optional fake region based on point and mark.
-Assign the ID to the new fake cursor, if specified.
-The current state is stored in it for later retrieval."
-  (hel-create-fake-cursor (point) (mark t) id))
-
-(defun hel-move-fake-cursor (cursor point &optional mark update)
-  "Move fake CURSOR to new POINT.
-If MARK is non-nil also set fake region.
-Move fake CURSOR and its region according to new POINT and MARK.
-Optionally UPDATE fake-cursors state."
-  (set-marker (overlay-get cursor 'point) point)
-  (set-marker (overlay-get cursor 'mark) (or mark point))
-  (when update (hel-update-fake-cursor-state cursor))
-  (hel--set-cursor-overlay cursor)
-  (hel--set-fake-selection-overlay cursor)
-  cursor)
-
-(defun hel-delete-fake-cursor (cursor)
-  "Delete fake CURSOR and disable `hel-multiple-cursors-mode' if no
-more fake cursors are remaining."
-  (hel--delete-fake-cursor cursor)
+(defun hel-delete-secondary-cursor (cursor)
+  "Delete secondary CURSOR and disable `hel-multiple-cursors-mode' if no
+more secondary cursors are remaining."
+  (hel--delete-secondary-cursor cursor)
   (hel-auto-multiple-cursors-mode))
 
-(defun hel--set-cursor-overlay (cursor)
-  "Draw fake CURSOR from the point, the mark and the state that it stores.
-In Normal state, when its region is not active or is empty, the fake
-cursor covers its cursor character: the bounds that `hel-selection'
-gives for its point and mark.  Otherwise it covers the character after
-its point.
+(defun hel--draw-secondary-cursor (cursor)
+  "Draw the secondary CURSOR in its overlay, and its region.
+The shape and the face come from `hel--cursor-look'.  In Normal state
+a box covers the character of the cursor, the bounds that
+`hel--cursor-highlight' returns, also inside an active region.  In
+Insert state it covers the character after point.  A newline, or the
+end of the buffer, shows as a cell of one space after the last
+character of the line.  A bar is the string `hel-bar-secondary-cursor'
+at its point."
+  (-let* (((shape face) (hel--cursor-look nil))
+          (point (hel--secondary-cursor-point cursor))
+          ((begin end)
+           (or (and hel-normal-state
+                    (hel--cursor-highlight
+                     (hel--secondary-cursor-value cursor)))
+               (list point (if (memq (char-after point) '(?\n nil))
+                               point
+                             (1+ point))))))
+    (pcase shape
+      ('box
+       (move-overlay cursor begin end)
+       (overlay-put cursor 'face (if (/= begin end) face))
+       (overlay-put cursor 'before-string nil)
+       (overlay-put cursor 'after-string
+                    (if (= begin end)
+                        (propertize " " 'face face))))
+      ('bar
+       (move-overlay cursor point point)
+       (overlay-put cursor 'face nil)
+       (overlay-put cursor 'before-string
+                    (propertize hel-bar-secondary-cursor
+                                'face `(,face (:height
+                                               ,(window-default-font-height)))))
+       (overlay-put cursor 'after-string nil))
+      (_
+       (move-overlay cursor point point)
+       (overlay-put cursor 'face nil)
+       (overlay-put cursor 'before-string nil)
+       (overlay-put cursor 'after-string nil))))
+  (hel--draw-secondary-region cursor)
+  cursor)
 
-A newline, or the empty bounds at the end of the buffer, show as a cell
-of one space after the last character of the line, because a face on
-a newline paints to the right edge of the window.
-
-With a bar cursor in a graphic frame, when `hel-match-fake-cursor-style'
-is non-nil, the fake cursor is a bar at its point, and its cursor
-character has the face `hel-cursor-char', as the main cursor has."
-  (let* ((point (marker-position (overlay-get cursor 'point)))
-         (mark (marker-position (overlay-get cursor 'mark)))
-         (char? (and hel-normal-state
-                     (not (and (overlay-get cursor 'mark-active)
-                               (/= point mark)))))
-         (bounds (if char?
-                     (car (hel--selection-from point mark nil))
-                   (cons point (min (1+ point) (point-max)))))
-         (begin (car bounds))
-         ;; A face on a newline paints to the right edge of the window.
-         (end (if (eq (char-after begin) ?\n)
-                  begin
-                (cdr bounds)))
-         (face (cond (hel-extend-selection
-                      'hel-extend-selection-cursor)
-                     (hel-insert-state
-                      'hel-insert-state-fake-cursor)
-                     (t
-                      'hel-normal-state-fake-cursor))))
-    (move-overlay cursor begin end)
-    (if (and (display-graphic-p)
-             hel-match-fake-cursor-style
-             (hel-cursor-is-bar-p))
-        (let ((bar (propertize hel-bar-fake-cursor
-                               'face `(,face
-                                       (:height ,(window-default-font-height)))))
-              (char-face (if char? 'hel-cursor-char)))
-          (overlay-put cursor 'face (if (/= begin end) char-face))
-          (overlay-put cursor 'before-string (if (= point begin) bar))
-          (overlay-put cursor 'after-string
-                       (cond ((/= point begin) bar)
-                             ((and char? (= begin end))
-                              (propertize " " 'face 'hel-cursor-char)))))
-      (overlay-put cursor 'face (if (/= begin end) face))
-      (overlay-put cursor 'before-string nil)
-      (overlay-put cursor 'after-string
-                   (if (= begin end)
-                       (propertize " " 'face face))))
-    cursor))
-
-(defun hel--set-fake-selection-overlay (cursor)
-  "For fake CURSOR setup the overlay looking like active region when appropriate."
-  (let ((beg (overlay-get cursor 'point))
-        (end (overlay-get cursor 'mark)))
+(defun hel--draw-secondary-region (cursor)
+  "Draw the active region of the secondary CURSOR, or delete its drawing."
+  (let ((beg (hel--secondary-cursor-point cursor))
+        (end (hel--secondary-cursor-mark cursor)))
     (if (and (overlay-get cursor 'mark-active)
              (/= beg end))
-        (if-let* ((region (overlay-get cursor 'fake-region)))
+        (if-let* ((region (overlay-get cursor 'secondary-region)))
             (move-overlay region beg end)
           ;; else
           (setq region (-doto (make-overlay beg end nil nil t)
                          (overlay-put 'face 'region)
-                         (overlay-put 'type 'fake-region)
+                         (overlay-put 'type 'secondary-region)
                          (overlay-put 'id (overlay-get cursor 'id))
                          ;; The same as Emacs native region overlay.
                          (overlay-put 'priority 100)))
-          (overlay-put cursor 'fake-region region))
+          (overlay-put cursor 'secondary-region region))
       ;; else
-      (hel--delete-fake-selection-overlay cursor))))
+      (hel--delete-secondary-region cursor))))
 
-(defun hel--delete-fake-cursor (cursor)
+(defun hel--delete-secondary-cursor (cursor)
   "Delete CURSOR overlay."
   (remhash (overlay-get cursor 'id) hel--cursors-table)
-  (set-marker (overlay-get cursor 'point) nil)
-  (set-marker (overlay-get cursor 'mark) nil)
-  (hel--delete-fake-selection-overlay cursor)
-  (delete-overlay cursor))
+  (hel--delete-secondary-region cursor)
+  (hel--free-cursor cursor))
 
-(defun hel--delete-fake-selection-overlay (cursor)
-  "Remove the dependent region overlay for a given CURSOR overlay."
-  (-some-> (overlay-get cursor 'fake-region)
+(defun hel--delete-secondary-region (cursor)
+  "Delete the drawing of the region of the secondary CURSOR."
+  (-some-> (overlay-get cursor 'secondary-region)
     (delete-overlay)))
 
-(defun hel--store-cursor-state (overlay point mark)
-  "Store POINT, MARK and variables relevant to fake cursor into OVERLAY."
-  (or mark (setq mark point))
-  (if-let* ((pnt (overlay-get overlay 'point)))
-      (set-marker pnt point)
-    (overlay-put overlay 'point (copy-marker point t)))
-  (if-let* ((mrk (overlay-get overlay 'mark)))
-      (set-marker mrk mark)
-    (overlay-put overlay 'mark (copy-marker mark)))
-  (dolist (var hel-fake-cursor-variables)
+(defun hel--save-cursor (overlay)
+  "Copy the state of the cursor in Emacs into OVERLAY.
+The state is point, the mark and the variables of
+`hel-cursor-variables'.  Return OVERLAY."
+  (let ((point (point))
+        (mark (or (mark t) (point))))
+    ;; Point and the mark are empty overlays, which follow the edits as
+    ;; markers do.  Emacs walks every marker of the buffer on each edit,
+    ;; but keeps the overlays in a tree.  Text inserted at point goes
+    ;; before it, and text inserted at the mark goes after it.
+    (if-let* ((position (overlay-get overlay 'point)))
+        (move-overlay position point point)
+      (overlay-put overlay 'point (make-overlay point point nil t t)))
+    (if-let* ((position (overlay-get overlay 'mark)))
+        (move-overlay position mark mark)
+      (overlay-put overlay 'mark (make-overlay mark mark nil nil nil))))
+  (dolist (var hel-cursor-variables)
     (if (boundp var)
         (overlay-put overlay var (symbol-value var))))
   overlay)
 
-(defun hel-update-fake-cursor-state (cursor)
-  "Update variables stored in fake CURSOR."
-  (dolist (var hel-fake-cursor-variables)
+(defun hel--load-cursor (overlay)
+  "Copy the state of the cursor in OVERLAY into Emacs."
+  (goto-char (hel--secondary-cursor-point overlay))
+  (set-marker (mark-marker) (hel--secondary-cursor-mark overlay))
+  (dolist (var hel-cursor-variables)
     (if (boundp var)
-        (overlay-put cursor var (symbol-value var)))))
+        (set var (overlay-get overlay var)))))
 
-(defun hel-restore-point-from-fake-cursor (cursor)
-  "Restore point, mark and variables from fake CURSOR overlay and delete it."
-  (hel--restore-cursor-state cursor)
-  (hel--delete-fake-cursor cursor))
-
-(defun hel--restore-cursor-state (overlay)
-  "Restore point, mark and cursor variables saved in OVERLAY."
-  (goto-char (overlay-get overlay 'point))
-  (set-marker (mark-marker) (overlay-get overlay 'mark))
-  (dolist (var hel-fake-cursor-variables)
-    (if (boundp var)
-        (set var (overlay-get overlay var))))
-  (hel--delete-fake-selection-overlay overlay)
+(defun hel--free-cursor (overlay)
+  "Delete OVERLAY, which holds the state of a cursor, and the positions in it."
+  (-some-> (overlay-get overlay 'point) (delete-overlay))
+  (-some-> (overlay-get overlay 'mark) (delete-overlay))
   (delete-overlay overlay))
 
-(defun hel-hide-fake-cursor (cursor)
-  "Disable the fake CURSOR visibility in the buffer without deleting it."
-  (hel--delete-fake-selection-overlay cursor)
+(defun hel--set-secondary-cursor (cursor range dir active)
+  "Give the secondary CURSOR the selection RANGE in the direction DIR.
+The selection is an active region when ACTIVE is non-nil, and the cursor
+character otherwise.  Only point, the mark and `mark-active' of CURSOR
+change.  For the cursor character the mark is one character from point,
+on the side opposite to DIR, as `hel-set-cursor' puts it."
+  (-let* (((begin . end) range)
+          (point (if (< 0 dir) end begin))
+          (mark (cond ((not active) (- point dir))
+                      ((< 0 dir) begin)
+                      (t end))))
+    (move-overlay (overlay-get cursor 'point) point point)
+    (move-overlay (overlay-get cursor 'mark) mark mark)
+    (overlay-put cursor 'mark-active (and active t))
+    (hel--draw-secondary-cursor cursor)))
+
+(defun hel--secondary-cursor-point (cursor)
+  "Return the position of point of the secondary CURSOR."
+  (overlay-start (overlay-get cursor 'point)))
+
+(defun hel--secondary-cursor-mark (cursor)
+  "Return the position of the mark of the secondary CURSOR."
+  (overlay-start (overlay-get cursor 'mark)))
+
+(defun hel-make-cursor-main (cursor)
+  "Make the secondary CURSOR the main cursor.
+Load its state into Emacs and delete it.  The state of the main cursor
+before the call is lost, so save it first to keep it as a secondary cursor."
+  (hel--load-cursor cursor)
+  (hel--delete-secondary-cursor cursor))
+
+(defmacro hel-save-main-cursor (&rest body)
+  "Evaluate BODY and give the main cursor back its state afterwards.
+The state is the one that `hel--save-cursor' copies, and the current
+buffer, as `save-excursion' keeps it."
+  (declare (indent 0) (debug t))
+  (cl-with-gensyms (main)
+    `(let ((,main (hel--save-cursor (make-overlay (point) (point) nil t nil))))
+       (unwind-protect
+           (save-excursion ,@body)
+         (hel--load-cursor ,main)
+         (hel--free-cursor ,main)))))
+
+(defmacro hel-with-secondary-cursor (cursor &rest body)
+  "Evaluate BODY with the secondary CURSOR loaded into Emacs, and save it back.
+The caller keeps the main cursor with `hel-save-main-cursor'."
+  (declare (indent 1) (debug (symbolp &rest form)))
+  `(let ((hel-executing-command-for-secondary-cursor t))
+     (hel--load-cursor ,cursor)
+     (hel--hide-secondary-cursor ,cursor)
+     (unwind-protect
+         (progn ,@body)
+       (hel--save-cursor ,cursor)
+       (hel--draw-secondary-cursor ,cursor))))
+
+(defun hel--hide-secondary-cursor (cursor)
+  "Delete the drawing of the secondary CURSOR and keep the cursor."
+  (hel--delete-secondary-region cursor)
   (delete-overlay cursor)
   cursor)
 
-(defun hel-show-fake-cursor (cursor)
-  "Restore fake CURSOR visibility if it was previously hidden with
-`hel-hide-fake-cursor'."
-  (hel--set-cursor-overlay cursor)
-  (hel--set-fake-selection-overlay cursor))
+(defun hel-secondary-cursor-p (overlay)
+  "Return t if an OVERLAY is a secondary cursor."
+  (eq (overlay-get overlay 'type) 'secondary-cursor))
 
-(defun hel-fake-cursor-p (overlay)
-  "Return t if an OVERLAY is a fake cursor."
-  (eq (overlay-get overlay 'type) 'fake-cursor))
+(defun hel-secondary-region-p (overlay)
+  "Return t if an OVERLAY is a secondary region."
+  (eq (overlay-get overlay 'type) 'secondary-region))
 
-(defun hel-fake-selection-p (overlay)
-  "Return t if an OVERLAY is a fake region."
-  (eq (overlay-get overlay 'type) 'fake-region))
+;;; Access secondary cursors
 
-;;; Access fake cursors
-
-(defun hel-all-fake-cursors (&optional sort)
-  "Return list with all fake cursors in current buffer.
+(defun hel-all-secondary-cursors (&optional sort)
+  "Return list with all secondary cursors in current buffer.
 If SORT is non-nil sort cursors in order they are located in the buffer."
   ;; The table is nil in buffers without `hel-local-mode', for example the
   ;; minibuffer, but global advices such as `current-kill@hel' run there too.
@@ -344,8 +361,8 @@ If SORT is non-nil sort cursors in order they are located in the buffer."
     (if sort
         (sort (hash-table-values hel--cursors-table)
               (lambda (c1 c2)
-                (< (overlay-get c1 'point)
-                   (overlay-get c2 'point))))
+                (< (hel--secondary-cursor-point c1)
+                   (hel--secondary-cursor-point c2))))
       (hash-table-values hel--cursors-table))))
 
 (defun hel-cursor-with-id (id)
@@ -354,52 +371,52 @@ If SORT is non-nil sort cursors in order they are located in the buffer."
             ((hel-overlay-live-p cursor)))
       cursor))
 
-(defun hel-fake-cursor-at (position)
-  "Return the fake cursor at POSITION, or nil if no one."
+(defun hel-secondary-cursor-at (position)
+  "Return the secondary cursor at POSITION, or nil if no one."
   (-some->> (overlays-in position (1+ position))
-    (-filter #'hel-fake-cursor-p)
-    (--find (= position (overlay-get it 'point)))))
+    (-filter #'hel-secondary-cursor-p)
+    (--find (= position (hel--secondary-cursor-point it)))))
 
-(defun hel-next-fake-cursor (position)
-  "Return the next fake cursor after the POSITION."
+(defun hel-next-secondary-cursor (position)
+  "Return the next secondary cursor after the POSITION."
   (cl-loop for pos = (next-overlay-change position)
            then (next-overlay-change pos)
            until (= pos (point-max))
-           thereis (hel-fake-cursor-at pos)))
+           thereis (hel-secondary-cursor-at pos)))
 
-(defun hel-previous-fake-cursor (position)
-  "Return the first fake cursor before the POSITION."
+(defun hel-previous-secondary-cursor (position)
+  "Return the first secondary cursor before the POSITION."
   (cl-loop for pos = (previous-overlay-change position)
            then (previous-overlay-change pos)
            until (= pos (point-min))
-           thereis (hel-fake-cursor-at pos)))
+           thereis (hel-secondary-cursor-at pos)))
 
-(defun hel-first-fake-cursor ()
-  "Return the first fake cursor in the buffer."
+(defun hel-first-secondary-cursor ()
+  "Return the first secondary cursor in the buffer."
   (-min-by (lambda (a b)
-             (> (overlay-get a 'point)
-                (overlay-get b 'point)))
-           (hel-all-fake-cursors)))
+             (> (hel--secondary-cursor-point a)
+                (hel--secondary-cursor-point b)))
+           (hel-all-secondary-cursors)))
 
-(defun hel-last-fake-cursor ()
-  "Return the last fake cursor in the buffer."
+(defun hel-last-secondary-cursor ()
+  "Return the last secondary cursor in the buffer."
   (-max-by (lambda (a b)
-             (> (overlay-get a 'point)
-                (overlay-get b 'point)))
-           (hel-all-fake-cursors)))
+             (> (hel--secondary-cursor-point a)
+                (hel--secondary-cursor-point b)))
+           (hel-all-secondary-cursors)))
 
 (defun hel-number-of-cursors ()
-  "The number of cursors (real and fake) in the buffer."
+  "The number of cursors (main and secondary) in the buffer."
   (1+ (hash-table-count hel--cursors-table)))
 
-(defun hel-any-fake-cursors-p ()
-  "Return non-nil if there are fake cursors in the buffer."
+(defun hel-any-secondary-cursors-p ()
+  "Return non-nil if there are secondary cursors in the buffer."
   (not (hash-table-empty-p hel--cursors-table)))
 
 ;;; The cursors as values
 
 ;; A cursor value is a list (ID RANGE DIRECTION ACTIVE).  ID is 0 for the
-;; main cursor, the key of the fake cursor in `hel--cursors-table'
+;; main cursor, the key of the secondary cursor in `hel--cursors-table'
 ;; otherwise, and nil for a cursor that does not exist yet.  RANGE and
 ;; DIRECTION are the selection of the cursor, as `hel-selection' returns
 ;; it.  ACTIVE is t when that selection is the active region of the
@@ -412,25 +429,25 @@ If SORT is non-nil sort cursors in order they are located in the buffer."
 (defun hel-cursor-selections ()
   "Return the values of all cursors, sorted by the beginning of their ranges.
 Each value is (ID RANGE DIRECTION ACTIVE).  ID is 0 for the main cursor
-and the key of the fake cursor in `hel--cursors-table' for the others.
+and the key of the secondary cursor in `hel--cursors-table' for the others.
 RANGE and DIRECTION are the selection of the cursor, as `hel-selection'
 returns it, and ACTIVE is t when that selection is the active region of
 the cursor, nil when it is the cursor character.
 `hel-set-cursor-selections' takes the returned list."
-  (sort (cons (hel--main-cursor-value)
-              (mapcar #'hel--fake-cursor-value (hel-all-fake-cursors)))
-        (lambda (a b)
-          (< (car (cadr a)) (car (cadr b))))))
+  (-sort (-on #'< (-lambda ((_id (begin . _end))) begin))
+         (cons (hel--main-cursor-value)
+               (-map #'hel--secondary-cursor-value
+                     (hel-all-secondary-cursors)))))
 
 (defun hel--main-cursor-value ()
   "Return the value (0 RANGE DIRECTION ACTIVE) of the main cursor."
   (hel--cursor-value 0 (point) (mark t) (region-active-p)))
 
-(defun hel--fake-cursor-value (cursor)
-  "Return the value (ID RANGE DIRECTION ACTIVE) of the fake CURSOR."
+(defun hel--secondary-cursor-value (cursor)
+  "Return the value (ID RANGE DIRECTION ACTIVE) of the secondary CURSOR."
   (hel--cursor-value (overlay-get cursor 'id)
-                     (marker-position (overlay-get cursor 'point))
-                     (marker-position (overlay-get cursor 'mark))
+                     (hel--secondary-cursor-point cursor)
+                     (hel--secondary-cursor-mark cursor)
                      (overlay-get cursor 'mark-active)))
 
 (defun hel--cursor-value (id point mark active)
@@ -445,57 +462,51 @@ one character."
 
 (defun hel-set-cursor-selections (cursors)
   "Make the cursors of the buffer match CURSORS, a list of cursor values.
-Move the main cursor and every fake cursor whose ID is in CURSORS,
-create a fake cursor for each value with ID nil, and delete the other
-fake cursors.  A fake cursor keeps its kill ring and the other variables
-of `hel-fake-cursor-variables'.  Each value is (ID RANGE DIRECTION
-ACTIVE), as `hel-cursor-selections' returns it."
-  (let ((ids (make-hash-table :size (length cursors))))
+Move the main cursor and every secondary cursor whose ID is in CURSORS,
+create a secondary cursor for each value with ID nil, and delete the
+other secondary cursors.  A secondary cursor keeps its kill ring and the
+other variables of `hel-cursor-variables'.  Each value is (ID RANGE
+DIRECTION ACTIVE), as `hel-cursor-selections' returns it.  A cursor that
+already has its value stays as it is, so its mark keeps its place even
+when the selection does not need it there."
+  (let ((ids (make-hash-table :size (length cursors)))
+        main)
     (dolist (value cursors)
       (puthash (car value) t ids))
-    (dolist (cursor (hel-all-fake-cursors))
+    (dolist (cursor (hel-all-secondary-cursors))
       (unless (gethash (overlay-get cursor 'id) ids)
-        (hel--delete-fake-cursor cursor))))
-  (-each cursors #'hel--set-cursor-selection)
+        (hel--delete-secondary-cursor cursor)))
+    (dolist (value cursors)
+      (-let* (((id . selection) value)
+              (cursor (and id (gethash id hel--cursors-table))))
+        (cond ((eql id 0)
+               (setq main value))
+              ((null cursor)
+               ;; A cursor of an undo step or of `g v' that was deleted
+               ;; since keeps its ID.
+               (if id
+                   (apply #'hel--create-secondary-cursor-1 id selection)
+                 (apply #'hel-create-secondary-cursor selection)))
+              ((not (equal value (hel--secondary-cursor-value cursor)))
+               (apply #'hel--set-secondary-cursor cursor selection)))))
+    ;; The main cursor goes last: the new secondary cursors copy its
+    ;; variables, and `hel-select' may change them.
+    (when (and main (not (equal main (hel--main-cursor-value))))
+      (-let [(_ range dir active) main]
+        (if active
+            (hel-select range dir)
+          (hel-set-cursor (if (< 0 dir) (cdr range) (car range)) dir)))))
   (hel-auto-multiple-cursors-mode))
-
-(defun hel--set-cursor-selection (value)
-  "Make one cursor match VALUE, a cursor value (ID RANGE DIRECTION ACTIVE).
-ID 0 is the cursor that runs the command: point and the mark.  A fake
-cursor with ID moves; when ID is nil, or no fake cursor has it, a new
-fake cursor is made.  A cursor that already has this value stays as it
-is, so its mark keeps its place even when the selection does not need
-it there."
-  (-let* (((id range dir active) value)
-          ((begin . end) range)
-          ((head . anchor) (if (< 0 dir) (cons end begin) (cons begin end))))
-    (if (eql id 0)
-        (unless (equal value (hel--main-cursor-value))
-          (if active
-              (hel-select range dir)
-            (hel--set-cursor-char head dir)))
-      (let ((cursor (and id (gethash id hel--cursors-table))))
-        (cond ((null cursor)
-               ;; A new cursor stores `mark-active' and draws itself.
-               (let ((mark-active active))
-                 (if id
-                     ;; A cursor of an undo step or of `g v' that was
-                     ;; deleted since keeps its ID.
-                     (hel--create-fake-cursor-1 id head anchor)
-                   (hel-create-fake-cursor head anchor))))
-              ((not (equal value (hel--fake-cursor-value cursor)))
-               (overlay-put cursor 'mark-active active)
-               (hel-move-fake-cursor cursor head anchor)))))))
 
 (defun hel-select-ranges (regions direction)
   "Select the first of REGIONS with the current cursor, the others with new ones.
 REGIONS is a list of (BEGIN . END) cons-cells.  DIRECTION is 1 or -1.
 The other cursors stay as they are."
-  (hel--set-cursor-selection (list 0 (car regions) direction t))
   (dolist (region (cdr regions))
-    (hel--set-cursor-selection (list nil region direction t))))
+    (hel-create-secondary-cursor region direction t))
+  (hel-select (car regions) direction))
 
-;;; Executing commands for real and fake cursors
+;;; Executing commands for main and secondary cursors
 
 (defmacro hel-save-window-scroll (&rest body)
   "Save the window scroll position, evaluate BODY, restore it."
@@ -508,72 +519,33 @@ The other cursors stay as they are."
        (set-window-hscroll nil ,win-hscroll)
        (set-marker ,win-start nil))))
 
-(defmacro hel-save-excursion (&rest body)
-  "Like `save-excursion' but additionally save and restore all
-the data needed for multiple cursors functionality."
-  (declare (indent 0) (debug t))
-  (cl-with-gensyms (state)
-    `(let ((,state (hel--conserve-main-cursor-state)))
-       (save-excursion ,@body)
-       (hel--restore-main-cursor-state ,state))))
-
-(defun hel--conserve-main-cursor-state ()
-  (let ((state (list :point (copy-marker (point) t)
-                     :mark (copy-marker (mark-marker)))))
-    (dolist (var hel-fake-cursor-variables)
-      (if (boundp var)
-          (cl-callf plist-put state var (symbol-value var))))
-    state))
-
-(defun hel--restore-main-cursor-state (state)
-  (goto-char (let ((pnt (plist-get state :point)))
-               (prog1 (marker-position pnt)
-                 (set-marker pnt nil))))
-  (set-marker (mark-marker)
-              (let ((mrk (plist-get state :mark)))
-                (prog1 (marker-position mrk)
-                  (set-marker mrk nil))))
-  (dolist (var hel-fake-cursor-variables)
-    (if (boundp var)
-        (set var (plist-get state var)))))
-
-(defmacro hel-with-fake-cursor (cursor &rest body)
-  "Move point to the fake CURSOR, restore the environment from it,
-evaluate BODY, update fake CURSOR."
-  (declare (indent 1) (debug (symbolp &rest form)))
-  `(let ((hel-executing-command-for-fake-cursor t))
-     (hel--restore-cursor-state ,cursor)
-     (unwind-protect
-         (progn ,@body)
-       (hel-move-fake-cursor ,cursor (point) (mark t) :update))))
-
 (defmacro hel-with-each-cursor (&rest body)
-  "Evaluate BODY for all cursors: real and fake ones."
+  "Evaluate BODY for all cursors: main and secondary ones."
   (declare (indent 0) (debug t))
-  ;; First collect fake cursors because BODY can create new cursors,
+  ;; First collect secondary cursors because BODY can create new cursors,
   ;; and we want it to be executed only for original ones.
   `(let ((cursors (if hel-multiple-cursors-mode
-                      (hel-all-fake-cursors))))
+                      (hel-all-secondary-cursors))))
      ;; Main cursor
      ,@body
-     ;; Fake cursors
+     ;; Secondary cursors
      (when cursors
        (hel-save-window-scroll
-         (hel-save-excursion
+         (hel-save-main-cursor
            (dolist (cursor cursors)
-             (hel-with-fake-cursor cursor
+             (hel-with-secondary-cursor cursor
                ,@body)))))))
 
 (defun hel-execute-command-for-all-cursors (command)
-  "Call COMMAND interactively for all cursors: real and fake ones."
+  "Call COMMAND interactively for all cursors: main and secondary ones."
   (hel--call-interactively command)
-  (hel--execute-command-for-all-fake-cursors command)
+  (hel--execute-command-for-all-secondary-cursors command)
   (when (hel--merge-cursors-p command)
     (hel-merge-overlapping-cursors))
   (setq hel--input-cache nil))
 
-(defun hel--execute-command-for-all-fake-cursors (command)
-  "Call COMMAND interactively for each fake cursor."
+(defun hel--execute-command-for-all-secondary-cursors (command)
+  "Call COMMAND interactively for each secondary cursor."
   (when hel-multiple-cursors-mode
     (cond ((and (symbolp command)
                 (get command 'hel-unsupported))
@@ -588,18 +560,18 @@ evaluate BODY, update fake CURSOR."
                 (cadr val)
               (hel--prompt-for-unknown-command command)))
            (hel-save-window-scroll
-             (hel-save-excursion
+             (hel-save-main-cursor
                ;; `syntax-ppss' reuses an earlier parse only for a position
                ;; after it. In buffer order every cursor finds such a parse;
                ;; in reverse order none does, and each cursor parses the
                ;; buffer from its start.
-               (dolist (cursor (hel-all-fake-cursors :sort))
-                 (hel-with-fake-cursor cursor
+               (dolist (cursor (hel-all-secondary-cursors :sort))
+                 (hel-with-secondary-cursor cursor
                    (hel--call-interactively command)))))))))
 
 (defun hel--call-interactively (command)
   "Run COMMAND, simulating the parts of the command loop that
-makes sense for fake cursor."
+makes sense for secondary cursor."
   (unless (eq command 'ignore)
     (let ((this-command command))
       (call-interactively command)))
@@ -612,19 +584,19 @@ makes sense for fake cursor."
   ;; (when deactivate-mark (deactivate-mark))
   )
 
-(defmacro hel-with-real-cursor-as-fake (&rest body)
-  "Temporarily convert real cursor into fake-cursor with ID 0.
+(defmacro hel-with-main-cursor-as-secondary (&rest body)
+  "Temporarily turn the main cursor into a secondary cursor with ID 0.
 Restore it after BODY evaluation if it is still alive."
   (declare (indent 0) (debug t))
-  (cl-with-gensyms (real-cursor)
-    `(let ((,real-cursor (hel--create-fake-cursor-1 0 (point) (mark t))))
+  (cl-with-gensyms (main-cursor)
+    `(let ((,main-cursor (hel--create-secondary-cursor-1 0)))
        (unwind-protect (progn ,@body)
-         (cond ((hel-overlay-live-p ,real-cursor)
-                (hel-restore-point-from-fake-cursor ,real-cursor))
-               ((hel-any-fake-cursors-p)
-                (hel-restore-point-from-fake-cursor (hel-first-fake-cursor))))
+         (-some-> (if (eq ,main-cursor (gethash 0 hel--cursors-table))
+                      ,main-cursor
+                    (hel-first-secondary-cursor))
+           (hel-make-cursor-main))
          (hel-auto-multiple-cursors-mode)
-         (hel-update-cursor)))))
+         (hel-draw-cursor)))))
 
 ;;; Merge overlapping regions
 

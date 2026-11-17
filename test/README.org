@@ -190,8 +190,8 @@ about ~rxt--re-builder-switch-pcre-mode~, a function that no Hel code calls.
 
 * Benchmarks and profiling
 
-Every command runs once for the real cursor and then once for each fake
-cursor, one after another, in the single thread of Emacs. A command that
+Every command runs once for the main cursor and then once for each
+secondary cursor, one after another, in the single thread of Emacs. A command that
 takes 0.1 ms takes 100 ms with 1000 cursors, so the speed of a command with
 many cursors is a feature, and the benchmarks measure it.
 

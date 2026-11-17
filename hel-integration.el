@@ -58,18 +58,18 @@ of all cursors when yanking."
     (when (listp interprogram-paste)
       ;; Use `reverse' to avoid modifying external data.
       (cl-callf reverse interprogram-paste))
-    ;; Add `interprogram-paste' to `kill-ring's of all cursors real and
-    ;; fake. This is what `current-kill' do internally, but we have to do
+    ;; Add `interprogram-paste' to `kill-ring's of all cursors main and
+    ;; secondary. This is what `current-kill' do internally, but we have to do
     ;; it ourselves, because `interprogram-paste-function' is not a pure
     ;; function — it returns something only once.
     (let ((interprogram-cut-function nil)
           (interprogram-paste-function nil))
-      ;; real cursor
+      ;; main cursor
       (if (listp interprogram-paste)
           (mapc 'kill-new interprogram-paste)
         (kill-new interprogram-paste))
-      ;; fake cursors
-      (dolist (cursor (hel-all-fake-cursors))
+      ;; secondary cursors
+      (dolist (cursor (hel-all-secondary-cursors))
         (let ((kill-ring (overlay-get cursor 'kill-ring))
               (kill-ring-yank-pointer (overlay-get cursor 'kill-ring-yank-pointer)))
           (if (listp interprogram-paste)
@@ -79,10 +79,10 @@ of all cursors when yanking."
           (overlay-put cursor 'kill-ring-yank-pointer kill-ring-yank-pointer))))))
 
 (hel-define-advice execute-kbd-macro (:around (orig-fun &rest args))
-  "`execute-kbd-macro' should never be run for fake cursors.
-The real cursor will execute the keyboard macro, resulting in new commands
-in the command loop, and the fake cursors can pick up on those instead."
-  (unless hel-executing-command-for-fake-cursor
+  "`execute-kbd-macro' should never be run for secondary cursors.
+The main cursor will execute the keyboard macro, resulting in new commands
+in the command loop, and the secondary cursors can pick up on those instead."
+  (unless hel-executing-command-for-secondary-cursor
     (apply orig-fun args)))
 
 (hel-cache-input read-char)
@@ -416,14 +416,12 @@ If cursor is in read-only area, jump to prompt instead of deleting."
 
     (hel-set-single-cursor-command 'grep-edit-save-changes)
     (hel-advice-add 'grep-edit-save-changes :before #'hel-deactivate-mark-a)
-    (hel-advice-add 'grep-edit-save-changes :before #'hel-disable-multiple-cursors-mode)
     (hel-advice-add 'grep-edit-save-changes :after #'hel-switch-to-initial-state)))
 
 ;;;; wgrep
 
 (hel-advice-add 'wgrep-change-to-wgrep-mode :after #'hel-switch-to-initial-state)
 (hel-advice-add 'wgrep-to-original-mode :before #'hel-deactivate-mark-a)
-(hel-advice-add 'wgrep-to-original-mode :before #'hel-disable-multiple-cursors-mode)
 (hel-advice-add 'wgrep-to-original-mode :after  #'hel-switch-to-initial-state)
 
 ;;;; occur-mode
@@ -466,7 +464,6 @@ If cursor is in read-only area, jump to prompt instead of deleting."
   (hel-set-single-cursor-command 'wdired-exit)
 
   (hel-advice-add 'wdired-change-to-dired-mode :before #'hel-deactivate-mark-a)
-  (hel-advice-add 'wdired-change-to-dired-mode :before #'hel-disable-multiple-cursors-mode)
 
   (hel-advice-add 'wdired-next-line     :before #'hel-deactivate-mark-a)
   (hel-advice-add 'wdired-previous-line :before #'hel-deactivate-mark-a))
@@ -726,7 +723,6 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
          (when (eq hel-state 'emacs)
            (hel-normal-state)))
         ((not (eq hel-state 'emacs))
-         (when hel-multiple-cursors-mode (hel-multiple-cursors-mode -1))
          (hel-emacs-state))))
 
 (with-eval-after-load 'wid-edit
@@ -742,10 +738,10 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
   :multiple-cursors t
   :merge-selections t
   (interactive (list hel-extend-selection))
-  (hel-motion-select (point) (save-excursion
-                               (widget-end-of-line)
-                               (point))
-                     extend))
+  (hel-move-to-pos (point) (save-excursion
+                             (widget-end-of-line)
+                             (point))
+                   extend))
 
 ;;;; Xref
 
@@ -836,21 +832,21 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
 (hel-advice-add 'embark-dwim :around 'hel-embark-act-a)
 
 (defvar hel--embark-action nil
-  "Embark action chosen for the real cursor.")
+  "Embark action chosen for the main cursor.")
 
 (hel-define-advice embark--act (:before (action &rest _))
-  "Remember the Embark ACTION chosen for the real cursor."
-  (unless hel-executing-command-for-fake-cursor
+  "Remember the Embark ACTION chosen for the main cursor."
+  (unless hel-executing-command-for-secondary-cursor
     (setq hel--embark-action action)))
 
 (defun hel-embark-act-a (orig-fun &rest args)
   "Around advice for `embark-act'/`embark-dwim' fanning them out to all cursors.
-For the real cursor, forget any previously recorded action and run
+For the main cursor, forget any previously recorded action and run
 ORIG-FUN normally (which records the chosen action, see the advice on
-`embark--act').  When Hel replays the command for a fake cursor, skip
+`embark--act').  When Hel replays the command for a secondary cursor, skip
 the prompter: recompute the target at that cursor's point and run the
 recorded action on it, suppressing confirmations and restarts."
-  (if hel-executing-command-for-fake-cursor
+  (if hel-executing-command-for-secondary-cursor
       (when hel--embark-action
         (when-let* ((targets (embark--targets)))
           (cl-letf (((symbol-function 'embark--restart) #'ignore)

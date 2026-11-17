@@ -62,7 +62,7 @@ cursor. In HTML with a =<script>= block, a cursor in the script uses the
 JavaScript query and a cursor in the markup the HTML one.
 
 The choice cannot live in the key binding. A ~menu-item~ with =:filter=
-chooses once, at the main cursor, and the fake cursors replay that choice
+chooses once, at the main cursor, and the secondary cursors replay that choice
 even in another language. It also hides the command from ~describe-key~. So
 every key is a plain binding to one command.
 
@@ -176,15 +176,15 @@ run in Normal state. The nested Hel keymaps of minor modes come first in
    =(foo |(bar baz))= selects =bar=. With no child, or with no node under
    the cursor character, the selection stays. =mi= and =ma= write to the
    same history, so =M-i= after =maf= returns to the selection before it.
-4. *Each cursor has its own history*, through ~hel-fake-cursor-variables~.
+4. *Each cursor has its own history*, through ~hel-cursor-variables~.
 5. *An embedded language uses the parser at point.* The commands pass no
    parser to ~treesit-node-on~, which then uses the language at the start of
    the range, and on Emacs 30 and later prefers a local parser.
 6. *Commands are Hel commands.* They use ~hel-define-command~ with
    =:multiple-cursors t= and set the selection with ~hel-select~ or
-   ~hel-motion-select~.
+   ~hel-move-to-pos~.
 
-   =M-a= and =M-I= are the exception. They create fake cursors, and Hel
+   =M-a= and =M-I= are the exception. They create secondary cursors, and Hel
    would replay a =:multiple-cursors t= command for the new cursors too:
    a new cursor on =[3, 4]= would select =3= and =4=. So they use
    =:multiple-cursors nil= and visit the cursors that existed before the
@@ -1441,7 +1441,7 @@ own.
 
 * Ranges as values
 
-Point and mark are an object with state, and fake cursors replay each
+Point and mark are an object with state, and secondary cursors replay each
 command on them. So commands read the selection once, compute with values,
 and commit once. Algorithms take and return values; leaf motions move point
 inside ~save-excursion~, because Emacs motions read the buffer only by
@@ -1483,12 +1483,17 @@ moving.
   inside a pair to the closing bracket, as in Helix. When extending, the
   head character moves and the anchor character stays, as with =h= and =l=.
 - Two levels write the selection. Two primitives store it and decide
-  nothing: ~hel-select~ stores an active region, and its counterpart for
-  a bare cursor takes point and the side of the cursor character. The
-  algorithms decide where the selection goes and end with a primitive: =h=,
-  =l= and =mm= aim at a character, the other motions, ~hel-motion-select~
-  and ~hel-jump-to~ at a gap. The two kinds differ when the head crosses
-  the anchor, see below, so neither is written with the other.
+  nothing: ~hel-select~ stores an active region from a range and
+  a direction, and ~hel-set-cursor~ stores a bare cursor from point and the
+  side of the cursor character. Two motions decide where the cursor goes
+  and end with a primitive. ~hel-move-onto-char~ goes to a character, for
+  =h=, =l= and =mm=, and computes the direction itself. ~hel-move-to-pos~
+  goes to a position, for every other motion: it selects the text that the
+  motion passed over, or leaves a bare cursor when it has no start, as the
+  jumps =gg=, =G= and the mark ring do. The two kinds differ in both modes,
+  so neither is written with the other: without extending, a step back
+  onto a character keeps point where it is, and with extending, a motion
+  to a character keeps the anchor character, see below.
 - =v= is a flag, ~hel-extend-selection~, not a state of its own: Helix
   needs a Select keymap because a key names one function, while in Hel the
   ~interactive~ form of a command reads the flag and passes it on as the
@@ -1508,12 +1513,12 @@ moving.
   the window that the user enters, unless point has moved there.
 - The cursors are values ~(ID RANGE DIRECTION ACTIVE)~: one reader returns
   them all, an algorithm computes a new list, and one writer moves the
-  cursors by their ID, so each fake cursor keeps its kill ring. The merge
+  cursors by their ID, so each secondary cursor keeps its kill ring. The merge
   after a command joins overlapping selections; the main cursor survives a
   merge with its own state, because the cursors are interchangeable and
   then no state is copied. The set of cursor kinds is closed and the main
   cursor has no data of its own, so plain values serve where generic
-  functions over two structs would only dispatch. The fake cursors replay
+  functions over two structs would only dispatch. The secondary cursors replay
   a command in buffer order, which keeps the cost of ~syntax-ppss~ linear in
   the number of cursors.
 - The search session is an object, a ~cl-defstruct~ that owns a timer,
@@ -1534,6 +1539,70 @@ Accepted limits: the query cache lasts the session, so editing a query file
 needs a restart. A cycle of =inherits:= lines signals
 ~excessive-lisp-nesting~, which ~hel-treesit--query~ catches. The sexp
 parent scans every enclosing level, 2 ms at depth 16.
+
+* Cursors
+
+A Hel cursor is point, the cursor character and the selection around it.
+A buffer has one main cursor, whose state lives in Emacs, and any number of
+secondary cursors, whose state lives in overlays.
+
+- *Two functions move the state of a cursor*: /save/ copies point, the mark
+  and the variables of each cursor from Emacs into an overlay, and /load/
+  copies them back. They neither draw nor delete, so every other operation
+  combines them: a command runs for a secondary cursor between a load and a
+  save, the main cursor waits in a hidden overlay meanwhile, and
+  ~hel-make-cursor-main~ loads a secondary cursor and deletes it. The main
+  cursor gets its state back also when the command signals an error. One pair
+  of functions serves every move of the whole state, so the two kinds of
+  cursor cannot drift apart.
+- *A selection goes straight into a secondary cursor.* Code that works on
+  all cursors at once, such as the merge of overlapping selections, undo
+  and =s=, reads the cursors as values and writes new values back. A value
+  holds only the selection, so its writer moves point and the mark of the
+  overlay and sets whether the region is active. A trip through Emacs
+  would load and save every variable of every cursor to change two
+  positions. A new secondary cursor is a save of the main cursor, so it
+  takes the kill ring and the other variables from it, and then gets its
+  own selection the same way.
+- *During a command for a secondary cursor its drawing is off the buffer*,
+  so that the command does not see the cursor it runs for. A command that
+  asks whether a secondary cursor stands at point means another cursor.
+- *The state keeps point and the mark, not the cursor value.* The value
+  loses an inactive mark far from point, and Insert state needs it: the
+  exit after =a= reads it, and so does =C-x C-x=.
+- *A secondary cursor keeps point and the mark as two empty overlays*, not
+  as markers. Emacs walks every marker of a buffer on each edit, so with
+  markers an edit costs time in proportion to the number of cursors, and
+  a command that edits at every cursor costs the square of it. Overlays
+  live in a tree. Point advances on an insertion at its position, as
+  a marker of insertion type t, and the mark does not.
+- *The state decides the shape of a cursor, and no setting does.* In Normal
+  state the main cursor is a bar at point with a face on its character, so the
+  two together show the character and the side of point; a secondary cursor is
+  a box over its character, and with an active region over its head character,
+  inside the selection, as in Helix. In Insert state every cursor is a
+  position: a bar on a graphic display, and in a text terminal a box over the
+  character after point, because a bar string there would push the line one
+  cell to the right. The display is the frame of the selected window when Hel
+  draws. Emacs state uses an underscore and names a face only for its main
+  cursor. Normal and Insert state name the faces of their main and secondary
+  cursors, and =v= gives both one face. One function answers the shape and the
+  face for both kinds, and one the bounds of the face on the character; a
+  renderer for each medium applies them, because the set of kinds is closed.
+- *The names are main and secondary.* Helix says primary and secondary,
+  but in Emacs "primary" names the X selection that
+  ~select-active-regions~ fills, and Hel's window switch binds that
+  variable. A secondary cursor is a full cursor that waits in a container,
+  so no name calls it fake. Its selection is its /region/, because Emacs
+  says "secondary selection" for the text of =M-mouse-1=.
+- *Each window has one highlight overlay*, in its window parameter, and
+  only the function that draws the highlight writes that parameter and the
+  record of the window that showed it last.
+- *Emacs state has no secondary cursors.* Emacs commands know nothing of
+  them, so the change to Emacs state removes them itself. Every road into
+  Emacs state, such as =magit-blame-mode= or the end of a wdired edit, keeps
+  the rule without code of its own. No other state removes them: a user
+  who gives Dired Normal state keeps the cursors after a wdired edit.
 
 * Package layout
 

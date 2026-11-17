@@ -266,11 +266,13 @@ deactivate the mark before undoing.
 
 #+begin_quote
 [!TIP]
-By default, Hel uses a bar cursor for Normal state and a box cursor for Insert
-state — the opposite of what Vim does. Your first instinct may be to switch
-them back to what you're used to, but I recommend not doing so. This was the
-first I done myself, and went through all the stages of acceptance, give
-default settings a try — the bar cursor is better suited for Normal state.
+In Normal state the cursor is a bar with a faint highlight on the character
+that commands act on: the bar shows on which side of that character point
+is. In Insert state every cursor is a bar where the next character goes; in
+a text terminal, which cannot draw a bar between two cells, every cursor is
+a box over the character after that place. Emacs state uses an underscore.
+These shapes follow from the states, so Hel has no setting for them; the
+faces of the cursors choose their colours.
 #+end_quote
 
 #+begin_quote

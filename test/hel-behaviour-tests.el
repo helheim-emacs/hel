@@ -113,7 +113,7 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   "A text buffer starts in Normal state with one cursor and no selection."
   (hel-test-with 'text-mode "foo|"
     (should (eq (hel-test-state) 'normal))
-    (should (equal (hel-test-fake-cursors) nil))
+    (should (equal (hel-test-secondary-cursors) nil))
     (should-not (use-region-p))))
 
 (ert-deftest hel-behaviour-environment-prompt-is-reported ()
@@ -1692,14 +1692,57 @@ cursor character, so extending goes on."
 (ert-deftest hel-behaviour-cursors-undo-restores-cursor-chars ()
   "Undo brings back the cursor character of each cursor on its own side."
   (hel-test-with 'text-mode "ab|c\nabc"
-    (hel--set-cursor-char 3 1)              ; "b", before point
-    (hel-create-fake-cursor 7 6)            ; "b", before point
+    (hel-set-cursor 3 1)                    ; "b", before point
+    (hel-test-add-secondary-cursor 7 6)       ; "b", before point
     (should (equal (hel-test-cursor-chars) '(("b" 1) ("b" 1))))
     (hel-test-press! "D")
     (should (equal (hel-test-cursor-chars) '(("c" -1) ("c" -1))))
     (hel-test-press! "u")
     (should (equal (buffer-string) "abc\nabc"))
     (should (equal (hel-test-cursor-chars) '(("b" 1) ("b" 1))))))
+
+(ert-deftest hel-behaviour-cursors-emacs-state-has-none ()
+  "Entering Emacs state removes the secondary cursors."
+  (hel-test-with 'text-mode "|a\nb"
+    (hel-test-press! "C")
+    (should (hel-test-secondary-cursors))
+    (hel-emacs-state)
+    (should-not (hel-test-secondary-cursors))))
+
+(defvar magit-blame-mode)
+
+(ert-deftest hel-behaviour-cursors-magit-blame-leaves-one ()
+  "The hook of `magit-blame-mode' enters Emacs state, so one cursor stays."
+  (hel-test-with 'text-mode "|a\nb"
+    (hel-test-press! "C")
+    (let ((magit-blame-mode t))
+      (run-hooks 'magit-blame-mode-hook))
+    (should (eq (hel-test-state) 'emacs))
+    (should-not (hel-test-secondary-cursors))))
+
+(ert-deftest hel-behaviour-cursors-wdired-finish-leaves-one ()
+  "The end of a wdired edit returns to Dired in Emacs state with one cursor."
+  (require 'wdired)
+  (let* ((dir (make-temp-file "hel-test-wdired" t))
+         (inhibit-message t))
+    (unwind-protect
+        (progn
+          (dolist (name '("a" "b"))
+            (write-region "" nil (expand-file-name name dir)))
+          (save-window-excursion
+            (let ((buffer (dired dir)))
+              (unwind-protect
+                  (progn
+                    (wdired-change-to-wdired-mode)
+                    (should (eq (hel-test-state) 'normal))
+                    (hel-test-add-secondary-cursor (point) (point))
+                    (should (hel-test-secondary-cursors))
+                    (wdired-finish-edit)
+                    (should (eq major-mode 'dired-mode))
+                    (should (eq (hel-test-state) 'emacs))
+                    (should-not (hel-test-secondary-cursors)))
+                (kill-buffer buffer)))))
+      (delete-directory dir t))))
 
 (ert-deftest hel-behaviour-cursors-insert-undo-is-one-step ()
   "One undo reverts a word typed with all cursors."
