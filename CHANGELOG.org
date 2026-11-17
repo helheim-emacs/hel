@@ -72,6 +72,51 @@
 
 ** Changed
 
+- Without a selection, the cursor stands on one character next to the bar,
+  and =h= and =l= move that character by one, as a block cursor moves: on a
+  reversal the character moves and the bar stays. =j= and =k= keep the
+  character on its side of the bar, so it keeps its column. =;= leaves the
+  cursor on the character at the head of the selection, and leaving Insert
+  state leaves it on the character before the bar.
+
+- In Normal state, the character that the cursor stands on has a faint
+  background, the face ~hel-cursor-char~. A newline, and the end of the
+  buffer, show as a cell after the last character of the line. Fake cursors
+  cover their own cursor character in the same way.
+
+- =v= selects the character under the cursor at once. After =v=, =h= and =l=
+  move the end of the selection by one character and keep the character
+  where the selection started. The other motions never stop where the
+  selection would be empty, so =b= gives back what =w= took. Motions keep
+  extending after a command outside Hel has deactivated the region.
+
+- Without a selection, =d=, =D=, =r=, =R=, =~=, =`= and =M-`= act on the
+  character under the cursor, and =i= and =a= insert before and after it.
+  These commands take no count.
+
+- Without a selection, the structural commands and the text objects start
+  from the character under the cursor, as from a selection of that one
+  character. =M-o= selects the smallest node that holds it and is larger, so
+  on a one-character node such as =a= it selects the parent. =M-n= / =M-p=
+  select the sibling after / before the node under it; on a space or
+  a comma between nodes they select the nearest node on their side. =mi= and
+  =ma= take the object under it. =M-i= back to the start of a chain of =M-o=
+  leaves the cursor without a selection, on the same character. At the end
+  of the buffer =M-o= and =mi= start from the character before the cursor,
+  unless it is a newline.
+
+- When one buffer is shown in two windows, each window keeps its own
+  selection and its own cursor character. =C-x o= back to a window gives
+  back its region, the side of its cursor character and =v=. A window whose
+  point has moved since, for example by a mouse click, starts without
+  a selection.
+
+- When cursors merge, the main cursor keeps its own kill ring and state,
+  and undo gives each cursor back its cursor character on its own side.
+  ~hel-cursors-positions~ and ~hel-place-cursors~ are removed. Use
+  ~hel-cursor-selections~ and ~hel-set-cursor-selections~, which read and
+  write every cursor as a value (ID RANGE DIRECTION ACTIVE).
+
 - =mr= replaces only the delimiters and keeps the layout of the pair:
   =mr([= turns =(foo)= into =[foo]=, and brackets on lines of their own stay
   there.
@@ -135,7 +180,11 @@
   ~hel-end-of-line~. ~hel-eolp~, ~hel-visual-bolp~ and ~hel-visual-eolp~ are
   removed.
 
-- ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~.
+- ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~,
+  and it never returns nil: without an active region that is not empty, it
+  returns the one character next to point that the cursor stands on. Test
+  ~use-region-p~ to tell whether the user has selected text.
+  ~hel-selection-bounds~ and ~hel-selection-direction~ return the two parts.
   ~hel-trim-whitespace-from-range~, ~hel-invert-case-in-range~,
   ~hel-replace-chars~, ~hel-read-char-and-replace~ and ~hel-range-visible-p~
   take a range ~(BEGIN . END)~.

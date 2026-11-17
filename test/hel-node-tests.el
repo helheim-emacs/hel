@@ -111,8 +111,9 @@
   "Only the innermost bracket pair gives an inside step."
   (hel-test-with #'c-mode (hel-test-mark "f(a, (b + c));\n" "b +")
     (deactivate-mark)
+    ;; The cursor character is `b', so the first step is larger than it.
     (should (equal (hel-node-tests--expand 4)
-                   '("b" "b + c" "(b + c)" "(a, (b + c))")))))
+                   '("b + c" "(b + c)" "(a, (b + c))" "f(a, (b + c));\n")))))
 
 ;;; Expand and shrink: driver
 
@@ -125,19 +126,21 @@
 
 (ert-deftest hel-expand-count-and-shrink ()
   (hel-test-with #'c-mode (hel-test-mark "(a (b (c d)))" " d")
-    ;; Point touches `c', so the first step selects it.
+    ;; The cursor character is the space after `c', so the steps are
+    ;; `c d', `(c d)' and `(b (c d))'.
     (hel-expand-selection-backward 3)
-    (should (equal (hel-test-selection) "(c d)"))
+    (should (equal (hel-test-selection) "(b (c d))"))
     (hel-shrink-selection 3)
     (should (eq (hel-test-selection) nil))
-    (should (= (point) 9))))
+    (should (= (point) 9))
+    (should (equal (hel-test-cursor-chars) '((" " -1))))))
 
 (ert-deftest hel-expand-negative-counts ()
   "A negative count of shrink expands, and a negative count of expand
 shrinks."
   (hel-test-with #'c-mode (hel-test-mark "(a (b (c d)))" " d")
     (hel-shrink-selection -3)
-    (should (equal (hel-test-selection) "(c d)"))
+    (should (equal (hel-test-selection) "(b (c d))"))
     (hel-expand-selection-backward -3)
     (should (eq (hel-test-selection) nil))
     (should (= (point) 9))))
@@ -257,9 +260,7 @@ that covers it."
 
 (ert-deftest hel-treesit-siblings-skip-commas ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-node-tests--python "abc")
-    ;; Without a selection, the first press selects the node after point.
-    (hel-select-next-sibling 1)
-    (should (equal (hel-test-selection) "abc"))
+    ;; The cursor character is `a', and abc is the node under it.
     (hel-select-next-sibling 1)
     (should (equal (hel-test-selection) "[1, 2]"))
     (should (= (point) (region-end)))
@@ -300,9 +301,11 @@ node of the word."
 
 ;;; Point without a selection
 
-;; Rule 10 of the design: without a selection, point is a position. A
-;; command with a direction takes the node on its side of point, and
-;; expand takes the node that touches point, the one after point first.
+;; Rule 10 of the design: at a bare point the selection is the cursor
+;; character.  M-n and M-p take the siblings of the node under it, and M-o
+;; the smallest node that holds it and is larger.  On whitespace or
+;; a comma between nodes, no node is under it, and M-n and M-p take the
+;; nearest node on their side.
 
 (defun hel-node-tests--bare (mode point-text command)
   "Run COMMAND once from a bare point in a MODE buffer, return the selection.
@@ -312,16 +315,18 @@ POINT-TEXT is a marked text with point and no selection."
     (hel-test-selection)))
 
 (defconst hel-node-tests--bare-lisp
-  '(("(defun name |(mode state))" "(mode state)" "name" "(mode state)")
-    ("(defun name| (mode state))" "(mode state)" "name" "name")
-    ("(defun na|me (mode state))" "name" "name" "name")
-    ("(f foo|(x))" "(x)" "foo" "(x)")
+  '(("(defun name |(mode state))" nil "name" "(mode state)")
+    ("(defun name| (mode state))" "(mode state)" "name"
+     "(defun name (mode state))")
+    ("(defun na|me (mode state))" "(mode state)" "defun" "name")
+    ("(f foo|(x))" nil "foo" "(x)")
     ;; In Lisp, expand from whitespace selects the whole list: a Lisp
     ;; buffer has no step for the inside of a list.
     ("(a | b)" "b" "a" "(a  b)")
-    ("(g \"so|me text\" y)" "\"some text\"" "\"some text\"" "\"some text\""))
+    ("(g \"so|me text\" y)" "y" "g" "\"some text\""))
   "Cases of a bare point without a parser: the text with `|' at point,
-and the selections of `M-n', `M-p' and `M-o'.")
+and the selections of `M-n', `M-p' and `M-o'.  The text has no mark, so
+the cursor character is the character after `|'.")
 
 (ert-deftest hel-bare-point-sexps ()
   "Without a parser, the nodes are sexps, and a string is a leaf."
@@ -338,10 +343,13 @@ and the selections of `M-n', `M-p' and `M-o'.")
 (ert-deftest hel-treesit-bare-point ()
   "With a parser, a bare point takes the node on the side of the command."
   (skip-unless (treesit-language-available-p 'python))
+  ;; The text has no mark, so the cursor character is the character
+  ;; after `|'.
   (pcase-dolist (`(,text ,next ,previous ,expand)
-                 '(("def g(a: int, b: str|, c): pass\n" "c" "b: str" "str")
-                   ("def g(a: int, |b: str, c): pass\n" "b: str" "a: int" "b")
-                   ("def g(a: int, b: s|tr, c): pass\n" "str" "str" "str")))
+                 '(("def g(a: int, b: str|, c): pass\n"
+                    "c" "b: str" "(a: int, b: str, c)")
+                   ("def g(a: int, |b: str, c): pass\n" "str" nil "b: str")
+                   ("def g(a: int, b: s|tr, c): pass\n" nil "b" "str")))
     (should (equal (list text
                          (hel-node-tests--bare #'python-ts-mode text
                                                #'hel-select-next-sibling)
@@ -352,15 +360,16 @@ and the selections of `M-n', `M-p' and `M-o'.")
                    (list text next previous expand)))))
 
 (ert-deftest hel-treesit-bare-point-all-siblings ()
-  "`M-a' at a bare point starts from the node that touches point."
+  "`M-a' at a bare point starts from the node under the cursor character.
+The comma is not a node, so the nodes around it are the parameters."
   (skip-unless (treesit-language-available-p 'python))
   (hel-test-with #'python-ts-mode (hel-test-mark "def g(a: int, b: str, c): pass\n" "")
-    ;; Point touches `str' on its left. The comma after it is not a node.
+    ;; The cursor character is the comma after `str'.
     (goto-char (point-min))
     (search-forward "str")
     (deactivate-mark)
     (hel-select-all-siblings)
-    (should (equal (hel-node-tests--all-selections) '("b" "str")))))
+    (should (equal (hel-node-tests--all-selections) '("a: int" "b: str" "c")))))
 
 (ert-deftest hel-bare-point-all-siblings-between-nodes ()
   "`M-a' where no node touches point selects the nodes around point."
@@ -371,7 +380,8 @@ and the selections of `M-n', `M-p' and `M-o'.")
     (should (equal (hel-node-tests--all-selections) '("a" "b" "f")))))
 
 (ert-deftest hel-bare-point-text-object-tie ()
-  "When point touches two objects, `mi' takes the one after point."
+  "When point touches two objects, `mi' takes the one under the cursor
+character.  Without a mark, that is the character after point."
   (hel-test-with #'text-mode (hel-test-mark "foo bar\n" " bar")
     (forward-char 1)
     (deactivate-mark)
@@ -380,7 +390,11 @@ and the selections of `M-n', `M-p' and `M-o'.")
   (hel-test-with #'text-mode (hel-test-mark "foo.\n" ".")
     (deactivate-mark)
     (hel-mark-word 1)
-    (should (equal (hel-test-selection) "."))))
+    (should (equal (hel-test-selection) ".")))
+  (hel-test-with #'text-mode (hel-test-mark "foo.\n" ".")
+    (hel--set-cursor-char (point) 1)
+    (hel-mark-word 1)
+    (should (equal (hel-test-selection) "foo"))))
 
 ;;; Lisp: sexps as nodes
 
@@ -407,10 +421,12 @@ is selected first."
 
 (ert-deftest hel-lisp-expand-whole-sexps ()
   "In Lisp, `M-o' goes from sexp to whole sexp."
+  ;; The cursor characters `x' and `g' are one-character nodes, so the
+  ;; first step selects their lists.
   (should (equal (hel-node-tests--lisp-steps "x 2" #'hel-expand-selection-backward 3)
-                 '("x" "(* x 2)" "(y (* x 2))")))
-  (should (equal (hel-node-tests--lisp-steps "g \"" #'hel-expand-selection-backward 2)
-                 '("g" "(g \"some text\" [y] 'sym)")))
+                 '("(* x 2)" "(y (* x 2))" "((y (* x 2)))")))
+  (should (equal (hel-node-tests--lisp-steps "g \"" #'hel-expand-selection-backward 1)
+                 '("(g \"some text\" [y] 'sym)")))
   (should (equal (hel-node-tests--lisp-steps
                   "(* x 2)" #'hel-expand-selection-backward 2 t)
                  '("(y (* x 2))" "((y (* x 2)))"))))
@@ -426,13 +442,16 @@ is selected first."
     (deactivate-mark)
     (hel-expand-selection-backward 3)
     (hel-shrink-selection 2)
-    (should (equal (hel-test-selection) "x"))))
+    (should (equal (hel-test-selection) "(* x 2)"))
+    (hel-shrink-selection 1)
+    (should (eq (hel-test-selection) nil))
+    (should (equal (hel-test-cursor-chars) '(("x" -1))))))
 
 (ert-deftest hel-lisp-expand-backward-and-forward ()
   "`M-b' and `M-e' expand as `M-o' does, with point at the start or the end."
   (hel-test-with #'emacs-lisp-mode (hel-test-mark hel-node-tests--lisp "x 2")
     (deactivate-mark)
-    (hel-expand-selection-backward 2)
+    (hel-expand-selection-backward 1)
     (should (equal (hel-test-selection) "(* x 2)"))
     (should (= (point) (region-beginning)))
     (hel-expand-selection-forward 1)
@@ -440,10 +459,14 @@ is selected first."
     (should (= (point) (region-end)))))
 
 (ert-deftest hel-lisp-sibling-of-prefixed-atom ()
-  "Point after the quote of `'sym' lies inside the sexp `'sym'."
+  "The cursor character after the quote of `'sym' lies inside the sexp
+`'sym', so `M-o' selects it with the quote, and `M-p' its sibling."
   (should (equal (hel-node-tests--lisp-steps
-                  "sym" #'hel-select-next-sibling 1)
-                 '("'sym"))))
+                  "sym" #'hel-expand-selection-backward 1)
+                 '("'sym")))
+  (should (equal (hel-node-tests--lisp-steps
+                  "sym" #'hel-select-previous-sibling 1)
+                 '("[y]"))))
 
 (ert-deftest hel-lisp-prefixed-string-leaf-has-no-children ()
   "A leaf has no children, also a string with a prefix character."
@@ -468,7 +491,7 @@ The line ends between its lines belong to it, and the last one does not."
   (hel-test-with #'c-mode (hel-test-mark "f(a, (b + c));\n" "b +")
     (deactivate-mark)
     (should (equal (hel-node-tests--expand 3)
-                   '("b" "b + c" "(b + c)")))))
+                   '("b + c" "(b + c)" "(a, (b + c))")))))
 
 ;;; All siblings and all children
 
@@ -499,8 +522,7 @@ The line ends between its lines belong to it, and the last one does not."
 
 (ert-deftest hel-sexp-siblings ()
   (hel-test-with #'c-mode (hel-test-mark hel-node-tests--c-call "alpha")
-    (hel-select-next-sibling 1)
-    (should (equal (hel-test-selection) "alpha"))
+    ;; The cursor character is `a', and alpha is the node under it.
     (hel-select-next-sibling 1)
     (should (equal (hel-test-selection) "beta"))
     (hel-select-next-sibling 1)
@@ -646,13 +668,18 @@ wrapper `expression_statement'."
                    "^def f():\n    return g(abc, [1, 2])|\nx = 1\n"))))
 
 (ert-deftest hel-previous-sibling-through-wrapper-bare ()
-  "Rule 10: from a bare point at `x', M-p takes the last child of the
-module that ends before point: the function."
+  "Rule 10: with the cursor character on the line end before `x', no node
+is under it, and M-p takes the last child of the module that ends before
+it: the function.  With the cursor character on `x', the node under it is
+the identifier, which has no sibling before it."
   (hel-test-need 'python)
-  (hel-test-with #'python-ts-mode (hel-node-tests--py "return g(abc, [1, 2])" "|x = 1")
+  (hel-test-with #'python-ts-mode (hel-node-tests--py "return g(abc, [1, 2])|")
     (hel-test-run #'hel-select-previous-sibling)
     (should (equal (hel-test-render)
-                   "|def f():\n    return g(abc, [1, 2])^\nx = 1\n"))))
+                   "|def f():\n    return g(abc, [1, 2])^\nx = 1\n")))
+  (should (hel-test-unchanged-p #'hel-select-previous-sibling
+                                (hel-node-tests--py "return g(abc, [1, 2])" "|x = 1")
+                                #'python-ts-mode)))
 
 (ert-deftest hel-next-sibling-at-last-statement ()
   "M-n at the last statement leaves the selection as it is."
@@ -682,42 +709,47 @@ The selection `x ' starts from the identifier x, whose next sibling is 1."
                 #'hel-expand-selection-backward)))
 
 (ert-deftest hel-bare-point-before-list-parser ()
-  "Rule 10 table, row `name |(mode state)', in Python."
+  "Rule 10 table, row `name |(mode state)', in Python.  The cursor
+character is `(', under the argument list, which has no sibling after it."
   (hel-test-need 'python)
   (should (equal (hel-node-tests--bare-steps #'python-ts-mode "name |(mode, state)\n")
-                 '("(mode, state)" "name" "(mode, state)"))))
+                 '(nil "name" "(mode, state)"))))
 
 (ert-deftest hel-bare-point-after-name-parser ()
-  "Rule 10 table, row `name| (mode state)', in Python."
+  "Rule 10 table, row `name| (mode state)', in Python.  The cursor
+character is the space, between the nodes of the call."
   (hel-test-need 'python)
   (should (equal (hel-node-tests--bare-steps #'python-ts-mode "name| (mode, state)\n")
-                 '("(mode, state)" "name" "name"))))
+                 '("(mode, state)" "name" "name (mode, state)"))))
 
 (ert-deftest hel-bare-point-in-parameter-parser ()
-  "Rule 10 table, row `Callback |_callback,', in C."
+  "Rule 10 table, row `Callback |_callback,', in C.  The cursor character
+is `_', under `_callback', the last node of its parameter."
   (hel-test-need 'c)
   (should (equal (hel-node-tests--bare-steps #'c-ts-mode
                                        "void f(Callback |_callback, int x);\n")
-                 '("_callback" "Callback" "_callback"))))
+                 '(nil "Callback" "_callback"))))
 
 (ert-deftest hel-bare-point-before-comma-parser ()
-  "Rule 10 table, row `Callback _callback|,', in C."
+  "Rule 10 table, row `Callback _callback|,', in C.  The cursor character
+is the comma, between the parameters, so M-o selects all of them."
   (hel-test-need 'c)
   (should (equal (hel-node-tests--bare-steps #'c-ts-mode
                                        "void f(Callback _callback|, int x);\n")
-                 '("int x" "Callback _callback" "_callback"))))
+                 '("int x" "Callback _callback" "(Callback _callback, int x)"))))
 
 (ert-deftest hel-bare-point-in-leaf-parser ()
-  "Rule 10 table, row `_cal|lback': every command starts from the leaf."
+  "Rule 10 table, row `_cal|lback': the node under the cursor character is
+the leaf, the only argument."
   (hel-test-need 'python)
   (should (equal (hel-node-tests--bare-steps #'python-ts-mode "f(_cal|lback)\n")
-                 '("_callback" "_callback" "_callback"))))
+                 '(nil nil "_callback"))))
 
 (ert-deftest hel-bare-point-between-name-and-call-parser ()
-  "Rule 10 table, row `foo|(x)', in Python."
+  "Rule 10 table, row `foo|(x)', in Python.  The cursor character is `('."
   (hel-test-need 'python)
   (should (equal (hel-node-tests--bare-steps #'python-ts-mode "foo|(x)\n")
-                 '("(x)" "foo" "(x)"))))
+                 '(nil "foo" "(x)"))))
 
 (ert-deftest hel-bare-point-in-whitespace-parser ()
   "Rule 10 table, row `(a | b)', in a Python tuple: nothing touches point."
@@ -773,36 +805,39 @@ cursors, puts cursors on [1, 2] and [3, 4] only (rule 6)."
 (ert-deftest hel-bare-point-before-list-syntax ()
   "Rule 10 table, row `name |(mode state)', without a parser."
   (should (equal (hel-node-tests--bare-steps #'c-mode "g(name |(mode state));\n")
-                 '("(mode state)" "name" "(mode state)"))))
+                 '(nil "name" "(mode state)"))))
 
 (ert-deftest hel-bare-point-after-name-syntax ()
-  "Rule 10 table, row `name| (mode state)', without a parser."
+  "Rule 10 table, row `name| (mode state)', without a parser.  The inside
+of the bracket pair is the first expand step larger than the space."
   (should (equal (hel-node-tests--bare-steps #'c-mode "g(name| (mode state));\n")
-                 '("(mode state)" "name" "name"))))
+                 '("(mode state)" "name" "name (mode state)"))))
 
 (ert-deftest hel-bare-point-in-parameter-syntax ()
-  "Rule 10 table, row `Callback |_callback,', without a parser."
+  "Rule 10 table, row `Callback |_callback,', without a parser.  The
+children of the bracket pair are sexps, so the next one is `int'."
   (should (equal (hel-node-tests--bare-steps #'c-mode "f(Callback |_callback, int x);\n")
-                 '("_callback" "Callback" "_callback"))))
+                 '("int" "Callback" "_callback"))))
 
 (ert-deftest hel-bare-point-before-comma-syntax ()
-  "Rule 10 table, row `Callback _callback|,', without a parser.  The
-children of the bracket pair are sexps, so the next one is `int'."
+  "Rule 10 table, row `Callback _callback|,', without a parser.  No sexp
+is under the comma.  The inside of the bracket pair is the first expand
+step larger than the comma."
   (should (equal (hel-node-tests--bare-steps #'c-mode "f(Callback _callback|, int x);\n")
-                 '("int" "_callback" "_callback"))))
+                 '("int" "_callback" "Callback _callback, int x"))))
 
 (ert-deftest hel-bare-point-in-leaf-syntax ()
   "Rule 10 table, row `_cal|lback', without a parser.  The syntax table
 gives expand steps smaller than a sexp, so M-o selects the word first
 \(The syntax producer)."
   (should (equal (hel-node-tests--bare-steps #'c-mode "f(_cal|lback);\n")
-                 '("_callback" "_callback" "callback"))))
+                 '(nil nil "callback"))))
 
 (ert-deftest hel-bare-point-between-name-and-call-syntax ()
   "Rule 10 table, row `foo|(x)', without a parser: the children of the
 buffer are the top-level sexps."
   (should (equal (hel-node-tests--bare-steps #'c-mode "foo|(x);\n")
-                 '("(x)" "foo" "(x)"))))
+                 '(nil "foo" "(x)"))))
 
 (ert-deftest hel-bare-point-in-whitespace-syntax ()
   "Rule 10 table, row `(a | b)', without a parser.  The inside of a
@@ -871,6 +906,15 @@ a node with a dot in it moves as one node."
     (hel-test-run #'hel-select-next-sibling)
     (should (equal (hel-test-render) "(a^ b| c)\n"))))
 
+(ert-deftest hel-v-sibling-from-cursor-char ()
+  "Rule 7: when a command deactivates the region after `v', M-n extends the
+cursor character as a selection of one character.  On a node, the node
+under it takes the next sibling."
+  (hel-node-tests--with-v #'emacs-lisp-mode "(a |b c)\n"
+    (deactivate-mark)
+    (hel-test-run #'hel-select-next-sibling)
+    (should (equal (hel-test-render) "(a ^b c|)\n"))))
+
 (ert-deftest hel-v-object-keys-create-selections ()
   "Rule 7: `v' works with motions.  `mi' and `ma' create a selection, so they
 replace the selection, as without `v'."
@@ -886,9 +930,9 @@ replace the selection, as without `v'."
 and from a selection in either direction."
   (hel-test-with #'emacs-lisp-mode "(foo (bar| baz) qux)\n"
     (hel-test-run #'hel-expand-selection-backward)
-    (should (equal (hel-test-render) "(foo (|bar^ baz) qux)\n"))
+    (should (equal (hel-test-render) "(foo |(bar baz)^ qux)\n"))
     (hel-test-run #'hel-expand-selection-backward)
-    (should (equal (hel-test-render) "(foo |(bar baz)^ qux)\n")))
+    (should (equal (hel-test-render) "|(foo (bar baz) qux)^\n")))
   (hel-test-with #'emacs-lisp-mode "(foo (^bar| baz) qux)\n"
     (hel-test-run #'hel-expand-selection-backward)
     (should (equal (hel-test-render) "(foo |(bar baz)^ qux)\n")))
@@ -926,14 +970,14 @@ the next function."
 
 (ert-deftest hel-sibling-bare-point-direction ()
   "Rule 7: from a bare point, the new selection has the direction of the move."
-  (hel-test-with #'emacs-lisp-mode "(a |b c)\n"
+  (hel-test-with #'emacs-lisp-mode "(a| b c)\n"
     (hel-test-run #'hel-select-next-sibling)
     (should (equal (hel-test-render) "(a ^b| c)\n")))
   (hel-test-with #'emacs-lisp-mode "(a b| c)\n"
     (hel-test-run #'hel-select-previous-sibling)
     (should (equal (hel-test-render) "(a |b^ c)\n")))
   (hel-test-need 'python)
-  (hel-test-with #'python-ts-mode "g(a, |b)\n"
+  (hel-test-with #'python-ts-mode "g(a,| b)\n"
     (hel-test-run #'hel-select-next-sibling)
     (should (equal (hel-test-render) "g(a, ^b|)\n")))
   (hel-test-with #'python-ts-mode "g(a|, b)\n"
@@ -958,8 +1002,6 @@ point, and does nothing when that node has no children."
 every kind of buffer."
   (hel-test-with #'emacs-lisp-mode "(a (b| c) d)\n"
     (hel-test-run #'hel-expand-selection-forward)
-    (should (equal (hel-test-render) "(a (^b| c) d)\n"))
-    (hel-test-run #'hel-expand-selection-forward)
     (should (equal (hel-test-render) "(a ^(b c)| d)\n"))
     (hel-test-run #'hel-expand-selection-backward)
     (should (equal (hel-test-render) "|(a (b c) d)^\n")))
@@ -978,7 +1020,7 @@ no step for the inside of a list."
     (hel-test-with mode "(foo (bar| baz) qux)\n"
       (should (hel-tree-lisp-producer-p (hel-node-producer)))
       (should (equal (hel-test-steps #'hel-expand-selection-backward 2)
-                     '("bar" "(bar baz)")))))
+                     '("(bar baz)" "(foo (bar baz) qux)")))))
   (hel-test-with #'c-mode "f(a| b);\n"
     (should-not (hel-tree-lisp-producer-p (hel-node-producer)))))
 
@@ -997,26 +1039,31 @@ M-p go on to the sexps around it."
 
 (ert-deftest hel-bare-point-one-space ()
   "Rule 10 table: the rows with one space and the rows with two.  A position
-takes up no space, so `(a | b)' has two spaces.  In Lisp, M-o goes from the
-node to the list.  The syntax table adds the inside of the brackets."
+takes up no space, so `(a | b)' has two spaces.  The texts have no mark, so
+the cursor character is the character after `|'.  In Lisp, M-o goes from
+the cursor character to the list.  The syntax table adds the inside of the
+brackets."
   (cl-flet ((steps (mode text)
               (hel-test-with mode text
                 (hel-test-steps #'hel-expand-selection-backward 2))))
-    (should (equal (hel-node-tests--bare-steps #'emacs-lisp-mode "(a| b)\n") '("b" "a" "a")))
-    (should (equal (hel-node-tests--bare-steps #'emacs-lisp-mode "(a |b)\n") '("b" "a" "b")))
-    (should (equal (steps #'emacs-lisp-mode "(a| b)\n") '("a" "(a b)")))
-    (should (equal (steps #'emacs-lisp-mode "(a |b)\n") '("b" "(a b)")))
+    (should (equal (hel-node-tests--bare-steps #'emacs-lisp-mode "(a| b)\n")
+                   '("b" "a" "(a b)")))
+    (should (equal (hel-node-tests--bare-steps #'emacs-lisp-mode "(a |b)\n")
+                   '(nil "a" "(a b)")))
+    (should (equal (steps #'emacs-lisp-mode "(a| b)\n") '("(a b)" "(a b)")))
+    (should (equal (steps #'emacs-lisp-mode "(a |b)\n") '("(a b)" "(a b)")))
     (should (equal (hel-node-tests--bare-steps #'emacs-lisp-mode "(a | b)\n")
                    '("b" "a" "(a  b)")))
-    (should (equal (steps #'c-mode "(a| b);\n") '("a" "a b")))
-    (should (equal (steps #'c-mode "(a |b);\n") '("b" "a b")))
+    (should (equal (steps #'c-mode "(a| b);\n") '("a b" "(a b)")))
+    (should (equal (steps #'c-mode "(a |b);\n") '("a b" "(a b)")))
     (should (equal (steps #'c-mode "(a | b);\n") '("a  b" "(a  b)")))))
 
 (ert-deftest hel-bare-point-in-string-syntax ()
-  "Rule 10: without a parser, M-n in a string starts from the whole string."
+  "Rule 10: without a parser, M-n in a string starts from the whole string,
+so it selects the sibling after the string."
   (hel-test-with #'c-mode "f(\"ab|c\", x);\n"
     (hel-test-run #'hel-select-next-sibling)
-    (should (equal (hel-test-selection) "\"abc\""))))
+    (should (equal (hel-test-selection) "x"))))
 
 (ert-deftest hel-select-all-siblings-bare-whitespace ()
   "Rule 10: M-a in `(f a | b)' puts a cursor on f, a and b."

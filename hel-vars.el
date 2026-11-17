@@ -163,6 +163,18 @@ Hel is in Emacs state. All other attributes are ignored."
   "Face for fake cursors when Hel is in Insert state."
   :group 'hel)
 
+(defface hel-cursor-char
+  '((((class color) (min-colors 88) (background light))
+     :background "gray85")
+    (((class color) (min-colors 88) (background dark))
+     :background "gray30")
+    (t :inverse-video t))
+  "Face of the cursor character in Normal state.
+The cursor character is the character that a command acts on when no
+region is active.  The face marks it with a faint background next to
+the bar of the cursor."
+  :group 'hel)
+
 (defface hel-search-highlight '((t :inherit lazy-highlight))
   "Face for lazy highlighting all matches during search."
   :group 'hel)
@@ -507,15 +519,28 @@ use `hel-state-property' function.
 The command `hel-extend-selection', bound to `v', toggles it. A motion
 command passes it as `:merge-selections' to `hel-define-command'.")
 
+(hel-defvar-permanent-local hel--selection-owner nil
+  "The window whose selection the buffer holds now.
+The mark, `mark-active' and `hel-extending-selection' belong to the buffer,
+but each window that shows the buffer has a selection of its own.  The other
+windows keep theirs in the window parameter `hel--selection'.")
+
+(defvar hel--selection-record nil
+  "The selection of the current buffer before the current command.
+It is a list (BUFFER MARK ACTIVE EXTENDING): the buffer, the position of the
+mark, `mark-active' and `hel-extending-selection'.  It is nil outside of a
+command and before a command in a buffer without Hel.")
+
 (hel-defvar-permanent-local hel-selection-history nil
   "The selections of expand and text object commands run one after another.
 The newest entry comes first and holds the active region. The oldest entry
 holds the selection before the first of these commands.
 `hel-shrink-selection' returns to the previous entry.
 
-Each entry is a list (RANGE DIRECTION RUN). RANGE and DIRECTION have the form
-that `hel-selection' returns. When there was no selection before the first
-command, the oldest entry is the position of point instead.
+Each entry is a list (RANGE DIRECTION ACTIVE RUN). RANGE and DIRECTION have
+the form that `hel-selection' returns. ACTIVE is t when the region is active.
+It is nil only in the oldest entry, when the commands start from a bare
+cursor: the selection of that entry is the cursor character.
 
 RUN is non-nil when a repeated command selects several text objects in a row.
 For example, select two functions with `mif mif'. The first `mif' creates the
@@ -598,14 +623,16 @@ multiple cursors.")
 (hel-defvar-permanent-local hel--buffer-undo-list-pointer nil
   "Stores the start of the current undo step in `buffer-undo-list'.")
 
-(hel-defvar-permanent-local hel-undo--cursors-positions nil
-  "Positions of all cursors at the beginning of current undo step.")
+(hel-defvar-permanent-local hel-undo--cursor-selections nil
+  "The values of all cursors at the beginning of the current undo step.
+The list is the one that `hel-cursor-selections' returns.")
 
 (hel-defvar-permanent-local hel-undo--previous-command-kind 'other
   "Kind of the previous editing command, as `hel-undo--command-kind' returns it.")
 
-(hel-defvar-permanent-local hel--cursors-positions-history nil
-  "For `hel-restore-cursors'.")
+(hel-defvar-permanent-local hel--cursor-selections-history nil
+  "The values of the cursors that `hel-restore-cursors' brings back.
+The list is the one that `hel-cursor-selections' returns.")
 
 (defvar-local hel--input-cache nil)
 

@@ -125,13 +125,13 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
 
 (hel-test-table motion-char
   ("foo |bar" "l" "foo b|ar")
-  ("foo |bar" "h" "foo| bar")
+  ("foo |bar" "h" "foo |bar")
   ("foo |bar" "<right>" "foo b|ar")
-  ("foo |bar" "<left>" "foo| bar")
+  ("foo |bar" "<left>" "foo |bar")
   ("|foobar" "3l" "foo|bar")
-  ("foobar|" "3h" "foo|bar")
+  ("foobar|" "3h" "foob|ar")
   ;; A character motion drops the selection.
-  ("^foo| bar" "l" "foo |bar")
+  ("^foo| bar" "l" "foo| bar")
   ("^foo| bar" "h" "fo|o bar")
   ;; Point crosses the end of a line.
   ("foo|\nbar" "l" "foo\n|bar")
@@ -158,6 +158,177 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ;; There is no line to go to.
   ("abc\nde|f" "j" "abc\ndef|" :error "End of buffer")
   ("a|bc\ndef" "k" "|abc\ndef" :error "Beginning of buffer"))
+
+;;; The cursor character
+
+;; Without an active region, a command acts on the cursor character: one
+;; character next to point.  A marked text shows only point, so these tests
+;; also read the cursor character with `hel-test-cursor-chars'.
+
+(defun hel-test-expect-chars (keys expected chars)
+  "Press KEYS, then check the buffer against EXPECTED and the selections.
+CHARS is the value that `hel-test-cursor-chars' must return."
+  (hel-test-expect keys expected)
+  (should (equal (hel-test-cursor-chars) chars)))
+
+(ert-deftest hel-behaviour-cursor-char-steady-motion ()
+  "In a steady motion, the bar trails the cursor character by one gap."
+  (hel-test-with 'text-mode "|abcde"
+    (hel-test-expect-chars "l" "a|bcde" '(("b" -1)))
+    (hel-test-expect-chars "l" "ab|cde" '(("c" -1))))
+  (hel-test-with 'text-mode "abc|de"
+    ;; The first `h' reverses the fallback, the character after point.
+    (hel-test-expect-chars "h" "abc|de" '(("c" 1)))
+    (hel-test-expect-chars "h" "ab|cde" '(("b" 1)))
+    (hel-test-expect-chars "h" "a|bcde" '(("a" 1)))))
+
+(ert-deftest hel-behaviour-cursor-char-reversal ()
+  "On a reversal the cursor character moves and the bar stays."
+  (hel-test-with 'text-mode "|abcde"
+    (hel-test-expect-chars "ll" "ab|cde" '(("c" -1)))
+    (hel-test-expect-chars "h" "ab|cde" '(("b" 1)))
+    (hel-test-expect-chars "l" "ab|cde" '(("c" -1)))))
+
+(ert-deftest hel-behaviour-cursor-char-count-starts-with-reversal ()
+  "A count moves the cursor character COUNT characters, and the bar moves
+one gap less when the first step is a reversal."
+  (hel-test-with 'text-mode "abc|def"
+    (hel-test-expect-chars "3h" "a|bcdef" '(("a" 1))))
+  (hel-test-with 'text-mode "abc|def"
+    (hel-test-expect-chars "h" "abc|def" '(("c" 1)))
+    (hel-test-expect-chars "3l" "abcde|f" '(("f" -1)))))
+
+(ert-deftest hel-behaviour-cursor-char-line-boundary ()
+  "A cursor character on a newline has the bar before it, on its line."
+  (hel-test-with 'text-mode "xyz\n|abc"
+    (hel-test-expect-chars "h" "xyz|\nabc" '(("\n" -1)))
+    (hel-test-expect-chars "h" "xyz|\nabc" '(("z" 1)))
+    (hel-test-expect-chars "l" "xyz|\nabc" '(("\n" -1)))
+    (hel-test-expect-chars "l" "xyz\n|abc" '(("a" -1)))))
+
+(ert-deftest hel-behaviour-cursor-char-buffer-ends ()
+  "A step past the last character leaves the bar at the end of the buffer,
+where the cursor character is empty.  No step goes further."
+  (hel-test-with 'text-mode "ab|c"
+    (hel-test-expect-chars "l" "abc|" '(("" -1)))
+    (should (equal (hel-test-press "l") "End of buffer"))
+    (should (equal (hel-test-cursor-chars) '(("" -1))))
+    (hel-test-expect-chars "h" "abc|" '(("c" 1))))
+  (hel-test-with 'text-mode "a|bc"
+    (hel-test-expect-chars "h" "a|bc" '(("a" 1)))
+    (should (equal (hel-test-press "h") "Beginning of buffer"))
+    (should (equal (hel-test-cursor-chars) '(("a" 1))))))
+
+(ert-deftest hel-behaviour-cursor-char-for-each-cursor ()
+  "Each cursor moves its own cursor character."
+  (hel-test-with 'text-mode "ab|cd\nefgh\nijkl"
+    (hel-test-expect-chars "Ch" "ab¦cd\nef|gh\nijkl" '(("b" 1) ("f" 1)))
+    (hel-test-expect-chars "j" "abcd\nef¦gh\nij|kl" '(("f" 1) ("j" 1)))
+    (hel-test-expect-chars "l" "abcd\nef¦gh\nij|kl" '(("g" -1) ("k" -1)))))
+
+;; A vertical motion keeps the side of the cursor character, so the cursor
+;; character comes back to its column on the next line that is long enough.
+
+(ert-deftest hel-behaviour-cursor-char-j-over-a-short-line ()
+  (hel-test-with 'text-mode "ab|cd\nx\nefgh"
+    (hel-test-expect-chars "j" "abcd\nx|\nefgh" '(("\n" -1)))
+    (hel-test-expect-chars "j" "abcd\nx\nef|gh" '(("g" -1))))
+  (hel-test-with 'text-mode "abc|d\nx\nefgh"
+    (hel-test-expect-chars "h" "abc|d\nx\nefgh" '(("c" 1)))
+    (hel-test-expect-chars "j" "abcd\nx|\nefgh" '(("x" 1)))
+    (hel-test-expect-chars "j" "abcd\nx\nefg|h" '(("g" 1)))))
+
+(ert-deftest hel-behaviour-cursor-char-k-over-a-short-line ()
+  (hel-test-with 'text-mode "abcd\nx\nef|gh"
+    (hel-test-expect-chars "kk" "ab|cd\nx\nefgh" '(("c" -1))))
+  (hel-test-with 'text-mode "abcd\nx\nefg|h"
+    (hel-test-expect-chars "hkk" "abc|d\nx\nefgh" '(("c" 1)))))
+
+(ert-deftest hel-behaviour-cursor-char-j-over-an-empty-line ()
+  "An empty line shows its newline, and the side passes over it."
+  (hel-test-with 'text-mode "ab|cd\n\nefgh"
+    (hel-test-expect-chars "j" "abcd\n|\nefgh" '(("\n" -1)))
+    (hel-test-expect-chars "j" "abcd\n\nef|gh" '(("g" -1))))
+  (hel-test-with 'text-mode "abc|d\n\nefgh"
+    (hel-test-expect-chars "h" "abc|d\n\nefgh" '(("c" 1)))
+    (hel-test-expect-chars "j" "abcd\n|\nefgh" '(("\n" -1)))
+    (hel-test-expect-chars "j" "abcd\n\nefg|h" '(("g" 1)))))
+
+(ert-deftest hel-behaviour-cursor-char-k-over-an-empty-line ()
+  (hel-test-with 'text-mode "abcd\n\nef|gh"
+    (hel-test-expect-chars "kk" "ab|cd\n\nefgh" '(("c" -1))))
+  (hel-test-with 'text-mode "abcd\n\nefg|h"
+    (hel-test-expect-chars "hk" "abcd\n|\nefgh" '(("\n" -1)))
+    (hel-test-expect-chars "k" "abc|d\n\nefgh" '(("c" 1)))))
+
+(ert-deftest hel-behaviour-cursor-char-collapse ()
+  "`;' leaves the cursor character on the character at the head of the
+selection."
+  (hel-test-with 'text-mode "^foo| bar"
+    (hel-test-expect-chars ";" "foo| bar" '(("o" 1))))
+  (hel-test-with 'text-mode "|foo^ bar"
+    (hel-test-expect-chars ";" "|foo bar" '(("f" -1)))))
+
+(ert-deftest hel-behaviour-cursor-char-after-insert ()
+  "Leaving Insert state makes the character before point the cursor
+character.  At the start of a line, that character is a newline, so the
+cursor character is the one after point."
+  (hel-test-with 'text-mode "fo|o"
+    (hel-test-expect-chars "ix<escape>" "fox|o" '(("x" 1))))
+  (hel-test-with 'text-mode "foo\n|bar"
+    (hel-test-expect-chars "i<escape>" "foo\n|bar" '(("b" -1)))))
+
+(ert-deftest hel-behaviour-cursor-char-after-insert-for-each-cursor ()
+  (hel-test-with 'text-mode "fo|o\nbar"
+    (hel-test-expect-chars "Cix<escape>" "fox¦o\nbax|r" '(("x" 1) ("x" 1)))))
+
+;; The structural commands and the text objects start from the selection, so
+;; at a bare point they start from the cursor character.  In each row the
+;; text has no mark, so the cursor character is the character after `|',
+;; and `h' first moves it to the character before `|'.
+
+(hel-test-table cursor-char-structural
+  ;; M-o selects the smallest node that holds the cursor character and is
+  ;; larger than it.
+  (:mode emacs-lisp-mode "(foo| bar)" "hM-o" "(|foo^ bar)")
+  (:mode emacs-lisp-mode "(foo| bar)" "M-o" "|(foo bar)^")
+  (:mode emacs-lisp-mode "(foo| bar)" "lM-o" "(foo |bar^)")
+  ;; On a one-character node, M-o selects its parent.
+  (:mode emacs-lisp-mode "(a| b)" "hM-o" "|(a b)^")
+  ;; M-n and M-p take the siblings of the node under the cursor character.
+  (:mode emacs-lisp-mode "(a b| c)" "hM-n" "(a b ^c|)")
+  (:mode emacs-lisp-mode "(a b| c)" "hM-p" "(|a^ b c)")
+  ;; On whitespace no node is under the cursor character, so they take the
+  ;; nearest node on their side.
+  (:mode emacs-lisp-mode "(a b| c)" "M-n" "(a b ^c|)")
+  (:mode emacs-lisp-mode "(a b| c)" "M-p" "(a |b^ c)")
+  ;; A text object takes the object under the cursor character.
+  ("foo|." "miw" "foo^.|")
+  ("foo|." "hmiw" "^foo|.")
+  ;; At the end of the buffer, M-o and `miw' start from the character
+  ;; before point, unless it is a newline.
+  (:mode emacs-lisp-mode "(a) foo|" "M-o" "(a) |foo^")
+  ("foo bar|" "miw" "foo ^bar|")
+  (:mode emacs-lisp-mode "foo\n|" "M-o" "foo\n|")
+  ("foo\n|" "miw" "foo\n|"))
+
+(ert-deftest hel-behaviour-cursor-char-shrink-to-bare-cursor ()
+  "M-i back to the oldest entry of a chain of M-o that started at a bare
+cursor leaves the cursor bare, on the cursor character where it started."
+  (hel-test-with 'emacs-lisp-mode "(x (foo| bar))"
+    (hel-test-expect-chars "hM-oM-o" "(x |(foo bar)^)" '(("(foo bar)" -1)))
+    (hel-test-expect-chars "M-iM-i" "(x (foo| bar))" '(("o" 1)))
+    (should-not (region-active-p)))
+  (hel-test-with 'emacs-lisp-mode "(x (foo| bar))"
+    (hel-test-expect-chars "M-oM-i" "(x (foo| bar))" '((" " -1)))
+    (should-not (region-active-p))))
+
+(ert-deftest hel-behaviour-cursor-char-shrink-to-one-character-region ()
+  "A chain of M-o that starts at a region of one character returns to that
+region: the history records that the region was active."
+  (hel-test-with 'emacs-lisp-mode "(x (f^o|o bar))"
+    (hel-test-expect "M-oM-i" "(x (f^o|o bar))")
+    (should (region-active-p))))
 
 ;;; Motions: words
 
@@ -289,7 +460,7 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("foo|" "gl" "foo|")
   ;; `v' keeps the start of the selection.
   ("fo|o bar" "v l gl" "fo^o bar|")
-  ("foo b|ar" "v h gh" "|foo b^ar"))
+  ("foo b|ar" "v h gh" "|foo ba^r"))
 
 (hel-test-table motion-buffer-ends
   ("a\nb|\nc" "gg" "|a\nb\nc")
@@ -300,7 +471,7 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("a\n^b|\nc" "G" "a\nb\nc|")
   ;; With `v' the selection extends.
   ("a\nb|\nc" "vG" "a\nb^\nc|")
-  ("a\nb|\nc" "vgg" "|a\nb^\nc")
+  ("a\nb|\nc" "vgg" "|a\nb\n^c")
   ;; `G' with a number goes to that line.
   ("|a\nb\nc\nd" "3G" "a\nb\n|c\nd")
   ("a\nb\nc|\nd" "1G" "|a\nb\nc\nd")
@@ -439,7 +610,7 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ;; `v' makes motions extend the selection.
   ("|foo bar baz" "vw" "^foo |bar baz")
   ("|foo bar baz" "vww" "^foo bar |baz")
-  ("|foo bar" "vll" "^fo|o bar")
+  ("|foo bar" "vll" "^foo| bar")
   ("foo bar|" "vb" "foo |bar^")
   ("foo bar|" "vbb" "|foo bar^")
   ("|a\nb\nc" "vj" "^a\n|b\nc")
@@ -450,16 +621,64 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("^foo| bar" "vl" "^foo |bar")
   ("|foo bar^" "vl" "f|oo bar^")
   ;; Motions shrink the selection when they go toward its other end.
-  ("|foobar" "vlllh" "^fo|obar"))
+  ("|foobar" "vlllh" "^foo|bar"))
+
+;; `v' activates the selection at once: at a bare point, the cursor
+;; character becomes a selection of one character.
+(hel-test-table select-extend-cursor-char
+  ("ab|cd" "v" "ab|c^d")
+  ("abc|d" "hv" "ab^c|d")
+  ;; `h' and `l' move the head character, and the anchor character, where
+  ;; the cursor character was, stays in the selection.
+  ("ab|cd" "vh" "a|bc^d")
+  ("ab|cd" "vl" "ab^cd|")
+  ("abc|d" "hvh" "a|bc^d")
+  ("abc|d" "hvl" "ab^cd|")
+  ;; The head steps onto the anchor character, and past it.
+  ("a|bcd" "vh" "|ab^cd")
+  ("a|bcd" "vhl" "a^b|cd")
+  ("a|bcd" "vhll" "a^bc|d")
+  ;; A selection of one character keeps its character under a word motion,
+  ;; on either side of the bar.
+  ("a|bc def" "vw" "a^bc |def")
+  ("a|bc def" "vb" "|ab^c def")
+  ("ab|c def" "hvw" "a^bc |def")
+  ("ab|c def" "hvb" "|ab^c def")
+  ("  abc|d" "hvgs" "  |abc^d")
+  ;; A motion does not stop on the anchor, where the selection would be
+  ;; empty, so `b' gives back what `w' took across the anchor.
+  ("|Lorem ^ipsum dolor sit" "vw" "Lorem ^ipsum |dolor sit")
+  ("|Lorem ^ipsum dolor sit" "vwb" "|Lorem ^ipsum dolor sit")
+  ("Lorem ^ipsum |dolor sit" "vb" "|Lorem ^ipsum dolor sit")
+  ("Lorem ^ipsum |dolor sit" "vbw" "Lorem ^ipsum |dolor sit"))
+
+(ert-deftest hel-behaviour-select-extend-after-deactivation ()
+  "An edit outside Hel deactivates the region.  The next motion extends the
+cursor character, so extending goes on."
+  (hel-test-with 'text-mode "|foo bar baz"
+    (local-set-key (kbd "C-c x")
+                   (lambda ()
+                     (interactive)
+                     (save-excursion
+                       (goto-char (point-max))
+                       (insert "!"))))
+    (hel-test-expect "vw" "^foo |bar baz")
+    (hel-test-press! "C-c x")
+    (should hel-extending-selection)
+    (should-not (region-active-p))
+    (hel-test-expect "w" "foo ^bar |baz!")
+    (hel-test-press! "C-c x")
+    (should-not (region-active-p))
+    (hel-test-expect "l" "foo bar ^ba|z!!")))
 
 (hel-test-table select-escape
   ("^foo| bar" "<escape>" "foo| bar")
   ("|foo bar" "<escape>" "|foo bar")
   ;; The first `Esc' stops extending and keeps the selection, the second one
   ;; drops the selection.
-  ("|foo bar" "vll<escape>" "^fo|o bar")
-  ("|foo bar" "vll<escape><escape>" "fo|o bar")
-  ("|foo bar baz" "vll<escape>w" "fo^o |bar baz"))
+  ("|foo bar" "vll<escape>" "^foo| bar")
+  ("|foo bar" "vll<escape><escape>" "foo| bar")
+  ("|foo bar baz" "vll<escape>w" "foo^ |bar baz"))
 
 (hel-test-table select-collapse
   ("^foo| bar" ";" "foo| bar")
@@ -467,7 +686,7 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("foo| bar" ";" "foo| bar")
   ;; With `v' the selection collapses and motions still extend.
   ("|foo bar baz" "vw;" "foo |bar baz")
-  ("|foo bar baz" "vw;w" "foo ^bar |baz"))
+  ("|foo bar baz" "vw;w" "foo^ bar |baz"))
 
 (hel-test-table select-exchange
   ("^foo| bar" "M-;" "|foo^ bar")
@@ -522,10 +741,17 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
 (hel-test-table edit-cut
   ("^foo| bar" "d" "| bar" :kill "foo")
   ("|foo^ bar" "d" "| bar" :kill "foo")
-  ;; Without a selection `d' deletes before point and keeps the kill ring.
-  ("foo| bar" "d" "fo| bar" :yank "kept" :kill "kept")
-  ("foo| bar" "2d" "f| bar" :yank "kept" :kill "kept")
-  ("|foo" "d" "|foo" :error "Beginning of buffer")
+  ;; Without a selection `d' kills the cursor character: the character after
+  ;; point, or the character before it after `h'.
+  ("foo| bar" "d" "foo|bar" :kill " ")
+  ("foo| bar" "hd" "fo| bar" :kill "o")
+  ("|foo" "d" "|oo" :kill "f")
+  ;; A newline under the cursor joins the lines.
+  ("foo|\nbar" "d" "foo|bar" :kill "\n")
+  ;; At the end of the buffer there is nothing to kill.
+  ("foo|" "d" "foo|" :yank "kept" :kill "kept")
+  ;; An empty region made by `C-SPC' is no selection.
+  ("fo|o bar" "C-SPC d" "fo| bar" :kill "o")
   ;; Linewise.
   ("fo|o\nbar\n" "xd" "|bar\n" :kill "foo\n")
   ("|a\nb\nc\n" "xxd" "|c\n" :kill "a\nb\n"))
@@ -533,10 +759,12 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
 (hel-test-table edit-delete
   ("^foo| bar" "D" "| bar" :yank "kept" :kill "kept")
   ("|foo^ bar" "D" "| bar" :yank "kept" :kill "kept")
-  ;; Without a selection `D' deletes after point.
+  ;; Without a selection `D' deletes the cursor character.
   ("foo| bar" "D" "foo|bar" :yank "kept" :kill "kept")
-  ("|foobar" "3D" "|bar")
-  ("foo|" "D" "foo|" :error "End of buffer")
+  ("foo| bar" "hD" "fo| bar" :yank "kept" :kill "kept")
+  ("foo|\nbar" "D" "foo|bar")
+  ("foo|" "D" "foo|")
+  ("fo|o bar" "C-SPC D" "fo| bar")
   ;; `DEL' does nothing in Normal state, because `d' deletes.
   ("foo|" "DEL" "foo|")
   ("^foo| bar" "DEL" "^foo| bar"))
@@ -566,8 +794,8 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("foo| bar" "y" "foo| bar" :yank "kept" :kill "kept")
   ("fo|o\nbar\n" "xy" "|foo\n^bar\n" :kill "foo\n")
   ;; `y' stops extending.
-  ("|foo bar" "vlly" "^fo|o bar" :kill "fo")
-  ("|foo bar" "vllyl" "foo| bar" :kill "fo")
+  ("|foo bar" "vlly" "^foo| bar" :kill "foo")
+  ("|foo bar" "vllyl" "foo| bar" :kill "foo")
   ;; With the universal argument the selection goes to the last kill.
   ("^foo| bar" "M-uy" "^foo| bar" :yank "first" :kill "first foo"))
 
@@ -612,19 +840,25 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("^foo| bar" "rx" "^xxx| bar")
   ("|foo^ bar" "rx" "|xxx^ bar")
   ("^a\nb|c" "rx" "^x\nx|c")
-  ;; Without a selection `r' works before point and `R' after point.
-  ("foo| bar" "rx" "fox| bar")
-  ("foo| bar" "2rx" "fxx| bar")
-  ("foo| bar" "Rx" "foo|xbar")
-  ("foo| bar" "2Rx" "foo|xxar")
-  ;; A count larger than the line stops at the buffer end.
-  ("fo|o" "5Rx" "fo|x")
-  ("fo|o" "5rx" "xx|o"))
+  ;; Without a selection `r' replaces the cursor character.
+  ("foo| bar" "rx" "foo|xbar")
+  ("foo| bar" "hrx" "fox| bar")
+  ("fo|o bar" "C-SPC rx" "fo|x bar")
+  ;; `r' reads no character for a newline, which stays, nor at the end of
+  ;; the buffer.
+  ("foo|\nbar" "r" "foo|\nbar")
+  ("foo|" "r" "foo|"))
 
 (hel-test-table edit-replace-with-kill
   ("^foo| bar" "R" "^xx| bar" :yank "xx" :kill "xx")
   ("|foo^ bar" "R" "|xx^ bar" :yank "xx" :kill "xx")
-  ("fo|o\nbar\n" "xR" "|xx\n^bar\n" :yank "xx"))
+  ("fo|o\nbar\n" "xR" "|xx\n^bar\n" :yank "xx")
+  ;; Without a selection `R' replaces the cursor character, and the pasted
+  ;; text becomes the selection.
+  ("foo| bar" "R" "foo|xx^bar" :yank "xx")
+  ("foo| bar" "hR" "fo^xx| bar" :yank "xx")
+  ("fo|o bar" "C-SPC R" "fo|xx^ bar" :yank "xx")
+  ("foo|" "R" "foo|" :yank "xx"))
 
 ;;; Editing: lines
 
@@ -705,14 +939,17 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   ("^Foo bar| baz" "gU" "^FOO BAR| baz")
   ("^Foo bAr| baz" "~" "^fOO BaR| baz")
   ("|Foo^ bar" "~" "|fOO^ bar")
-  ;; Without a selection the cursor stays and the count goes after it.
+  ;; Without a selection they change the cursor character, and the cursor
+  ;; stays.
   ("|foo" "gU" "|Foo")
-  ("|foo" "2gU" "|FOo")
+  ("fo|o" "hgU" "fO|o")
   ("|FOO" "gu" "|fOO")
-  ("|FOO" "3`" "|foo")
-  ;; `~' without a selection moves over the character, as it does in Vim.
-  ("|foo" "~" "F|oo")
-  ("|foo" "~~" "FO|o"))
+  ("|foo" "~" "|Foo")
+  ("|foo" "~~" "|foo")
+  ("fo|o" "h~" "fO|o")
+  ("fo|o bar" "C-SPC ~" "fo|O bar")
+  ("fo|O bar" "C-SPC `" "fo|o bar")
+  ("fo|o bar" "C-SPC M-`" "fo|O bar"))
 
 (hel-test-table edit-fill
   ("|aaa bbb\nccc\n" "gq" "|aaa bbb ccc\n")
@@ -747,10 +984,16 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
 ;;; Insert state
 
 (hel-test-table insert
+  ;; Without a selection `i' inserts before the cursor character and `a'
+  ;; after it.
   ("foo| bar" "i" "foo| bar" :state insert)
-  ("foo| bar" "a" "foo| bar" :state insert)
+  ("foo| bar" "a" "foo |bar" :state insert)
   ("foo| bar" "ix" "foox| bar" :state insert)
-  ("foo| bar" "ax<escape>" "foox| bar")
+  ("foo| bar" "ax<escape>" "foo x|bar")
+  ("foo| bar" "hi" "fo|o bar" :state insert)
+  ("foo| bar" "ha" "foo| bar" :state insert)
+  ("fo|o bar" "C-SPC i" "fo|o bar" :state insert)
+  ("fo|o bar" "C-SPC a" "foo| bar" :state insert)
   ;; `i' goes to the start of the selection, `a' to its end.
   ("^foo| bar" "i" "|foo bar" :state insert)
   ("|foo^ bar" "a" "foo| bar" :state insert)
@@ -1304,11 +1547,13 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
 (hel-test-table cursors-edit
   ("|foo\nbar" "CD" "¦oo\n|ar")
   ("^fo|o\nbar" "Cd" "¦o\n|r")
-  ("fo|o\nbar" "Cd" "f¦o\nb|r")
+  ("fo|o\nbar" "Cd" "fo¦\nba|")
+  ("fo|o\nbar" "Chd" "f¦o\nb|r")
+  ("fo|o\nbar" "ChrX" "fX¦o\nbX|r")
   ("^fo|o\nbar" "CD" "¦o\n|r")
   ("^fo|o\nbar" "Cc" "¦o\n|r" :state insert)
   ("|foo\nbar" "Cix<escape>" "x¦foo\nx|bar")
-  ("|foo\nbar" "Cax<escape>" "x¦foo\nx|bar")
+  ("|foo\nbar" "Cax<escape>" "fx¦oo\nbx|ar")
   ("^fo|o\nbar" "Cax<escape>" "¬fox¦o\n^bax|r")
   ("^fo|o\nbar" "Cix<escape>" "x¦fo¬o\nx|ba^r")
   ("f|oo\nbar" "Cox<escape>" "foo\nx¦\nbar\nx|")
@@ -1329,7 +1574,7 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
 
 (hel-test-table cursors-motion
   ("|foo\nbar" "Cl" "f¦oo\nb|ar")
-  ("fo|o\nbar" "Ch" "f¦oo\nb|ar")
+  ("fo|o\nbar" "Ch" "fo¦o\nba|r")
   ("|foo\nbar\nbaz" "Cj" "foo\n¦bar\n|baz")
   ("|foo a\nbar b" "Cw" "¬foo ¦a\n^bar |b")
   ("|foo a\nbar b" "Ce" "¬foo¦ a\n^bar| b")
@@ -1359,7 +1604,7 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
   "A text that the main cursor copied before the cursors exist goes to all."
   (hel-test-with 'text-mode "^x| a\nb c"
     (hel-test-press! "y;")
-    (hel-test-expect "l C p" "x ¬x¦a\nb ^x|c")))
+    (hel-test-expect "l C p" "x¬x¦ a\nb^x| c")))
 
 (ert-deftest hel-behaviour-cursors-paste-rectangle ()
   "`M-u p' pastes the texts of all selections on separate lines."
@@ -1376,6 +1621,18 @@ MODE: (:mode MODE INPUT KEYS EXPECTED...)."
     (hel-test-expect "d" "| ¦")
     (hel-test-expect "u" "^foo| ¬foo¦")
     (hel-test-expect "U" "| ¦")))
+
+(ert-deftest hel-behaviour-cursors-undo-restores-cursor-chars ()
+  "Undo brings back the cursor character of each cursor on its own side."
+  (hel-test-with 'text-mode "ab|c\nabc"
+    (hel--set-cursor-char 3 1)              ; "b", before point
+    (hel-create-fake-cursor 7 6)            ; "b", before point
+    (should (equal (hel-test-cursor-chars) '(("b" 1) ("b" 1))))
+    (hel-test-press! "D")
+    (should (equal (hel-test-cursor-chars) '(("c" -1) ("c" -1))))
+    (hel-test-press! "u")
+    (should (equal (buffer-string) "abc\nabc"))
+    (should (equal (hel-test-cursor-chars) '(("b" 1) ("b" 1))))))
 
 (ert-deftest hel-behaviour-cursors-insert-undo-is-one-step ()
   "One undo reverts a word typed with all cursors."
@@ -1518,7 +1775,7 @@ In this test the question is the guard of the test setup, which fails on it."
   ("|a\n\nb\n\nc\n" "}C-o" "|a\n\nb\n\nc\n")
   ("|a b" "/b RET" "a ^b|")
   ;; With `v' a jump back extends the selection.
-  ("a|b\nc\nd" "C-sjvC-o" "a|b\nc^\nd"))
+  ("a|b\nc\nd" "C-sjvC-o" "a|b\nc\n^d"))
 
 (ert-deftest hel-behaviour-jump-walk-over-the-ring ()
   "`C-o' goes to older positions and `C-<i>' to newer ones."
@@ -1799,8 +2056,9 @@ In this test the question is the guard of the test setup, which fails on it."
   ("|a b c d e f" "M-uw" "^a b c d |e f")
   ("|abcdef" "M-ul" "abcd|ef")
   ("|abcdefghijkl" "12l" "abcdefghijkl|")
-  ("|abc" "2D" "|c")
-  ("ab|c" "2d" "|c")
+  ;; `d' and `D' act on the selection and take no count.
+  ("|abc" "2D" "|bc")
+  ("ab|c" "2d" "ab|")
   ("|a\nb\nc\nd\n" "2j" "a\nb\n|c\nd\n")
   ("a\nb\nc\n|d\n" "2k" "a\n|b\nc\nd\n")
   ("|a b a b a" "/a RET 2n" "a b a b ^a|")
@@ -1809,7 +2067,7 @@ In this test the question is the guard of the test setup, which fails on it."
   ;; Brackets take no count.
   ("(a) (b|) (c)" "2mi(" "(a) (^b|) (c)")
   ;; A negative count reverses a character or a line motion.
-  ("foo |bar" "-l" "foo| bar")
+  ("foo |bar" "-l" "foo |bar")
   ("foo |bar" "-h" "foo b|ar")
   ("a\n|b" "-j" "|a\nb")
   ("|a\nb" "-k" "a\n|b"))
@@ -1827,8 +2085,8 @@ In this test the question is the guard of the test setup, which fails on it."
   ("|" "mm" "|")
   ("|" "gg" "|")
   ("|" "G" "|")
-  ("|" "d" "|" :error "Beginning of buffer")
-  ("|" "D" "|" :error "End of buffer")
+  ("|" "d" "|")
+  ("|" "D" "|")
   ("|" "p" "|" :error "Kill ring is empty")
   ("|" "i" "|" :state insert)
   ("|" "o" "\n|" :state insert))
@@ -1836,10 +2094,12 @@ In this test the question is the guard of the test setup, which fails on it."
 ;;; The end of the buffer
 
 (hel-test-table buffer-end
-  ("foo|" "~" "foo|" :error "End of buffer")
-  ("foo|" "gU" "foo|" :error "End of buffer")
-  ("foo|" "`" "foo|" :error "End of buffer")
-  ("|fo" "~~" "FO|"))
+  ;; The selection is empty at the end of the buffer, so the case commands
+  ;; change nothing there.  After `h' they change the last character.
+  ("foo|" "~" "foo|")
+  ("foo|" "gU" "foo|")
+  ("foo|" "`" "foo|")
+  ("foo|" "h~" "foO|"))
 
 ;;; Read-only buffers
 

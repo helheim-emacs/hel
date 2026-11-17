@@ -72,6 +72,55 @@ A cursor without a selection gives the empty string."
                            (hel-all-fake-cursors)))))
     (mapcar #'cdr (sort all (lambda (a b) (< (car a) (car b)))))))
 
+(defun hel-test-cursor-chars ()
+  "Return the selection of every cursor as (TEXT DIRECTION), in buffer order.
+The selection is the one that `hel-selection' reads, so at a cursor without
+an active region TEXT is its cursor character.  DIRECTION is 1 when point
+is at the end of TEXT and -1 when it is at the beginning."
+  (let ((all (cons (cons (point) (hel-selection))
+                   (mapcar (lambda (cursor)
+                             (let ((point (marker-position (overlay-get cursor 'point))))
+                               (cons point
+                                     (hel--selection-from
+                                      point
+                                      (marker-position (overlay-get cursor 'mark))
+                                      (overlay-get cursor 'mark-active)))))
+                           (hel-all-fake-cursors)))))
+    (mapcar (pcase-lambda (`(,_ (,begin . ,end) ,dir))
+              (list (buffer-substring-no-properties begin end) dir))
+            (sort all (lambda (a b) (< (car a) (car b)))))))
+
+;; The drawing of the cursors.
+
+(defun hel-test-redisplay ()
+  "Redisplay, or in batch Emacs call what redisplay calls first.
+Batch Emacs does no redisplay, so there the function only calls
+`pre-redisplay-function', as redisplay does before it draws."
+  (if noninteractive
+      (funcall pre-redisplay-function nil)
+    (redisplay t)))
+
+(defun hel-test--drawing (overlay)
+  "Return what OVERLAY draws as (BEGIN END FACE CELL), or nil when hidden.
+CELL is the face of the cell that the overlay draws after its text, or
+nil when it draws no cell."
+  (when (and overlay (overlay-buffer overlay))
+    (list (overlay-start overlay)
+          (overlay-end overlay)
+          (overlay-get overlay 'face)
+          (-some->> (overlay-get overlay 'after-string)
+            (get-text-property 0 'face)))))
+
+(defun hel-test-drawn-cursor-char (&optional window)
+  "Return the cursor character that WINDOW shows, as `hel-test--drawing' does.
+WINDOW is the selected window by default."
+  (hel-test--drawing (window-parameter window 'hel--cursor-char-overlay)))
+
+(defun hel-test-drawn-fake-cursors ()
+  "Return the drawing of every fake cursor, as `hel-test--drawing' does.
+The list is in buffer order."
+  (mapcar #'hel-test--drawing (hel-all-fake-cursors t)))
+
 ;;; Marked text
 
 (defun hel-test--parse (input)
@@ -200,11 +249,11 @@ afterwards.  A tree-sitter MODE without its grammar skips the test."
   `(hel-test-call-with-buffer ,mode ,input (lambda () ,@body)))
 
 (defun hel-test-goto (needle)
-  "Drop the selection and move point to the start of the first NEEDLE."
-  (deactivate-mark)
+  "Drop the selection and move point to the start of the first NEEDLE.
+The cursor character is the first character of NEEDLE."
   (goto-char (point-min))
   (search-forward needle)
-  (goto-char (match-beginning 0)))
+  (hel--set-cursor-char (match-beginning 0) -1))
 
 (defun hel-test-select (needle)
   "Select the first NEEDLE, with point at its end."
@@ -260,10 +309,12 @@ This command is transparent for the next command, which sees the same
 (defun hel-test--keys (keys)
   "Return the events of KEYS as a vector.
 KEYS is a string of plain characters mixed with key names, and spaces between
-them have no meaning: \"miw\", \"vll<escape>w\", \"M-;vl\", \"]SPC\", \"C-<i>\"."
+them have no meaning: \"miw\", \"vll<escape>w\", \"M-;vl\", \"]SPC\", \"C-<i>\",
+\"C-SPC\"."
   (let ((pos 0)
         (token (rx (or (seq (* (any "CMS") "-") "<" (+ (not (any "> "))) ">")
-                       "RET" "SPC" "DEL" "TAB" "ESC"
+                       (seq (* (any "CMS") "-")
+                            (or "RET" "SPC" "DEL" "TAB" "ESC"))
                        (seq (+ (any "CMS") "-") anychar)
                        anychar)))
         (events []))

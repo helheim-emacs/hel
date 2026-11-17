@@ -156,18 +156,26 @@ run in Normal state. The nested Hel keymaps of minor modes come first in
 
 1. *Expand starts from the whole selection.* It selects the smallest region
    that contains the selection and is larger than it, so the first =M-o=
-   always changes the selection. Without a selection, it starts from the
-   empty range at point.
+   always changes the selection. At a bare point the selection is the
+   cursor character, so on a one-character node such as =a=, =M-o= selects
+   the parent of =a=, as Helix does: selecting =a= would change only the
+   face of the same character. At the end of the buffer the selection is
+   empty, and =M-o= starts from the character before point, or does nothing
+   when that character is a newline.
 2. *Siblings are named nodes only.* Otherwise =M-n= would stop on every
    comma.
-3. *Shrink follows a history of selections.* Expand saves the old region and
-   =M-i= returns to it, along the exact path. When the region does not match
-   the last entry, shrink selects the first child: the first named child with
-   a parser, the first sexp inside the region without one. Without
-   a selection, it selects the first child of the node that starts at point,
-   so =M-i= in =(foo |(bar baz))= selects =bar=. With no child, the
-   selection stays. =mi= and =ma= write to the same history, so =M-i= after
-   =maf= returns to the selection before it.
+3. *Shrink follows a history of selections.* Expand saves the old selection
+   and =M-i= returns to it, along the exact path. Each entry records whether
+   the region was active, because the cursor character and a one-character
+   region have the same selection: a chain of =M-o= that starts at a bare
+   cursor ends there, bare, on the same cursor character. When the
+   selection does not match the last entry, shrink selects the first child
+   of the node under the selection (rule 10): the first named child with
+   a parser, the first sexp inside the region without one. At a bare point
+   this is the node under the cursor character, so =M-i= in
+   =(foo |(bar baz))= selects =bar=. With no child, or with no node under
+   the cursor character, the selection stays. =mi= and =ma= write to the
+   same history, so =M-i= after =maf= returns to the selection before it.
 4. *Each cursor has its own history*, through ~hel-fake-cursor-variables~.
 5. *An embedded language uses the parser at point.* The commands pass no
    parser to ~treesit-node-on~, which then uses the language at the start of
@@ -206,79 +214,107 @@ run in Normal state. The nested Hel keymaps of minor modes come first in
    at the end of the next function, and =-2 miw= on =foo b|ar= selects
    =foo bar= with point before =foo=. Shrink, =M-a=, =M-I=, =M-n= and =M-p=
    keep the direction, so after =mif= the =M-n= shows the header of the next
-   function. Without a selection, =M-n= gives a forward selection and =M-p=
-   a backward one. Other motions put point on their own side: =]f= at the
+   function. At a bare point, =M-n= and =M-i= give a forward selection and
+   =M-p= a backward one. Other motions put point on their own side: =]f= at the
    end, =[f= at the start.
 
    *=v= works with motions*: =w=, =b=, =e=, ={=, =}=, =]f=, =M-n=, =M-p= and
-   the others keep the mark and move point. =M-n= on =(a ^b| c d)= selects
-   =b c=. A sibling command against the selection gives back its last node,
-   and at the last node it turns around: =M-p= on =(a ^b| c)= selects =a b=.
+   the others keep the anchor of the selection and move point. =v= makes the
+   selection active at once, so at a bare point the character that the
+   cursor covers becomes a selection of one character, and a motion after a
+   command that deactivated the region extends that character too. A
+   selection of one character keeps its character: its anchor is the edge
+   of the character opposite to the motion. =h= and =l= move the head
+   character, the end character of the selection on the side of point, by
+   one, and the anchor character at the other end stays in the selection,
+   because a character motion works on characters. The other motions work
+   on gaps, so the selection holds whole words: a motion that would stop on
+   the anchor, where the selection would be empty, goes on to its next
+   stop, and =b= then gives back what =w= took across the anchor. =M-n= on
+   =(a ^b| c d)= selects =b c=. A sibling command against the selection
+   gives back its last node, and at the last node it turns around: =M-p= on
+   =(a ^b| c)= selects =a b=. From a selection with no node under it
+   (rule 10), the sibling commands extend to the nearest node on their
+   side.
    =mi=, =ma=, =M-o=, =M-b=, =M-e= and =M-i= create a selection, so =v= does
    not change them.
 8. *A count repeats the command.* =3 M-o= expands three times, =3 M-n= moves
    three siblings. A negative count reverses it: =-3 M-i= expands three
    times. For =mi= and =ma= a count is the number of objects
    ([[*Selecting an object][Selecting an object]]).
-9. *A selection is an object, and point without a selection is
-   a position.* The cursor of a selection is its last character in
-   a forward selection and its first character otherwise. Point lies between
-   two characters and can touch two objects. Helix has no such case, because
-   its cursor is always a one-character selection. A command with
-   a direction takes the object on its side: =M-n= and =]= look forward,
-   =M-p= and =[= backward. A command without a direction takes the object
-   after point, the one the cursor block shows, unless only the object
-   before point is a node (rule 10).
-10. *The tree commands start from the node at the selection.* With
-    a selection, this is the smallest named node that covers the region
-    without the whitespace at its edges. =w= and =x= select trailing space and
+9. *Commands start from the cursor.* The cursor of a selection is its last
+   character in a forward selection and its first character otherwise. At
+   a bare point the selection is the cursor character, so the cursor is that
+   character, the one that the screen shows, as in Helix, whose cursor is
+   always a one-character selection. =mi=, =ma= and the pair keys take the
+   object at the cursor, and the tree commands the node under the selection
+   (rule 10). =]= and =[= are motions: they go from point, as the word
+   motions do, and take the object on their side of point.
+10. *The tree commands start from the node under the selection.* This is
+    the smallest named node that covers the selection without the
+    whitespace at its edges. =w= and =x= select trailing space and
     indentation; without trimming, the space after =filterOid= in
     =filterOid = [&]{…}()= would make the node the whole =init_declarator=.
     Helix uses the whole region.
 
-    Without a selection, /E/ is the smallest named node that contains point
-    strictly, not at its edge. No named child of E contains point. When E
-    has no named children it is a /leaf/, and every command starts from it.
-    Otherwise:
+    At a bare point the selection is the cursor character, and it counts as
+    a selection, as a one-character region does. A character is under the
+    node that it starts or ends, such as a bracket, and under a node without
+    children that holds it, such as a letter of a symbol or a space in
+    a string. No node is under a character between the children of a node,
+    such as the space or the comma between two arguments.
 
-    - =M-n= starts from the first child of E that starts at or after point,
-      =M-p= from the last child that ends at or before point.
-    - =M-o= starts from the smallest named node that starts at point, then
-      the smallest that ends at point, and otherwise from E. When point
-      touches two nodes, the one after point wins.
-    - =M-i= starts from the node that starts at point (rule 3).
-    - =M-a= and =M-I= start like =M-o=. When nothing touches point, the nodes
-      around it are the children of E: =M-a= in =(f a | b)= puts a cursor
-      on =f=, =a= and =b=.
+    - =M-n= and =M-p= select the sibling after and before the node under
+      the selection, as Helix does. Selecting that node first would take
+      a press that may show no change, as for =M-o=. With no node under the
+      selection, =M-n= selects the first child that starts after it, and
+      =M-p= the last child that ends before it.
+    - =M-o= selects the smallest node that holds the selection and is larger
+      (rule 1), whether a node is under it or not.
+    - =M-a= puts a cursor on the node under the selection and on its
+      siblings, and =M-I= on its children. With no node under the
+      selection, both take the children of the node around it: =M-a= in
+      =(f a | b)= puts a cursor on =f=, =a= and =b=.
+
+    The texts have no mark, so the cursor character is the character after
+    =|=, except in the rows marked =h=, where =h= has moved it to the
+    character before =|=. A dash means that the selection stays.
 
     #+begin_example
-    Point                 M-n             M-p                 M-o
-    name |(mode state)    (mode state)    name                (mode state)
-    name| (mode state)    (mode state)    name                name
-    Callback |_callback,  _callback       Callback            _callback
-    Callback _callback|,  next parameter  Callback _callback  _callback
-    _cal|lback            _callback       _callback           _callback
-    foo|(x)               (x)             foo                 (x)
-    (a| b)                b               a                   a
-    (a |b)                b               a                   b
-    (a | b)               b               a                   (a  b)
+    Text                   M-n           M-p                 M-o
+    name |(mode state)     -             name                (mode state)
+    name| (mode state)     (mode state)  name                name (mode state)
+    name| (mode state)   h (mode state)  -                   name
+    Callback |_callback,   -             Callback            _callback
+    Callback| _callback,   _callback     Callback            Callback _callback
+    Callback _callback|,   int x         Callback _callback  the list
+    Callback _callback|, h -             Callback            _callback
+    f(_cal|lback)          -             -                   _callback
+    foo|(x)                -             foo                 (x)
+    foo|(x)              h (x)           -                   foo
+    (a| b)                 b             a                   (a b)
+    (a| b)               h b             -                   (a b)
+    (a |b)                 -             a                   (a b)
+    (a | b)                b             a                   (a  b)
     #+end_example
 
-    The =|= takes no space, so =(a | b)= has two spaces and point touches no
-    node: =M-o= selects the whole list at once. In =f(Callback _callback|,
-    ...)= the character after point is the comma, an anonymous node, and the
-    smallest named node around it is the whole parameter list. A rule that
-    started from the character after point would make =M-o= select every
-    parameter.
+    The =|= takes no space, so =(a | b)= has two spaces. A row with
+    =Callback= is a parameter of a C function, with =int x= after it, so
+    =M-o= from the comma selects the whole parameter list. =name (mode
+    state)= is a Python call, so =M-o= from the space selects the call. On
+    =a= of =(a| b)=, =M-o= selects the list, because =a= is a one-character
+    node.
 
     Without a parser the same rule works on sexps: the children are the
-    sexps in the innermost bracket pair around point, and a symbol or
-    a string with point in it is a leaf, so in a string =M-n= starts from
-    the whole string. The =M-o= column holds with a parser and in Lisp. In
-    other buffers without a parser the syntax producer gives smaller steps
-    ([[*The syntax producer][The syntax producer]]): in ~c-mode~, =M-o= in =_cal|lback= selects
-    =callback= before =_callback=, in =(a | b)= it selects =a  b= before
-    =(a  b)=, and in =(a| b)= it selects =a=, =a b=, then =(a b)=.
+    sexps in the innermost bracket pair around the cursor character, and
+    a symbol or a string that holds it is a leaf, so in a string =M-n=
+    starts from the whole string and selects the sexp after it. In the C
+    rows the children of the bracket pair are sexps, so =M-n= on =_= of
+    =_callback= selects =int=. The =M-o= column holds with a parser and in
+    Lisp. In other buffers without a parser the syntax producer gives
+    smaller steps ([[*The syntax producer][The syntax producer]]): in ~c-mode~, =M-o= in
+    =_cal|lback= selects =callback= before =_callback=, and in =(a | b)= and
+    =(a| b)= it selects the inside of the brackets before the whole pair.
 
 The sibling and children commands follow Helix
 (~helix-core/src/object.rs~ and ~movement.rs~), except the first rule:
@@ -330,7 +366,8 @@ element 9 lists all enclosing brackets, element 8 the start of the
 enclosing string or comment, and ~scan-lists~ turns each into a form. The
 producer returns:
 
-- *the word and the symbol at point*, only on a word or symbol constituent;
+- *the word and the symbol at the selection start*, only on a word or
+  symbol constituent;
   on a bracket the word is the bracket itself;
 - *the inside and the whole of the enclosing string*;
 - *the enclosing comment*, the bounds of =mic= without the indentation of
@@ -347,8 +384,10 @@ The word, the sentence and the paragraph come from their text objects, so
 expand and =mi= agree on them.
 
 The producer scans at the selection start and at the next position, because
-the cursor sits on the character after point: with the cursor on =(= or on
-an opening quote, the first =M-o= selects the whole form or string.
+the first character of the selection can open a form: with the cursor
+character on =(= or on an opening quote, the first =M-o= selects the whole
+form or string. The Lisp producer scans both positions for the same
+reason.
 
 Each =M-o= asks for the regions around the selection where the chain of
 expands began, the oldest entry of ~hel-selection-history~. So =(b + c)=
@@ -718,9 +757,12 @@ edges of the selection and take its last character in a forward selection,
 its first in a backward one. So =miw= on =two three= selects =three=, and
 =mif= on a selection over two functions selects the one with the cursor.
 Helix also starts from ~range.cursor~ but keeps the whitespace; Hel drops it
-so that =w= then =miw= selects the word, not the space. Without a region an
-object holds point when point is inside it or on its edge. Only =M-o= looks
-at the whole selection.
+so that =w= then =miw= selects the word, not the space. At a bare point the
+cursor is the cursor character. At the end of the buffer the selection is
+empty, and =mi= and =ma= start from the character before point, or do
+nothing when that character is a newline. Only =M-o= looks at the whole
+selection. When the object is the cursor character itself, the command
+still selects it, because a selection that was not active changes.
 
 The producer gives candidates and the driver, ~hel-thing-owning~, chooses.
 
@@ -759,8 +801,9 @@ the rules below want the function above. What this means for the user:
   still selects the comment.
 - *When two around ranges hold the cursor, the object before wins*: on the
   comma after =b= in =f(a, b, c)=, =mia= selects =b=.
-- *When point touches two objects, the one after point wins*, as for =M-o=:
-  in =foo|.=, =miw= selects the period.
+- *When point touches two objects, the cursor character decides*: in
+  =foo|.=, =miw= selects the period when the cursor character is the
+  period, and =foo= after =h= has moved it onto =o=.
 - *On the =def= line* of a Python function, =mif= selects the function.
   Helix selects the smallest capture that contains the cursor, the body,
   and does nothing there.
@@ -797,8 +840,9 @@ Then the driver applies the same rules to every producer:
 
 =]= and =[= select from point to an edge of an object:
 
-- *Inside an object*, =]f= selects to the end of the innermost object under
-  the cursor, and =[f= to its start.
+- *Inside an object*, =]f= selects to the end of the innermost object that
+  holds the character after point, and =[f= to the start of the one that
+  holds the character before point.
 - *At that edge, or outside every object*, =]f= selects the whole next
   object and =[f= the whole previous one. Forward, the next object is the one
   that starts first after the cursor; backward, the one that ends last at or
@@ -972,8 +1016,8 @@ legacy quotes =`like this'=, and Org maps =*=, =/=, =_= and =+= to its emphasis.
 
 The pair at a position follows the rule of every Hel object: a pair that
 starts at the cursor wins, then a pair that ends at the cursor, then the
-innermost pair around it. So in =(foo)|(bar)= the pair is =(bar)=, and in
-=(a (b)| c)= it is =(b)=.
+innermost pair around it. So with the cursor character after =|=, in
+=(foo)|(bar)= the pair is =(bar)=, and in =(a (b)| c)= it is =(b)=.
 
 - *Strings* come from the query of the language when the buffer has
   a parser, and from the syntax table otherwise ([[*Quotes][Quotes]]).
@@ -997,8 +1041,11 @@ innermost pair around it. So in =(foo)|(bar)= the pair is =(bar)=, and in
 
 ** Going outward
 
-Without a selection, =mi(= takes the pair at the cursor. With a selection, it
-takes the smallest pair whose inner text holds the selection and is larger,
+At a bare point, =mi(= takes the pair at the cursor character. Here the
+cursor character does not count as a selection: the pair of a bracket does
+not hold that bracket inside it, so the rule below would skip it. With an
+active region, =mi(= takes the smallest pair whose inner text holds the
+selection and is larger,
 so a repeated =mi(= grows outward one pair per press, and =ma(= then =mi(= selects
 inside the next pair outward. A count goes that many pairs outward, and
 stops at the outermost one. =M-i= returns to the selection before, as
@@ -1404,8 +1451,36 @@ moving.
   with ~equal~. ~hel-range~ builds one from two positions in any order.
 - A /direction/ is 1 or -1, a separate argument.
 - A /selection/ is ~(RANGE DIRECTION)~, the arguments of ~hel-select~, and
-  not ~(anchor . head)~, which looks like a range but has no order. A chain
-  that began without a selection keeps point as the oldest history entry.
+  not ~(anchor . head)~, which looks like a range but has no order. An entry
+  of the history of =M-i= also records whether the region was active, so
+  a chain that began at a bare cursor returns to its cursor character.
+- A selection always exists. It is the active region when that is not
+  empty, and otherwise the /cursor character/: one character next to point,
+  drawn with a faint face, on which every command acts. =h= and =l= move it
+  by one character, as a block cursor moves, and point goes to its nearest
+  edge, so on a reversal the character moves and the bar stays. The
+  inactive mark lies on its other edge, because the side depends on the
+  last motion and point alone does not record it. The mark is checked on
+  every read, never repaired: it counts only at point − 1 with no newline
+  before point, and otherwise the cursor character is the character after
+  point, so a command outside Hel that moves point gives that fallback. At
+  the end of the buffer the selection is empty.
+- The commands that act on the selection take no count: a count used to
+  say how many characters to take without a selection.
+- An active selection is never empty. =h= and =l= move the end character of
+  an extended selection and keep the character at the anchor, because they
+  work on characters; the other motions work on gaps and never stop on the
+  anchor, so =b= gives back what =w= took.
+- Each window keeps its own selection: point belongs to the window and the
+  mark to the buffer, so a switch between two windows on one buffer saves
+  the selection of the window that the user leaves and restores the one of
+  the window that the user enters, unless point has moved there.
+- The cursors are values ~(ID RANGE DIRECTION ACTIVE)~: one reader returns
+  them all, an algorithm computes a new list, and one writer moves the
+  cursors by their ID, so each fake cursor keeps its kill ring. The merge
+  after a command joins overlapping selections; the main cursor survives a
+  merge with its own state, because the cursors are interchangeable and
+  then no state is copied.
 - "Selection" means a selection as a value, "range" any range, and "region"
   a function that reads point and mark, as in Emacs.
 - ~hel-motion-loop~ checks point after each step, because Emacs motions

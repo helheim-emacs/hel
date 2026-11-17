@@ -97,7 +97,7 @@ the selection."
   "Restore initial selection if error occured during BODY evaluation."
   (declare (indent 0) (debug t))
   (cl-with-gensyms (selection point something-goes-wrong?)
-    `(let ((,selection (hel-selection))
+    `(let ((,selection (and (use-region-p) (hel-selection)))
            (,point (point))
            (,something-goes-wrong? t))
        (unwind-protect
@@ -241,30 +241,87 @@ backward when DIRECTION is -1."
 
 (defun hel-motion-select (start end)
   "Select from START to END, with point at END.
-When extending selection is active, keep the mark and only move point."
-  (set-mark (if hel-extending-selection (mark) start))
+When extending the selection is on, the selection keeps its anchor in
+place of START, see `hel--selection-anchor'."
+  (set-mark (if hel-extending-selection
+                (hel--selection-anchor (hel-sign (- end (point))))
+              start))
   (goto-char end))
 
+(defun hel--selection-anchor (dir)
+  "Return the end of the selection that a motion in DIR extends it from.
+This is the end of the selection opposite to point.  A selection of one
+character keeps its character under a motion in either direction, so its
+anchor is its edge opposite to DIR: the beginning for DIR 1, the end for
+DIR -1.  The selection is the one that `hel-selection' returns, so at
+a bare point it is the cursor character."
+  (-let [((begin . end) side) (hel-selection)]
+    (cond ((= 1 (- end begin)) (if (< 0 dir) begin end))
+          ((< 0 side) begin)
+          (t end))))
+
+(defun hel--set-cursor-char (pos dir)
+  "Move point to POS, and make the character on side DIR the cursor character.
+DIR is 1 for the character before POS and -1 for the character after
+it, as the direction of a selection says at which end point is."
+  (deactivate-mark)
+  (goto-char pos)
+  (set-marker (mark-marker) (- pos dir)))
+
 (defun hel-selection ()
-  "Return (RANGE DIRECTION) of the selection, or nil without a selection.
-RANGE is (BEGIN . END). `hel-select' takes the returned list as its arguments:
+  "Return the selection as (RANGE DIRECTION).
+The selection is the active region or cursor character.
+RANGE is a (BEGIN . END) pair, and DIRECTION is 1 when point is at END
+and -1 when it is at BEGIN. `hel-select' takes the returned list as
+its arguments. RANGE is empty only at the end of the buffer."
+  (hel--selection-from (point) (mark t) (region-active-p)))
 
-  (let ((selection (hel-selection)))
-    ...
-    (apply #\='hel-select selection))"
-  (if (use-region-p)
-      (list (cons (region-beginning) (region-end))
-            (hel-region-direction))))
+(defun hel-selection-bounds ()
+  "Return the bounds of the selection, a (BEGIN . END) pair."
+  (-first-item (hel-selection)))
 
-(defun hel-maybe-set-mark ()
-  "Set mark at point unless extending selection is active."
-  (or hel-extending-selection
-      (set-mark (point))))
+(defun hel-selection-direction ()
+  "Return 1 when point is at the end of the selection, -1 at its beginning."
+  (-second-item (hel-selection)))
 
-(defun hel-maybe-deactivate-mark ()
-  "Deactivate mark unless extending selection is active."
-  (or hel-extending-selection
-      (deactivate-mark)))
+(defun hel--selection-from (point mark active)
+  "Return the selection of a cursor with POINT, MARK and ACTIVE.
+The value is (RANGE DIRECTION), as `hel-selection' returns it.  ACTIVE
+is non-nil when the region of the cursor is active.  POINT and MARK
+are numbers; MARK may be nil."
+  (cond ((and active (/= point mark))
+         (if (< point mark)
+             (list (cons point mark) -1)
+           (list (cons mark point) 1)))
+        ;; Use `eql' instead of `=' because MARK can be nil.
+        ;; `char-before' is nil at the start of a narrowed buffer, where
+        ;; the mark can still lie just before point.
+        ((and (eql mark (1- point))
+              (char-before point)
+              (/= ?\n (char-before point)))
+         (list (cons mark point) 1))
+        (t
+         (list (cons point
+                     (min (1+ point) (point-max)))
+               -1))))
+
+(defun hel-maybe-set-mark (&optional dir)
+  "Set mark at point unless extending selection is active.
+When extending and DIR is non-nil, put the mark at the anchor of the
+selection for a motion in DIR, see `hel--selection-anchor'."
+  (cond ((not hel-extending-selection)
+         (set-mark (point)))
+        (dir
+         (set-mark (hel--selection-anchor dir)))))
+
+(defun hel-maybe-deactivate-mark (&optional dir)
+  "Deactivate mark unless extending selection is active.
+When extending and DIR is non-nil, put the mark at the anchor of the
+selection for a motion in DIR, see `hel--selection-anchor'."
+  (cond ((not hel-extending-selection)
+         (deactivate-mark))
+        (dir
+         (set-mark (hel--selection-anchor dir)))))
 
 (defun hel-ensure-region-direction (direction)
   "Exchange point and mark if the region direction mismatches DIRECTION.
@@ -629,25 +686,37 @@ Indentation and trailing whitespace do not count."
 ;;; Selection
 
 (defun hel-cursor-position ()
-  "Return the position of the character that the cursor is on.
-With a selection, this is the character at the end where point is, after
-the whitespace at the edges of the selection is left out. Without one,
-this is point."
-  (-if-let ((begin . end) (hel-trimmed-selection-bounds))
-      (if (< 0 (hel-region-direction))
-          (1- end)
-        begin)
-    (point)))
+  "Return the position of the character that the cursor is on, or nil.
+This is the character at the end of the selection where point is, after
+the whitespace at the edges of the selection is left out. At a bare
+point the selection is the cursor character, so this is the cursor
+character itself. At the end of the buffer, see
+`hel-trimmed-selection-bounds'."
+  (-when-let ((begin . end) (hel-trimmed-selection-bounds))
+    (if (< 0 (hel-selection-direction))
+        (1- end)
+      begin)))
 
 (defun hel-trimmed-selection-bounds ()
   "Return the bounds that the structural commands start from, or nil.
 These are the bounds of the selection without the whitespace at its
-edges. Without a selection, return nil, and each command decides what to
-do then."
-  (when (use-region-p)
-    (let ((range (cons (region-beginning) (region-end))))
-      (or (hel-trim-whitespace-from-range range)
-          range))))
+edges. A selection of whitespace alone keeps its bounds. At the end of
+the buffer the selection is empty, and the bounds are those of the
+character before point, or nil when that character is a newline."
+  (-when-let (bounds (hel--start-bounds (hel-selection-bounds)))
+    (or (hel-trim-whitespace-from-range bounds)
+        bounds)))
+
+(defun hel--start-bounds (bounds)
+  "Return BOUNDS, or the bounds of the character before them when empty.
+The selection is empty only at the end of the buffer, where no character
+follows point. There a command that needs a character starts from the one
+before point. Return nil when that character is a newline, or when there
+is none."
+  (-let [(begin . end) bounds]
+    (cond ((< begin end) bounds)
+          ((-some->> (char-before begin) (/= ?\n))
+           (cons (1- begin) begin)))))
 
 (defun hel-expand-selection-to-full-lines (&optional direction)
   "Extend the selection so that it consists of complete lines.

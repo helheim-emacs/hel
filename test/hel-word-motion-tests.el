@@ -221,7 +221,7 @@ It takes the indentation as a step."
   (should (equal (hel-word-motion-tests--run
                   "foo bar  baz" "baz"
                   '(hel-backward-word-start hel-backward-word-start) t)
-                 '("foo |bar  ^baz" "|foo bar  ^baz")))
+                 '("foo |bar  b^az" "|foo bar  b^az")))
   (should (equal (hel-word-motion-tests--run
                   "foo bar  baz" "foo"
                   '(hel-forward-word-end hel-forward-word-end) t)

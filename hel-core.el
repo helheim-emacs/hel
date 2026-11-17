@@ -113,6 +113,8 @@
         (add-hook 'window-configuration-change-hook #'hel-update-cursor)
         (add-hook 'enable-theme-functions  #'hel--on-theme-change)
         (add-hook 'disable-theme-functions #'hel--on-theme-change)
+        (add-function :after pre-redisplay-function
+                      #'hel--update-cursor-char-highlight)
         ;; Setup ESC, C-i and C-m keys
         (-each (frame-list) #'hel-setup-terminal-keys)
         (add-hook 'after-make-frame-functions #'hel-setup-terminal-keys)
@@ -128,6 +130,9 @@
     (remove-hook 'window-configuration-change-hook #'hel-update-cursor)
     (remove-hook 'enable-theme-functions  #'hel--on-theme-change)
     (remove-hook 'disable-theme-functions #'hel--on-theme-change)
+    (remove-function pre-redisplay-function
+                     #'hel--update-cursor-char-highlight)
+    (hel--delete-cursor-char-overlays)
     (hel-setup-mode-line :remove)))
 
 (defun hel--initialize ()
@@ -473,9 +478,13 @@ MODE and STATE should be symbols."
           (deactivate-mark)))
     ;; else
     (hel-push-point)
-    (when hel--selection-was-active-on-insert
+    (if hel--selection-was-active-on-insert
+        (hel-with-each-cursor
+          (activate-mark))
+      ;; The cursor character is the character before point, usually the
+      ;; last one typed.
       (hel-with-each-cursor
-        (activate-mark)))))
+        (hel--set-cursor-char (point) 1)))))
 
 (hel-define-state emacs
   "Emacs state."
@@ -741,10 +750,10 @@ a Hel modal state. Can be a symbol or list of symbols.
 
 (defun hel--pre-command-hook ()
   "Hook run before each command is executed. See `pre-command-hook'."
-  (when (and hel-extending-selection (not mark-active))
-    (set-mark (point)))
   (unless hel-executing-command-for-fake-cursor
-    (setq hel-this-command this-command)
+    (setq hel-this-command this-command
+          hel--selection-record (list (current-buffer) (mark t) mark-active
+                                      hel-extending-selection))
     (cond (hel-normal-state
            (hel--single-undo-step-beginning))
           (hel-insert-state
@@ -777,12 +786,111 @@ a Hel modal state. Can be a symbol or list of symbols.
         (error
          (message "[Hel] error while closing the undo step: %s"
                   (error-message-string err)))))
+    (unless (eq hel--selection-owner (selected-window))
+      (hel--switch-selection-owner))
     (setq hel-this-command nil
-          hel--input-cache nil)
+          hel--input-cache nil
+          hel--selection-record nil)
     (hel-maybe-update-active-keymaps)))
 
 (put 'hel--pre-command-hook 'permanent-local-hook t)
 (put 'hel--post-command-hook 'permanent-local-hook t)
+
+;;; The selection of each window
+
+;; The buffer holds the selection of one window, its owner.  The other
+;; windows that show the buffer keep theirs in the window parameter
+;; `hel--selection' until they are selected again.  The saved point tells a
+;; return to the window, which finds its point where it was, from a jump that
+;; moves point, such as a mouse click.
+
+(cl-defstruct (hel--window-selection
+               (:constructor hel--window-selection-create)
+               (:copier nil))
+  "The selection of a window that does not own its buffer.
+BUFFER is the buffer that the selection belongs to.  POINT is a marker at
+the point of the window, and MARK a marker at the mark.  ACTIVE and
+EXTENDING are the values of `mark-active' and `hel-extending-selection'."
+  buffer point mark active extending)
+
+(defun hel--switch-selection-owner ()
+  "Give the buffer the selection of the selected window.
+When a command moves the user into another window on the current buffer,
+save the selection of the window that the user left, and restore the
+selection that the selected window had when the user left it.  A selection
+that the command itself made stays as it is.
+
+Then the selected window becomes the owner of the selection of the buffer.
+A buffer without an owner keeps its selection.  An owner that is deleted or
+shows another buffer counts as no owner."
+  (let ((window (selected-window))
+        (owner hel--selection-owner)
+        (buffer (current-buffer))
+        (was-extending? hel-extending-selection))
+    (when (eq (window-buffer window) buffer)
+      (when (and (window-live-p owner)
+                 (eq (window-buffer owner) buffer))
+        ;; A record of another buffer says nothing about this one: the
+        ;; command did not touch the selection of this buffer.
+        (pcase-let ((`(,mark ,active ,extending)
+                     (if (eq (car hel--selection-record) buffer)
+                         (cdr hel--selection-record)
+                       (list (mark t) mark-active hel-extending-selection))))
+          (hel--save-window-selection owner mark active extending)
+          (when (and (eql mark (mark t))
+                     (eq active mark-active))
+            (hel--restore-window-selection window))))
+      (hel--forget-window-selection window)
+      (setq hel--selection-owner window)
+      ;; The color of the cursor shows whether motions extend.
+      (unless (eq was-extending? hel-extending-selection)
+        (hel-update-cursor)))))
+
+(defun hel--save-window-selection (window mark active extending)
+  "Save in WINDOW the selection with MARK, ACTIVE and EXTENDING.
+MARK is a position or nil.  ACTIVE and EXTENDING are the values of
+`mark-active' and `hel-extending-selection'."
+  (let ((saved (or (window-parameter window 'hel--selection)
+                   (set-window-parameter
+                    window 'hel--selection
+                    (hel--window-selection-create :point (make-marker)
+                                                  :mark (make-marker))))))
+    (setf (hel--window-selection-buffer saved) (current-buffer)
+          (hel--window-selection-active saved) active
+          (hel--window-selection-extending saved) extending)
+    (set-marker (hel--window-selection-point saved) (window-point window))
+    (set-marker (hel--window-selection-mark saved) mark)))
+
+(defun hel--restore-window-selection (window)
+  "Give the current buffer the selection that WINDOW saved.
+Restore it only when it belongs to this buffer and the point of WINDOW is
+where it was saved.  Otherwise leave WINDOW without a selection: deactivate
+the mark and turn extending off, but keep the mark where it is."
+  (let* ((saved (window-parameter window 'hel--selection))
+         (valid? (and saved
+                      (eq (hel--window-selection-buffer saved)
+                          (current-buffer))
+                      (eql (marker-position (hel--window-selection-point saved))
+                           (window-point window))))
+         ;; The region of the buffer is the region of another window, so it
+         ;; must not become the primary selection.
+         (select-active-regions nil))
+    (deactivate-mark)
+    (setq hel-extending-selection nil)
+    (when valid?
+      (set-marker (mark-marker)
+                  (marker-position (hel--window-selection-mark saved)))
+      (setq hel-extending-selection (hel--window-selection-extending saved))
+      (when (hel--window-selection-active saved)
+        (activate-mark)))))
+
+(defun hel--forget-window-selection (window)
+  "Drop the selection that WINDOW saved.
+Its markers stop pointing anywhere, so they do not slow down edits."
+  (when-let* ((saved (window-parameter window 'hel--selection)))
+    (setf (hel--window-selection-buffer saved) nil)
+    (set-marker (hel--window-selection-point saved) nil)
+    (set-marker (hel--window-selection-mark saved) nil)))
 
 ;;; Undo
 
@@ -799,7 +907,7 @@ action. The step is terminated with `hel--single-undo-step-end'."
     (when (car-safe buffer-undo-list)
       (undo-boundary))
     (setq hel--buffer-undo-list-pointer buffer-undo-list
-          hel-undo--cursors-positions (hel-cursors-positions))))
+          hel-undo--cursor-selections (hel-cursor-selections))))
 
 (defun hel--single-undo-step-end ()
   "Finalize undo step started by `hel--single-undo-step-beginning'."
@@ -817,7 +925,7 @@ action. The step is terminated with `hel--single-undo-step-end'."
           (hel--merge-undo-step))
       (setq hel--in-single-undo-step nil
             hel--buffer-undo-list-pointer nil
-            hel-undo--cursors-positions nil))))
+            hel-undo--cursor-selections nil))))
 
 (defun hel--buffer-undo-list-tip-is-redo-record-p ()
   "Return non-nil if the tip of `buffer-undo-list' was produced by an undo.
@@ -852,12 +960,12 @@ Emacs marks such records in `undo-equiv-table'."
       ;; Else put on the both ends of the undo step records that hold the
       ;; positions of every cursor, so that undo can put the cursors back.
       (setq buffer-undo-list
-            (cons `(apply hel--undo-step-start ,(hel-cursors-positions))
+            (cons `(apply hel--undo-step-start ,(hel-cursor-selections))
                   undo-list))
       (let ((tail undo-list))
         (while (not (eq (cdr tail) hel--buffer-undo-list-pointer))
           (setq tail (cdr tail)))
-        (setcdr tail (cons `(apply hel--undo-step-end ,hel-undo--cursors-positions)
+        (setcdr tail (cons `(apply hel--undo-step-end ,hel-undo--cursor-selections)
                            hel--buffer-undo-list-pointer))))))
 
 (defun hel-commit-undo-checkpoint ()
@@ -923,27 +1031,27 @@ Return one of the symbols:
         'typing-other)
     'other))
 
-(defun hel--undo-step-start (cursors-positions)
+(defun hel--undo-step-start (cursors)
   "This function always called from `buffer-undo-list' during undo by
 `primitive-undo' function. It is the first one from a pair of functions:
 `hel--undo-step-start' and `hel--undo-step-end', which are executed
 at beginning and end of a single undo step and restores real and fake
-cursors positions and regions after undo/redo step.
+cursors selections after undo/redo step.
 
-CURSORS-POSITIONS is an alist returned by `hel-cursors-positions' function."
-  (push `(apply hel--undo-step-end ,cursors-positions)
+CURSORS is a list of cursor values, as `hel-cursor-selections' returns it."
+  (push `(apply hel--undo-step-end ,cursors)
         buffer-undo-list))
 
-(defun hel--undo-step-end (cursors-positions)
+(defun hel--undo-step-end (cursors)
   "This function always called from `buffer-undo-list' during undo by
 `primitive-undo' function. It is the second one from a pair of functions:
 `hel--undo-step-start' and `hel--undo-step-end', which are executed
 at beginning and end of a single undo step and restores real and fake
-cursors positions and regions after undo/redo step.
+cursors selections after undo/redo step.
 
-CURSORS-POSITIONS is an alist returned by `hel-cursors-positions' function."
-  (hel-place-cursors cursors-positions)
-  (push `(apply hel--undo-step-start ,cursors-positions)
+CURSORS is a list of cursor values, as `hel-cursor-selections' returns it."
+  (hel-set-cursor-selections cursors)
+  (push `(apply hel--undo-step-start ,cursors)
         buffer-undo-list))
 
 ;;; Input-method
@@ -1053,6 +1161,74 @@ or a function with no arguments that returns any of above."
 
 (defun hel--on-theme-change (_theme)
   (hel--update-main-cursor-color (face-background 'cursor)))
+
+;;;; The cursor character
+
+(defvar hel--cursor-char-window nil
+  "The window that showed the cursor character at the last redisplay.")
+
+(defconst hel--cursor-char-cell
+  (propertize " " 'face 'hel-cursor-char 'cursor t)
+  "The cell that shows a cursor character that has no cell of its own.
+The `cursor' property puts the cursor of Emacs before the cell.")
+
+(defun hel--update-cursor-char-highlight (&rest _)
+  "Highlight the cursor character in the selected window.
+Redisplay calls this function, so the highlight follows point also
+after a command outside Hel.  The highlight covers the bounds that
+`hel-selection-bounds' returns, in Normal state, when the region is not
+active or is empty: an active region that is not empty shows itself.
+
+A newline, or the empty bounds at the end of the buffer, show as a cell
+of one space after the last character of the line, because a face on
+a newline paints to the right edge of the window.
+
+Each window keeps its own overlay in its `hel--cursor-char-overlay'
+parameter, and only the selected window shows it."
+  (let* ((window (selected-window))
+         (overlay (window-parameter window 'hel--cursor-char-overlay)))
+    (unless (eq window hel--cursor-char-window)
+      (when (windowp hel--cursor-char-window)
+        (-some-> (window-parameter hel--cursor-char-window
+                                   'hel--cursor-char-overlay)
+          (delete-overlay)))
+      (setq hel--cursor-char-window window))
+    (with-current-buffer (window-buffer window)
+      (if (or (not hel-normal-state)
+              hel--cursor-hidden?
+              (and (region-active-p)
+                   (/= (point) (mark))))
+          (when overlay
+            (delete-overlay overlay))
+        (let* ((bounds (hel-selection-bounds))
+               (begin (car bounds))
+               (end (if (eq (char-after begin) ?\n)
+                        begin
+                      (cdr bounds))))
+          (unless overlay
+            (setq overlay (make-overlay begin end))
+            (overlay-put overlay 'window window)
+            ;; The priority of the region overlay of Emacs.
+            (overlay-put overlay 'priority '(nil . 100))
+            (set-window-parameter window 'hel--cursor-char-overlay overlay))
+          (unless (and (eq (overlay-buffer overlay) (current-buffer))
+                       (eql (overlay-start overlay) begin)
+                       (eql (overlay-end overlay) end))
+            (move-overlay overlay begin end (current-buffer)))
+          (if (= begin end)
+              (progn
+                (overlay-put overlay 'face nil)
+                (overlay-put overlay 'after-string hel--cursor-char-cell))
+            (overlay-put overlay 'face 'hel-cursor-char)
+            (overlay-put overlay 'after-string nil)))))))
+
+(defun hel--delete-cursor-char-overlays ()
+  "Delete the overlays of the cursor character in every window."
+  (walk-windows (lambda (window)
+                  (-some-> (window-parameter window 'hel--cursor-char-overlay)
+                    (delete-overlay)))
+                t t)
+  (setq hel--cursor-char-window nil))
 
 ;;; .
 (provide 'hel-core)

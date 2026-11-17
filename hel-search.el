@@ -637,29 +637,28 @@ Do not auto-detect word boundaries in the search pattern."
   :multiple-cursors nil
   (interactive)
   (when (region-active-p)
-    (let* ((cursors-positions (hel-cursors-positions))
-           (regions (->> cursors-positions
-                         (-map (-lambda ((_id point mark))
-                                 (if (< point mark)
-                                     (cons point mark)
-                                   (cons mark point)))))))
+    (let* ((cursors (hel-cursor-selections))
+           ;; The main cursor goes first, so that it takes the first
+           ;; match inside its own selection.
+           (regions (-map #'cadr (-let [(main others)
+                                        (-separate (-lambda ((id)) (eql id 0))
+                                                   cursors)]
+                                   (append main others)))))
       (deactivate-mark)
       (-each (hel-all-fake-cursors) #'hel--delete-fake-cursor)
       (setq hel-extending-selection nil)
       (if (setq regions (hel-select-interactively-in-ranges regions invert))
-          (hel-recenter-point-on-jump
-            ;; Real cursor
-            (-let [(start . end) (car regions)]
-              (hel-select (cons start end))
-              (-each (overlays-in start end) #'hel-open-overlay))
-            ;; Fake cursors
-            (save-excursion
-              (cl-loop for (start . end) in (cdr regions) do
-                       (goto-char start)
-                       (-each (overlays-in start end) #'hel-open-overlay)
-                       (hel-create-fake-cursor end start))))
+          (progn
+            (-each regions
+              (-lambda ((start . end))
+                (-each (overlays-in start end) #'hel-open-overlay)))
+            (hel-recenter-point-on-jump
+              (hel-set-cursor-selections
+               (cons (list 0 (car regions) 1 t)
+                     (-map (lambda (region) (list nil region 1 t))
+                           (cdr regions))))))
         ;; Else restore original cursors.
-        (hel-place-cursors cursors-positions)))
+        (hel-set-cursor-selections cursors)))
     (hel-auto-multiple-cursors-mode)))
 
 ;; S
@@ -833,12 +832,12 @@ If INVERT is non-nil — remove selections that match regexp."
               (-lambda ((cursor . flag))
                 (if (not flag)
                     (hel--delete-fake-cursor cursor)
-                  (hel--set-cursor-overlay cursor (overlay-get cursor 'point))
+                  (hel--set-cursor-overlay cursor)
                   (-> (overlay-get cursor 'fake-region)
                       (overlay-put 'face 'region)))))
           ;; Else restore all cursors
           (dolist (cursor cursors)
-            (hel--set-cursor-overlay cursor (overlay-get cursor 'point))
+            (hel--set-cursor-overlay cursor)
             (-> (overlay-get cursor 'fake-region)
                 (overlay-put 'face 'region))))))))
 
@@ -852,7 +851,7 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extending-selection
   (interactive)
-  (hel-maybe-set-mark)
+  (hel-maybe-set-mark 1)
   (hel-find-char (read-char "f" t) 1 nil))
 
 ;; F
@@ -863,7 +862,7 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extending-selection
   (interactive)
-  (hel-maybe-set-mark)
+  (hel-maybe-set-mark -1)
   (hel-find-char (read-char "F" t) -1 nil))
 
 ;; t
@@ -874,7 +873,7 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extending-selection
   (interactive)
-  (hel-maybe-set-mark)
+  (hel-maybe-set-mark 1)
   (hel-find-char (read-char "t" t) 1 t))
 
 ;; T
@@ -885,7 +884,7 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extending-selection
   (interactive)
-  (hel-maybe-set-mark)
+  (hel-maybe-set-mark -1)
   (hel-find-char (read-char "T" t) -1 t))
 
 (defun hel-find-char (char direction exclusive?)

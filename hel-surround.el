@@ -461,7 +461,8 @@ cursor. Elsewhere, as in a comment, the next source of the key applies."
   (let ((producer (hel-treesit-string-pair-producer-create mark)))
     (lambda ()
       (when (and (hel-treesit-text-objects-p)
-                 (hel-pair-at producer (hel-cursor-position)))
+                 (-some->> (hel-cursor-position)
+                   (hel-pair-at producer)))
         producer))))
 
 (defun hel--treesit-string-pair (node mark)
@@ -908,11 +909,12 @@ The input is a tag name with optional attributes, such as `div class=\"box\"'."
 SIDE is `:inner' for what `mi' selects, and `:around' for what `ma'
 selects. COUNT goes COUNT - 1 pairs further outward.
 
-Without a selection, take the pair at point, see `hel-pair-at'. With
-a selection, take the smallest pair whose SIDE holds the selection and is
-larger, so a repeated `mi(' grows outward. When no pair holds the
-selection, as for quotes, which do not nest, take the pair at the cursor:
-so `ma\"' then `mi\"' selects the inside of the same string."
+At a bare cursor, take the pair at the cursor character, see
+`hel-pair-at'. With an active region, take the smallest pair whose SIDE
+holds the selection and is larger, so a repeated `mi(' grows outward.
+When no pair holds the selection, as for quotes, which do not nest, take
+the pair at the cursor: so `ma\"' then `mi\"' selects the inside of the
+same string."
   (if-let* ((producer (hel-pair-producer char)))
       (progn
         (hel--sync-selection-history)
@@ -920,8 +922,9 @@ so `ma\"' then `mi\"' selects the inside of the same string."
                     (if (eq side :inner)
                         (hel-pair-text-bounds producer pair)
                       (hel-pair-outer-bounds pair))))
-          (let* ((before (or (hel-selection) (point)))
-                 (selection (hel-trimmed-selection-bounds))
+          (let* ((before (hel--selection-entry))
+                 (selection (and (use-region-p)
+                                 (hel-trimmed-selection-bounds)))
                  (pair (or (when selection
                              (cl-loop for pair = (hel-pair-at producer (car selection))
                                       then (hel-pair-parent producer pair)
@@ -929,7 +932,8 @@ so `ma\"' then `mi\"' selects the inside of the same string."
                                       when (hel--range-strictly-inside-p
                                             selection (side-bounds pair))
                                       return pair))
-                           (hel-pair-at producer (hel-cursor-position)))))
+                           (-some->> (hel-cursor-position)
+                             (hel-pair-at producer)))))
             (when pair
               (cl-loop repeat (1- count)
                        for parent = (hel-pair-parent producer pair)
@@ -937,7 +941,10 @@ so `ma\"' then `mi\"' selects the inside of the same string."
                        do (setq pair parent)))
             (when-let* ((pair)
                         (range (side-bounds pair))
-                        ((not (equal range (car-safe before)))))
+                        ;; At a bare cursor, a one-character pair text
+                        ;; still changes the selection.
+                        ((not (and (-third-item before)
+                                   (equal range (car before))))))
               (hel-push-point)
               (hel-select range)
               (hel--record-selection before)

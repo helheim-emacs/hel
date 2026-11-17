@@ -742,7 +742,7 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
   :multiple-cursors t
   :merge-selections t
   (interactive)
-  (hel-motion-select (point) (progn
+  (hel-motion-select (point) (save-excursion
                                (widget-end-of-line)
                                (point))))
 

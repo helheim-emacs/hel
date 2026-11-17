@@ -489,31 +489,38 @@ POS when the thing has no header comment."
 (defun hel--sync-selection-history ()
   "Forget `hel-selection-history' if the selection has changed.
 If only the direction of the selection differs, remember the new direction."
-  (-let [(range dir) (hel-selection)]
+  (-let [(range dir active) (hel--selection-entry)]
     (if-let* ((newest (car hel-selection-history))
-              ((equal (-first-item newest) range)))
+              ((equal (-first-item newest) range))
+              ((eq (-third-item newest) active)))
         (setf (-second-item newest) dir)
       (setq hel-selection-history nil))))
 
+(defun hel--selection-entry (&optional run)
+  "Return the selection as an entry of `hel-selection-history'.
+The entry holds the selection, whether the region is active, and RUN."
+  (append (hel-selection)
+          (list (and (use-region-p) t) run)))
+
 (defun hel--record-selection (before &optional run)
-  "Remember the active region and RUN in `hel-selection-history'.
-BEFORE is the selection before the command, as `hel-selection' returns it,
-or point when there was none. When the history is empty, BEFORE becomes its
-first entry. RUN has the form described in `hel-selection-history'."
+  "Remember the selection and RUN in `hel-selection-history'.
+BEFORE is the entry of the selection before the command, as
+`hel--selection-entry' returns it. When the history is empty, BEFORE
+becomes its first entry. RUN has the form described in
+`hel-selection-history'."
   (unless hel-selection-history
     (push before hel-selection-history))
-  (push (append (hel-selection) (list run))
+  (push (hel--selection-entry run)
         hel-selection-history))
 
 (defun hel--restore-selection (entry)
-  "Restore the selection of ENTRY of `hel-selection-history'."
-  (if (numberp entry)
-      (progn
-        (deactivate-mark)
-        (goto-char entry))
-    ;; else
-    (-let [(range dir) entry]
-      (hel-select range dir))))
+  "Restore the selection of ENTRY of `hel-selection-history'.
+An entry of a bare cursor restores its cursor character, and the region
+stays inactive."
+  (-let [((begin . end) dir active) entry]
+    (if active
+        (hel-select (cons begin end) dir)
+      (hel--set-cursor-char (if (< 0 dir) end begin) dir))))
 
 (defun hel-mark-text-object (thing kind count)
   "Select COUNT THINGs at the cursor, inner or around as KIND says.
@@ -532,15 +539,15 @@ KIND is:
       (progn
         (hel--sync-selection-history)
         (-let* ((dir (hel-sign count))
-                (before (or (hel-selection) (point)))
+                (before (hel--selection-entry))
                 (key (list thing kind))
-                ((_ _ (run-key run-first run-last)) (car hel-selection-history))
+                ((_ _ _ (run-key run-first run-last)) (car hel-selection-history))
                 (extend? (equal key run-key))
                 ((first . last)
                  (if extend?
                      (hel--extend-things thing producer run-first run-last count)
-                   (when-let* ((instance (hel-thing-owning thing producer
-                                                           (hel-cursor-position))))
+                   (when-let* ((cursor (hel-cursor-position))
+                               (instance (hel-thing-owning thing producer cursor)))
                      (hel--extend-things thing producer instance nil (- count dir))))))
           (when-let* ((first)
                       (range (pcase kind
@@ -549,7 +556,10 @@ KIND is:
                                       (hel-thing-instance-end last)))
                                (:around
                                 (hel-thing-around thing producer first last))))
-                      ((not (equal range (car-safe before)))))
+                      ;; At a bare cursor, a one-character object still
+                      ;; changes the selection: the region becomes active.
+                      ((not (and (-third-item before)
+                                 (equal range (car before))))))
             (hel-push-point)
             (hel-select range (if (or extend? (/= 1 (abs count)))
                                   dir
@@ -562,15 +572,25 @@ KIND is:
   "Select from point to the EDGE of the COUNT-th THING.
 A negative COUNT goes backward. EDGE and SKIP-GAP? are as in
 `hel-thing-reach'. When extending the selection is on, extend the
-selection instead of replacing it. When no thing exists in the direction,
-the selection stays as it is."
+selection instead of replacing it, and go on to the next edge when the
+motion would stop on the anchor of the selection, where the selection
+would be empty. When no thing exists in the direction, the selection
+stays as it is."
   (if-let* ((producer (hel-thing-producer thing)))
-      (-when-let ((begin . end) (hel-thing-reach thing producer (point)
-                                                 count edge skip-gap?))
-        (when (hel-thing-jump-p thing) (hel-push-point))
-        (when (< count 0) (cl-rotatef begin end))
-        (hel-motion-select begin end)
-        (hel-reveal-point-when-on-top))
+      (cl-flet ((reach (pos count)
+                  ;; The range in the order of the motion: (START . END).
+                  (-when-let ((begin . end) (hel-thing-reach thing producer pos
+                                                             count edge skip-gap?))
+                    (if (< count 0) (cons end begin) (cons begin end)))))
+        (let ((anchor (and hel-extending-selection
+                           (hel--selection-anchor (hel-sign count)))))
+          (-when-let* (((start . end) (reach (point) count))
+                       ((start . end) (if (eql end anchor)
+                                          (reach end (hel-sign count))
+                                        (cons start end))))
+            (when (hel-thing-jump-p thing) (hel-push-point))
+            (hel-motion-select start end)
+            (hel-reveal-point-when-on-top))))
     ;; else
     (hel--no-thing-producer-message thing)))
 

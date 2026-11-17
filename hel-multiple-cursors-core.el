@@ -57,6 +57,7 @@
 (require 'hel-lib)
 
 (defvar hel-insert-state)
+(defvar hel-normal-state)
 
 (declare-function hel-update-cursor "hel-core")
 
@@ -73,7 +74,7 @@ delete last one with `hel-delete-fake-cursor'."
       (hel--disable-minor-modes-incompatible-with-multiple-cursors)
     ;; else
     (when (hel-any-fake-cursors-p)
-      (setq hel--cursors-positions-history (hel-cursors-positions))
+      (setq hel--cursor-selections-history (hel-cursor-selections))
       (hel--delete-all-fake-cursors))
     (hel--enable-minor-modes-incompatible-with-multiple-cursors)))
 
@@ -147,11 +148,12 @@ This function is the guts of the `hel-create-fake-cursor'."
   (or id (setq id (hel--new-fake-cursor-id)))
   (save-excursion
     (goto-char point)
-    (let ((cursor (hel--set-cursor-overlay nil point)))
+    (let ((cursor (make-overlay point point nil t nil)))
       (overlay-put cursor 'id id)
       (overlay-put cursor 'type 'fake-cursor)
       (overlay-put cursor 'priority 101)
       (hel--store-cursor-state cursor point mark)
+      (hel--set-cursor-overlay cursor)
       (hel--set-fake-selection-overlay cursor)
       (puthash id cursor hel--cursors-table)
       cursor)))
@@ -180,7 +182,7 @@ Optionally UPDATE fake-cursors state."
   (set-marker (overlay-get cursor 'point) point)
   (set-marker (overlay-get cursor 'mark) (or mark point))
   (when update (hel-update-fake-cursor-state cursor))
-  (hel--set-cursor-overlay cursor point)
+  (hel--set-cursor-overlay cursor)
   (hel--set-fake-selection-overlay cursor)
   cursor)
 
@@ -190,45 +192,58 @@ more fake cursors are remaining."
   (hel--delete-fake-cursor cursor)
   (hel-auto-multiple-cursors-mode))
 
-(defun hel--set-cursor-overlay (cursor pos)
-  "Move or create fake CURSOR overlay at position POS.
-If CURSOR is nil — create new fake cursor overlay at POS.
-Return CURSOR."
-  (save-excursion
-    (goto-char pos)
-    ;; Special case for end of line, because overlay over
-    ;; a newline highlights the entire width of the window.
-    (setq cursor (cond ((and cursor (eolp))
-                        (move-overlay cursor pos pos))
-                       (cursor
-                        (move-overlay cursor pos (1+ pos)))
-                       ((eolp)
-                        (make-overlay pos pos nil t nil))
-                       (t
-                        (make-overlay pos (1+ pos) nil t nil))))
-    (let ((face (cond (hel-extending-selection
-                       'hel-extend-selection-cursor)
-                      (hel-insert-state
-                       'hel-insert-state-fake-cursor)
-                      (t
-                       'hel-normal-state-fake-cursor))))
-      (cond ((and (display-graphic-p)
-                  hel-match-fake-cursor-style
-                  (hel-cursor-is-bar-p))
-             (overlay-put cursor 'face nil)
-             (overlay-put cursor 'before-string
-                          (propertize hel-bar-fake-cursor
-                                      'face `(,face
-                                              (:height ,(window-default-font-height)))))
-             (overlay-put cursor 'after-string nil))
-            ((eolp)
-             (overlay-put cursor 'face nil)
-             (overlay-put cursor 'before-string nil)
-             (overlay-put cursor 'after-string (propertize " " 'face face)))
-            (t
-             (overlay-put cursor 'face face)
-             (overlay-put cursor 'before-string nil)
-             (overlay-put cursor 'after-string nil))))
+(defun hel--set-cursor-overlay (cursor)
+  "Draw fake CURSOR from the point, the mark and the state that it stores.
+In Normal state, when its region is not active or is empty, the fake
+cursor covers its cursor character: the bounds that `hel-selection'
+gives for its point and mark.  Otherwise it covers the character after
+its point.
+
+A newline, or the empty bounds at the end of the buffer, show as a cell
+of one space after the last character of the line, because a face on
+a newline paints to the right edge of the window.
+
+With a bar cursor in a graphic frame, when `hel-match-fake-cursor-style'
+is non-nil, the fake cursor is a bar at its point, and its cursor
+character has the face `hel-cursor-char', as the main cursor has."
+  (let* ((point (marker-position (overlay-get cursor 'point)))
+         (mark (marker-position (overlay-get cursor 'mark)))
+         (char? (and hel-normal-state
+                     (not (and (overlay-get cursor 'mark-active)
+                               (/= point mark)))))
+         (bounds (if char?
+                     (car (hel--selection-from point mark nil))
+                   (cons point (min (1+ point) (point-max)))))
+         (begin (car bounds))
+         ;; A face on a newline paints to the right edge of the window.
+         (end (if (eq (char-after begin) ?\n)
+                  begin
+                (cdr bounds)))
+         (face (cond (hel-extending-selection
+                      'hel-extend-selection-cursor)
+                     (hel-insert-state
+                      'hel-insert-state-fake-cursor)
+                     (t
+                      'hel-normal-state-fake-cursor))))
+    (move-overlay cursor begin end)
+    (if (and (display-graphic-p)
+             hel-match-fake-cursor-style
+             (hel-cursor-is-bar-p))
+        (let ((bar (propertize hel-bar-fake-cursor
+                               'face `(,face
+                                       (:height ,(window-default-font-height)))))
+              (char-face (if char? 'hel-cursor-char)))
+          (overlay-put cursor 'face (if (/= begin end) char-face))
+          (overlay-put cursor 'before-string (if (= point begin) bar))
+          (overlay-put cursor 'after-string
+                       (cond ((/= point begin) bar)
+                             ((and char? (= begin end))
+                              (propertize " " 'face 'hel-cursor-char)))))
+      (overlay-put cursor 'face (if (/= begin end) face))
+      (overlay-put cursor 'before-string nil)
+      (overlay-put cursor 'after-string
+                   (if (= begin end)
+                       (propertize " " 'face face))))
     cursor))
 
 (defun hel--set-fake-selection-overlay (cursor)
@@ -307,7 +322,7 @@ Return CURSOR."
 (defun hel-show-fake-cursor (cursor)
   "Restore fake CURSOR visibility if it was previously hidden with
 `hel-hide-fake-cursor'."
-  (hel--set-cursor-overlay cursor (overlay-get cursor 'point))
+  (hel--set-cursor-overlay cursor)
   (hel--set-fake-selection-overlay cursor))
 
 (defun hel-fake-cursor-p (overlay)
@@ -381,56 +396,104 @@ If SORT is non-nil sort cursors in order they are located in the buffer."
   "Return non-nil if there are fake cursors in the buffer."
   (not (hash-table-empty-p hel--cursors-table)))
 
-(defun hel-cursors-positions ()
-  "Return alist with positions of all selections.
-Alist containes cons cells:
+;;; The cursors as values
 
-    (ID . (POINT MARK))
+;; A cursor value is a list (ID RANGE DIRECTION ACTIVE).  ID is 0 for the
+;; main cursor, the key of the fake cursor in `hel--cursors-table'
+;; otherwise, and nil for a cursor that does not exist yet.  RANGE and
+;; DIRECTION are the selection of the cursor, as `hel-selection' returns
+;; it.  ACTIVE is t when that selection is the active region of the
+;; cursor, and nil when it is the cursor character.
+;;
+;; Code that works on all cursors at once reads them with
+;; `hel-cursor-selections', computes a new list of values, and makes the
+;; cursors match it with `hel-set-cursor-selections'.
 
-MARK is nil if cursor has no region.
+(defun hel-cursor-selections ()
+  "Return the values of all cursors, sorted by the beginning of their ranges.
+Each value is (ID RANGE DIRECTION ACTIVE).  ID is 0 for the main cursor
+and the key of the fake cursor in `hel--cursors-table' for the others.
+RANGE and DIRECTION are the selection of the cursor, as `hel-selection'
+returns it, and ACTIVE is t when that selection is the active region of
+the cursor, nil when it is the cursor character.
+`hel-set-cursor-selections' takes the returned list."
+  (sort (cons (hel--main-cursor-value)
+              (mapcar #'hel--fake-cursor-value (hel-all-fake-cursors)))
+        (lambda (a b)
+          (< (car (cadr a)) (car (cadr b))))))
 
-Real cursor has ID 0 and is the first element (`car') of the list."
-  (cons
-   ;; Real cursor
-   (list 0 (point) (if mark-active (marker-position (mark-marker))))
-   ;; Fake cursors
-   (unless (hash-table-empty-p hel--cursors-table)
-     (let (alist)
-       (maphash (lambda (id cursor)
-                  (push (list id
-                              (marker-position (overlay-get cursor 'point))
-                              (if (overlay-get cursor 'mark-active)
-                                  (marker-position (overlay-get cursor 'mark))))
-                        alist))
-                hel--cursors-table)
-       alist))))
+(defun hel--main-cursor-value ()
+  "Return the value (0 RANGE DIRECTION ACTIVE) of the main cursor."
+  (hel--cursor-value 0 (point) (mark t) (region-active-p)))
 
-(defun hel-place-cursors (cursors-positions)
-  "Setup all cursors according to CURSORS-POSITIONS.
-CURSORS-POSITIONS is an alist as returned by `hel-cursors-positions'."
-  (maphash (lambda (id cursor)
-             (unless (assoc id cursors-positions #'eql)
-               (hel--delete-fake-cursor cursor)))
-           hel--cursors-table)
-  (-each cursors-positions
-    (-lambda ((id point mark))
-      (pcase id
-        (0 (set-mark mark)
-           (goto-char point))
-        (_ (let ((mark-active (if mark t)))
-             (if-let* ((cursor (gethash id hel--cursors-table)))
-                 (hel-move-fake-cursor cursor point mark :update)
-               (hel--create-fake-cursor-1 id point mark)))))))
+(defun hel--fake-cursor-value (cursor)
+  "Return the value (ID RANGE DIRECTION ACTIVE) of the fake CURSOR."
+  (hel--cursor-value (overlay-get cursor 'id)
+                     (marker-position (overlay-get cursor 'point))
+                     (marker-position (overlay-get cursor 'mark))
+                     (overlay-get cursor 'mark-active)))
+
+(defun hel--cursor-value (id point mark active)
+  "Return the value of the cursor with ID, POINT, MARK and ACTIVE.
+ACTIVE is non-nil when the region of the cursor is active.  ACTIVE of
+the value is t only when the selection is that region: an empty region
+reads as no region, because the selection of the cursor is then its
+cursor character, and the writer could not tell it from a selection of
+one character."
+  (let ((active (and active (/= point mark) t)))
+    `(,id ,@(hel--selection-from point mark active) ,active)))
+
+(defun hel-set-cursor-selections (cursors)
+  "Make the cursors of the buffer match CURSORS, a list of cursor values.
+Move the main cursor and every fake cursor whose ID is in CURSORS,
+create a fake cursor for each value with ID nil, and delete the other
+fake cursors.  A fake cursor keeps its kill ring and the other variables
+of `hel-fake-cursor-variables'.  Each value is (ID RANGE DIRECTION
+ACTIVE), as `hel-cursor-selections' returns it."
+  (let ((ids (make-hash-table :size (length cursors))))
+    (dolist (value cursors)
+      (puthash (car value) t ids))
+    (dolist (cursor (hel-all-fake-cursors))
+      (unless (gethash (overlay-get cursor 'id) ids)
+        (hel--delete-fake-cursor cursor))))
+  (-each cursors #'hel--set-cursor-selection)
   (hel-auto-multiple-cursors-mode))
 
+(defun hel--set-cursor-selection (value)
+  "Make one cursor match VALUE, a cursor value (ID RANGE DIRECTION ACTIVE).
+ID 0 is the cursor that runs the command: point and the mark.  A fake
+cursor with ID moves; when ID is nil, or no fake cursor has it, a new
+fake cursor is made.  A cursor that already has this value stays as it
+is, so its mark keeps its place even when the selection does not need
+it there."
+  (-let* (((id range dir active) value)
+          ((begin . end) range)
+          ((head . anchor) (if (< 0 dir) (cons end begin) (cons begin end))))
+    (if (eql id 0)
+        (unless (equal value (hel--main-cursor-value))
+          (if active
+              (hel-select range dir)
+            (hel--set-cursor-char head dir)))
+      (let ((cursor (and id (gethash id hel--cursors-table))))
+        (cond ((null cursor)
+               ;; A new cursor stores `mark-active' and draws itself.
+               (let ((mark-active active))
+                 (if id
+                     ;; A cursor of an undo step or of `g v' that was
+                     ;; deleted since keeps its ID.
+                     (hel--create-fake-cursor-1 id head anchor)
+                   (hel-create-fake-cursor head anchor))))
+              ((not (equal value (hel--fake-cursor-value cursor)))
+               (overlay-put cursor 'mark-active active)
+               (hel-move-fake-cursor cursor head anchor)))))))
+
 (defun hel-select-ranges (regions direction)
-  "Select the first of REGIONS with the real cursor, the others with fake ones.
-REGIONS is a list of (BEGIN . END) cons-cells. DIRECTION is 1 or -1."
-  (hel-select (car regions) direction)
-  (-each (cdr regions)
-    (-lambda ((beg . end))
-      (if (< 0 direction) (cl-rotatef beg end))
-      (hel-create-fake-cursor beg end))))
+  "Select the first of REGIONS with the current cursor, the others with new ones.
+REGIONS is a list of (BEGIN . END) cons-cells.  DIRECTION is 1 or -1.
+The other cursors stay as they are."
+  (hel--set-cursor-selection (list 0 (car regions) direction t))
+  (dolist (region (cdr regions))
+    (hel--set-cursor-selection (list nil region direction t))))
 
 ;;; Executing commands for real and fake cursors
 
@@ -578,107 +641,53 @@ Restore it after BODY evaluation if it is still alive."
               t))))
 
 (defun hel-merge-overlapping-cursors ()
-  "Merge overlapping cursors."
-  (if (use-region-p)
-      (hel--merge-overlapping-selections)
-    (hel--merge-overlapping-points)))
+  "Merge the cursors whose selections overlap into one cursor each.
+When a group of overlapping cursors holds the main cursor, the main
+cursor survives with its own state.  Otherwise the first cursor of the
+group survives.  The other cursors of the group are deleted."
+  (let* ((cursors (hel-cursor-selections))
+         (merged (hel--merge-cursors cursors)))
+    ;; The merge only joins cursors, so a list of the same length is
+    ;; the same list.
+    (unless (length= cursors (length merged))
+      (hel-set-cursor-selections merged))))
 
-(defun hel--merge-overlapping-points ()
-  "Merge cursors at the same positions."
-  (let* ((cursors (hel-all-fake-cursors t))
-         (cursor (car cursors))
-         (point (overlay-get cursor 'point))
-         pos)
-    (dolist (c (cdr cursors))
-      (setq pos (overlay-get c 'point))
-      (if (= point pos)
-          (hel--delete-fake-cursor c)
-        (setq cursor c
-              point pos))))
-  (-some-> (hel-fake-cursor-at (point))
-    (hel--delete-fake-cursor))
-  (hel-auto-multiple-cursors-mode))
+(defun hel--merge-cursors (cursors)
+  "Merge the cursors whose selections overlap.
+CURSORS is a list of cursor values (ID RANGE DIRECTION ACTIVE), sorted
+by the beginning of their ranges.  Return the merged list in the same
+order.  Each range of the result covers a group of overlapping ranges.
+The main cursor survives in its group, and otherwise the first cursor
+of the group does; the survivor keeps its ID and direction.  The region
+of the result is active when the region of any cursor of the group is."
+  (nreverse
+   (-reduce-from (lambda (merged cursor)
+                   (if (and merged
+                            (hel--ranges-overlap-p (cadr (car merged))
+                                                   (cadr cursor)))
+                       (cons (hel--merge-two-cursors (car merged) cursor)
+                             (cdr merged))
+                     (cons cursor merged)))
+                 nil cursors)))
 
-(defun hel--merge-overlapping-selections ()
-  "Merge overlapping regions."
-  (let ((dir (hel-region-direction)))
-    (dolist (group-or-overlapping-regions (hel--overlapping-selections))
-      (-let (for-deletion
-             real-cursor?
-             ((id beg end) (car group-or-overlapping-regions)))
-        ;; i - region ID
-        ;; b - region beginning
-        ;; e - region end
-        (cl-loop for (i b e) in (cdr group-or-overlapping-regions) do
-                 (when (< b beg)
-                   (setq beg b)
-                   (when (< dir 0)
-                     (push id for-deletion)
-                     (setq id i)))
-                 (when (> e end)
-                   (setq end e)
-                   (when (< 0 dir)
-                     (push id for-deletion)
-                     (setq id i)))
-                 (cond ((eql i 0)
-                        (setq real-cursor? t))
-                       ((/= id i)
-                        (push i for-deletion))))
-        (pcase id
-          (0 (hel-select (cons beg end) dir))
-          (_ (when-let* ((cursor (gethash id hel--cursors-table)))
-               (cond (real-cursor?
-                      (hel-restore-point-from-fake-cursor cursor)
-                      (hel-select (cons beg end) dir))
-                     ((< dir 0)
-                      (hel-move-fake-cursor cursor beg end))
-                     (t
-                      (hel-move-fake-cursor cursor end beg))))))
-        (dolist (id for-deletion)
-          (when-let* ((cursor (gethash id hel--cursors-table)))
-            (hel--delete-fake-cursor cursor)))))
-    (hel-auto-multiple-cursors-mode)))
+(defun hel--ranges-overlap-p (a b)
+  "Return non-nil if the range B overlaps the range A.
+A begins at or before B.  Equal ranges overlap, even when empty, but
+ranges that only touch do not."
+  (or (< (car b) (cdr a))
+      (equal a b)))
 
-(defun hel--overlapping-selections ()
-  "Return the list of groups, where each group is a list of
-cons cells (ID . (START END)) denoting fake cursor ID and its
-region bounds. Inside each group, all regions are overlapping
-and sorted by starting position. ID 0 coresponds to the real
-cursor."
-  (let ((alist (hel--selection-ranges))
-        result
-        current-group
-        (current-end (point-min)))
-    (dolist (item alist)
-      (-let [(_ start end) item]
-        (if (< start current-end)
-            (push item current-group)
-          ;; else
-          (when (length> current-group 1)
-            (push (nreverse current-group) result))
-          (setq current-group (list item)))
-        (setq current-end (max end current-end))))
-    (when (length> current-group 1)
-      (push (nreverse current-group) result))
-    (nreverse result)))
-
-(defun hel--selection-ranges ()
-  "Return the alist with cons cells (ID . (START END)).
-\(START END) are bounds of regions. Alist is sorted by START.
-ID 0 coresponds to the real cursor."
-  (let ((alist (cons
-                ;; Append real cursor with ID 0
-                `(0 ,(region-beginning) ,(region-end))
-                (mapcar (lambda (cursor)
-                          (let* ((id  (overlay-get cursor 'id))
-                                 (pnt (overlay-get cursor 'point))
-                                 (mrk (overlay-get cursor 'mark))
-                                 (start (min pnt mrk))
-                                 (end   (max pnt mrk)))
-                            `(,id ,start ,end)))
-                        (hel-all-fake-cursors)))))
-    (sort alist (lambda (a b)
-                  (< (-second-item a) (-second-item b))))))
+(defun hel--merge-two-cursors (a b)
+  "Return the cursor that covers the selections of the cursors A and B.
+The main cursor survives; otherwise A does.  The survivor keeps its ID
+and direction."
+  (-let* (((id-a (begin-a . end-a) dir-a active-a) a)
+          ((id-b (begin-b . end-b) dir-b active-b) b)
+          (b-survives? (eql id-b 0)))
+    (list (if b-survives? id-b id-a)
+          (cons (min begin-a begin-b) (max end-a end-b))
+          (if b-survives? dir-b dir-a)
+          (or active-a active-b))))
 
 ;;; Integration with other Emacs functionalities
 
@@ -708,10 +717,12 @@ command. Calls with equal PROMPT or without it would be indistinguishable."
   "Add the latest `kill-ring' entry of each cursor to `killed-rectangle',
 unless they all are equal. You can paste them later with `yank-rectangle'."
   (when hel-multiple-cursors-mode
-    (let ((entries (hel-with-real-cursor-as-fake
-                     (-map (lambda (cursor)
-                             (car-safe (overlay-get cursor 'kill-ring)))
-                           (hel-all-fake-cursors :sort)))))
+    (let ((entries (-map (-lambda ((id))
+                           (car-safe (if (eql id 0)
+                                         kill-ring
+                                       (-> (gethash id hel--cursors-table)
+                                           (overlay-get 'kill-ring)))))
+                         (hel-cursor-selections))))
       (unless (hel-all-elements-are-the-same-p entries)
         (setq killed-rectangle entries)))))
 

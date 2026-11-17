@@ -219,22 +219,21 @@ All keys available in Emacs state are also work in Normal state.
   This is wrappers around Emacs built-in ~yank-pop~ command.
 
 - =r= ::
-  - With active selection replace every character in it with typed one.
-  - Without active selection replace count characters *before* point.
+  Replace every character in the selection with the typed one. Newlines stay
+  as they are.
 
 - =R= ::
-  - With active selection replace it with last entry from ~kill-ring~. You
-    can use =C-p= / =C-n= immediately after this command to choose next/previous
-    element from the ~kill-ring~.
-  - Without active selection replace count characters *after* point.
+  Replace the selection with the last entry from ~kill-ring~. You can use
+  =C-p= / =C-n= immediately after this command to choose the next / previous
+  element from the ~kill-ring~.
 
 - =~= :: Invert case of characters.
 
 - =`= / =M-`= or =gu= / =gU= ::
-  Convert selection to *lower* / *upper* case. With no selection convert count
-  characters after cursor. (Useful, for example, when you want to capitalize
-  only the first letter of a word — place cursor before word and press =gU=
-  with no selection.)
+  Convert selection to *lower* / *upper* case. With no selection they convert
+  the character under the cursor. (Useful, for example, when you want to
+  capitalize only the first letter of a word — place the cursor on that
+  letter and press =gU= with no selection.)
 
 - =] SPC= / =[ SPC= :: Add empty line *bellow* / *above* the current line.
 
