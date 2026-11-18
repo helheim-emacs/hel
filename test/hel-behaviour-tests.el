@@ -824,17 +824,23 @@ cursor character, so extending goes on."
 (hel-test-table edit-cut
   ("^foo| bar" "d" "| bar" :kill "foo")
   ("|foo^ bar" "d" "| bar" :kill "foo")
-  ;; Without a selection `d' kills the cursor character: the character after
-  ;; point, or the character before it after `h'.
-  ("foo| bar" "d" "foo|bar" :kill " ")
-  ("foo| bar" "hd" "fo| bar" :kill "o")
+  ;; Without a selection `d' works like Backspace within the line: it kills
+  ;; the cursor character and steps back onto the character before it.
+  ("foo| bar" "d" "fo|obar" :kill " ")
+  ("foo| bar" "hd" "f|o bar" :kill "o")
+  ;; At the start of the line the cursor stays in place.
   ("|foo" "d" "|oo" :kill "f")
-  ;; A newline under the cursor joins the lines.
-  ("foo|\nbar" "d" "foo|bar" :kill "\n")
+  ("a\n|bc" "d" "a\n|c" :kill "b")
+  ;; A run of `d' kills the characters in the order of the text.
+  ("ab|cd" "dd" "|ad" :kill "bc")
+  ("x\nab|c\n" "dddd" "x\n|\n" :kill "abc")
+  ;; The newline under the cursor stays, so the lines never join.
+  ("foo|\nbar" "d" "foo|\nbar" :yank "kept" :kill "kept")
+  ("foo\n|\nbar" "d" "foo\n|\nbar" :yank "kept" :kill "kept")
   ;; At the end of the buffer there is nothing to kill.
   ("foo|" "d" "foo|" :yank "kept" :kill "kept")
   ;; An empty region made by `C-SPC' is no selection.
-  ("fo|o bar" "C-SPC d" "fo| bar" :kill "o")
+  ("fo|o bar" "C-SPC d" "f|o bar" :kill "o")
   ;; Linewise.
   ("fo|o\nbar\n" "xd" "|bar\n" :kill "foo\n")
   ("|a\nb\nc\n" "xxd" "|c\n" :kill "a\nb\n"))
@@ -842,10 +848,16 @@ cursor character, so extending goes on."
 (hel-test-table edit-delete
   ("^foo| bar" "D" "| bar" :yank "kept" :kill "kept")
   ("|foo^ bar" "D" "| bar" :yank "kept" :kill "kept")
-  ;; Without a selection `D' deletes the cursor character.
+  ;; Without a selection `D' works like Delete within the line: it deletes
+  ;; the cursor character, and the cursor stays in place.
   ("foo| bar" "D" "foo|bar" :yank "kept" :kill "kept")
   ("foo| bar" "hD" "fo| bar" :yank "kept" :kill "kept")
-  ("foo|\nbar" "D" "foo|bar")
+  ;; When the line end reaches the cursor, it steps back onto the last
+  ;; character, so a run of `D' eats the line from the right.
+  ("ab|c\nd" "D" "a|b\nd")
+  ("a|bc\nd" "DDDD" "|\nd")
+  ;; The newline under the cursor stays, so the lines never join.
+  ("foo|\nbar" "D" "foo|\nbar")
   ("foo|" "D" "foo|")
   ("fo|o bar" "C-SPC D" "fo| bar")
   ;; `DEL' does nothing in Normal state, because `d' deletes.
@@ -1639,8 +1651,8 @@ cursor character, so extending goes on."
 (hel-test-table cursors-edit
   ("|foo\nbar" "CD" "¦oo\n|ar")
   ("^fo|o\nbar" "Cd" "¦o\n|r")
-  ("fo|o\nbar" "Cd" "fo¦\nba|")
-  ("fo|o\nbar" "Chd" "f¦o\nb|r")
+  ("fo|o\nbar" "Cd" "f¦o\nb|a")
+  ("fo|o\nbar" "Chd" "¦fo\n|br")
   ("fo|o\nbar" "ChrX" "f¦Xo\nb|Xr")
   ("^fo|o\nbar" "CD" "¦o\n|r")
   ("^fo|o\nbar" "Cc" "¦o\n|r" :state insert)
@@ -2193,7 +2205,7 @@ In this test the question is the guard of the test setup, which fails on it."
   ("|abcdefghijkl" "12l" "abcdefghijkl|")
   ;; `d' and `D' act on the selection and take no count.
   ("|abc" "2D" "|bc")
-  ("ab|c" "2d" "ab|")
+  ("ab|c" "2d" "a|b")
   ("|a\nb\nc\nd\n" "2j" "a\nb\n|c\nd\n")
   ("a\nb\nc\n|d\n" "2k" "a\n|b\nc\nd\n")
   ("|a b a b a" "/a RET 2n" "a b a b ^a|")

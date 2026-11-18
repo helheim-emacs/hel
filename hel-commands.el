@@ -634,29 +634,46 @@ depending on DIRECTION."
 ;; } => {|}
 ;; d
 (hel-define-command hel-cut ()
-  "Kill (cut) the selection: delete it and put it in the `kill-ring'."
+  "Kill (cut) the selection: delete it and put it in the `kill-ring'.
+A bare cursor works like Backspace within its line: it kills the cursor
+character and steps back onto the character before it.  At the beginning
+of the line the cursor stays in place, and on the line end it kills
+nothing, so the lines never join."
   :multiple-cursors t
   :merge-selections t
   (interactive "*")
-  (-let [(begin . end) (hel-selection-bounds)]
-    (cond ((use-region-p)
-           ;; `region-extract-function' handles a region that is not
-           ;; contiguous, such as one of `rectangle-mark-mode'.
-           (kill-region nil nil t))
-          ;; At the end of the buffer the selection is empty, and an empty
-          ;; kill would only push an empty string on the `kill-ring'.
-          ((< begin end)
-           (kill-region begin end))))
+  (cond ((use-region-p)
+         ;; `region-extract-function' handles a region that is not
+         ;; contiguous, such as one of `rectangle-mark-mode'.
+         (kill-region nil nil t))
+        ;; At a bare cursor point is before the cursor character, so
+        ;; `eolp' means a newline under the cursor or the end of the buffer.
+        ((not (eolp))
+         ;; The end before the beginning tells `kill-region' that the kill
+         ;; goes backward, so a run of `d' collects the characters in the
+         ;; order of the text.
+         (kill-region (1+ (point)) (point))
+         (unless (bolp) (backward-char))))
   (hel-extend-selection -1))
 
 ;; D
 (hel-define-command hel-delete ()
-  "Delete the selection, without modifying the `kill-ring'."
+  "Delete the selection, without modifying the `kill-ring'.
+A bare cursor works like Delete within its line: it deletes the cursor
+character and stays in place.  When the line end reaches the cursor, the
+cursor steps back onto the last character, so a run of `D' eats the line
+from the right.  On the line end it deletes nothing, so the lines never
+join."
   :multiple-cursors t
   :merge-selections t
   (interactive "*")
-  (-let [(begin . end) (hel-selection-bounds)]
-    (delete-region begin end))
+  (cond ((use-region-p)
+         (-let [(begin . end) (hel-selection-bounds)]
+           (delete-region begin end)))
+        ((not (eolp))
+         (delete-char 1)
+         (when (and (eolp) (not (bolp)))
+           (backward-char))))
   (hel-extend-selection -1))
 
 ;; C-w in insert state

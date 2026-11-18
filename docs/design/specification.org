@@ -1510,6 +1510,16 @@ moving.
   before the newline. =n= and =N= search from the edge of the selection,
   so from a bare cursor =n= starts after the cursor character and never
   finds the match that the cursor is already on.
+- =d= and =D= without a selection never leave the line. =d= works like
+  =<Backspace>=: it kills the cursor character and steps back onto the
+  character before it, so repeated =d= eats the text to the left and the
+  kills join in the order of the text. At the beginning of the line the
+  cursor stays in place, and =d= goes on killing the characters after it.
+  =D= works like =<Delete>=: it deletes the cursor character, and the
+  cursor stays in place. When the line end reaches the cursor, the cursor
+  steps back onto the last character, as with =x= in Vim, so repeated =D=
+  eats the line from the right. Both do nothing on a newline, so the
+  lines never join; a selection that holds the newline joins them.
 - =R= without a selection replaces the cursor character, and the pasted
   text becomes a forward selection, so the cursor ends on its last
   character. =v= on a bare cursor keeps the direction -1: its selection of
