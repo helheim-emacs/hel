@@ -60,7 +60,7 @@
 
 (declare-function hel-draw-cursor "hel-core")
 (declare-function hel--cursor-look "hel-core")
-(declare-function hel--cursor-highlight "hel-core")
+(declare-function hel--cursor-bounds "hel-core")
 
 ;;; Multiple cursors minor mode
 
@@ -75,7 +75,7 @@ delete last one with `hel-delete-secondary-cursor'."
       (hel--disable-minor-modes-incompatible-with-multiple-cursors)
     ;; else
     (when (hel-any-secondary-cursors-p)
-      (setq hel--cursor-selections-history (hel-cursor-selections))
+      (setq hel--selections-history (hel-selections))
       (hel--delete-all-secondary-cursors))
     (hel--enable-minor-modes-incompatible-with-multiple-cursors)))
 
@@ -116,54 +116,38 @@ in the buffer."
 IDs' are used to keep track of cursors for undo."
   (cl-incf hel--secondary-cursor-last-used-id))
 
-(defvar hel--max-cursors-original nil
-  "This variable maintains the original maximum number of cursors.
-When `hel-create-secondary-cursor' is called and `hel-max-cursors-number' is
-overridden, this value serves as a backup so that `hel-max-cursors-number'
-can take on a new value. When `hel--delete-all-secondary-cursors' is called,
-the values are reset.")
+(defun hel-create-secondary-cursor (&optional range dir active id)
+  "Create and return a secondary cursor.
+Without arguments create a copy of the main cursor and selection.
 
-(defun hel-create-secondary-cursor (&optional range dir active)
-  "Create a secondary cursor as a copy of the main cursor, and return it.
-The new cursor takes the kill ring and the other variables of
-`hel-cursor-variables' from the main cursor.  Without RANGE it also
-takes its selection.  With RANGE it gets the selection RANGE in the
-direction DIR, an active region when ACTIVE is non-nil and the cursor
-character otherwise, see `hel--set-secondary-cursor'."
-  (unless hel--max-cursors-original
-    (setq hel--max-cursors-original hel-max-cursors-number))
-  (when hel-max-cursors-number
-    (when-let* ((num (hel-number-of-cursors))
-                ((<= hel-max-cursors-number num)))
-      (if (yes-or-no-p (format "%d active cursors. Continue? " num))
-          (setq hel-max-cursors-number (read-number "Enter a new, temporary maximum: "))
-        (hel--delete-all-secondary-cursors)
-        (error "Aborted: too many cursors"))))
-  (prog1 (hel--create-secondary-cursor-1 nil range dir active)
-    (unless hel-multiple-cursors-mode
-      (hel-multiple-cursors-mode 1))))
+If ACTIVE is non-nil, then create a secondary selection over RANGE in
+direction DIR. If ACTIVE is nil, place cursor at the beginning of RANGE
+with no selection.
 
-(defun hel--create-secondary-cursor-1 (id &optional range dir active)
-  "Create a secondary cursor with ID as a copy of the main cursor.
-ID nil means a new ID.  RANGE, DIR and ACTIVE give it its own selection,
-as in `hel-create-secondary-cursor'.  This function is the guts of
-`hel-create-secondary-cursor'."
+The new cursor takes the kill ring and the other `hel-cursor-variables'
+from the main cursor.
+
+ID is the first element of the values of `hel-selections'. If ID is provided,
+then assign it to the new cursor, else cursor will get unique ID.
+
+The function turns on `hel-multiple-cursors-mode' when it is off."
   (let ((cursor (hel--save-cursor (make-overlay (point) (point) nil t nil)))
         (id (or id (hel--new-secondary-cursor-id))))
     (overlay-put cursor 'id id)
     (overlay-put cursor 'type 'secondary-cursor)
-    (overlay-put cursor 'priority 101)
+    ;; More then the `show-paren-mode' highlights.
+    (overlay-put cursor 'priority 1001)
     (puthash id cursor hel--cursors-table)
     (if range
-        (hel--set-secondary-cursor cursor range dir active)
-      (hel--draw-secondary-cursor cursor))))
+        (hel--set-secondary-selection cursor range dir active)
+      (hel--draw-secondary-cursor cursor))
+    (unless hel-multiple-cursors-mode
+      (hel-multiple-cursors-mode 1))
+    cursor))
 
 (defun hel--delete-all-secondary-cursors ()
   "Remove all secondary cursors overlays form current buffer.
 It is likely that you need `hel-disable-multiple-cursors-mode', not this one."
-  (when hel--max-cursors-original
-    (setq hel-max-cursors-number hel--max-cursors-original
-          hel--max-cursors-original nil))
   (maphash (lambda (_ cursor)
              (hel--delete-secondary-cursor cursor))
            hel--cursors-table))
@@ -175,31 +159,28 @@ more secondary cursors are remaining."
   (hel-auto-multiple-cursors-mode))
 
 (defun hel--draw-secondary-cursor (cursor)
-  "Draw the secondary CURSOR in its overlay, and its region.
-The shape and the face come from `hel--cursor-look'.  In Normal state
-a box covers the character of the cursor, the bounds that
-`hel--cursor-highlight' returns, also inside an active region.  In
-Insert state it covers the character after point.  A newline, or the
-end of the buffer, shows as a cell of one space after the last
-character of the line.  A bar is the string `hel-bar-secondary-cursor'
-at its point."
-  (-let* (((shape face) (hel--cursor-look nil))
-          (point (hel--secondary-cursor-point cursor))
-          ((begin end)
-           (or (and hel-normal-state
-                    (hel--cursor-highlight
-                     (hel--secondary-cursor-value cursor)))
-               (list point (if (memq (char-after point) '(?\n nil))
-                               point
-                             (1+ point))))))
+  "Draw the secondary CURSOR and its region.
+The shape and the face come from `hel--cursor-look'.  A box covers the
+bounds that `hel--cursor-bounds' returns: in Normal state the head
+character of the selection, also inside an active region, and in Insert
+state the character after point.  A newline, or the end of the buffer,
+shows as a cell of one space after the last character of the line.
+A bar is the string `hel-bar-secondary-cursor' at its point."
+  (-let* ((point (hel--secondary-cursor-point cursor))
+          ((begin . end)
+           (-> (hel--selection-from point
+                                    (hel--secondary-cursor-mark cursor)
+                                    (and hel-normal-state
+                                         (overlay-get cursor 'mark-active)))
+               (hel--cursor-bounds)))
+          ((shape face) (hel--cursor-look nil)))
     (pcase shape
       ('box
        (move-overlay cursor begin end)
        (overlay-put cursor 'face (if (/= begin end) face))
        (overlay-put cursor 'before-string nil)
-       (overlay-put cursor 'after-string
-                    (if (= begin end)
-                        (propertize " " 'face face))))
+       (overlay-put cursor 'after-string (if (= begin end)
+                                             (propertize " " 'face face))))
       ('bar
        (move-overlay cursor point point)
        (overlay-put cursor 'face nil)
@@ -228,7 +209,6 @@ at its point."
           (setq region (-doto (make-overlay beg end nil nil t)
                          (overlay-put 'face 'region)
                          (overlay-put 'type 'secondary-region)
-                         (overlay-put 'id (overlay-get cursor 'id))
                          ;; The same as Emacs native region overlay.
                          (overlay-put 'priority 100)))
           (overlay-put cursor 'secondary-region region))
@@ -281,19 +261,17 @@ The state is point, the mark and the variables of
   (-some-> (overlay-get overlay 'mark) (delete-overlay))
   (delete-overlay overlay))
 
-(defun hel--set-secondary-cursor (cursor range dir active)
-  "Give the secondary CURSOR the selection RANGE in the direction DIR.
-The selection is an active region when ACTIVE is non-nil, and the cursor
-character otherwise.  Only point, the mark and `mark-active' of CURSOR
-change.  For the cursor character the mark is one character from point,
-on the side opposite to DIR, as `hel-set-cursor' puts it."
-  (-let* (((begin . end) range)
-          (point (if (< 0 dir) end begin))
-          (mark (cond ((not active) (- point dir))
-                      ((< 0 dir) begin)
-                      (t end))))
+(cl-defun hel--set-secondary-selection (cursor (begin . end) dir active)
+  "Give the secondary CURSOR a new selection.
+When ACTIVE is non-nil, the selection from BEGIN to END, in the
+direction DIR (1 or -1). When ACTIVE is nil, the cursor goes to BEGIN
+with no selection."
+  (-let [(point . mark) (if (and active (< 0 dir))
+                            (cons end begin)
+                          (cons begin end))]
     (move-overlay (overlay-get cursor 'point) point point)
-    (move-overlay (overlay-get cursor 'mark) mark mark)
+    (when active
+      (move-overlay (overlay-get cursor 'mark) mark mark))
     (overlay-put cursor 'mark-active (and active t))
     (hel--draw-secondary-cursor cursor)))
 
@@ -423,17 +401,17 @@ If SORT is non-nil sort cursors in order they are located in the buffer."
 ;; cursor, and nil when it is the cursor character.
 ;;
 ;; Code that works on all cursors at once reads them with
-;; `hel-cursor-selections', computes a new list of values, and makes the
-;; cursors match it with `hel-set-cursor-selections'.
+;; `hel-selections', computes a new list of values, and makes the
+;; cursors match it with `hel-set-selections'.
 
-(defun hel-cursor-selections ()
+(defun hel-selections ()
   "Return the values of all cursors, sorted by the beginning of their ranges.
 Each value is (ID RANGE DIRECTION ACTIVE).  ID is 0 for the main cursor
 and the key of the secondary cursor in `hel--cursors-table' for the others.
 RANGE and DIRECTION are the selection of the cursor, as `hel-selection'
 returns it, and ACTIVE is t when that selection is the active region of
 the cursor, nil when it is the cursor character.
-`hel-set-cursor-selections' takes the returned list."
+`hel-set-selections' takes the returned list."
   (-sort (-on #'< (-lambda ((_id (begin . _end))) begin))
          (cons (hel--main-cursor-value)
                (-map #'hel--secondary-cursor-value
@@ -460,13 +438,13 @@ one character."
   (let ((active (and active (/= point mark) t)))
     `(,id ,@(hel--selection-from point mark active) ,active)))
 
-(defun hel-set-cursor-selections (cursors)
+(defun hel-set-selections (cursors)
   "Make the cursors of the buffer match CURSORS, a list of cursor values.
 Move the main cursor and every secondary cursor whose ID is in CURSORS,
 create a secondary cursor for each value with ID nil, and delete the
 other secondary cursors.  A secondary cursor keeps its kill ring and the
 other variables of `hel-cursor-variables'.  Each value is (ID RANGE
-DIRECTION ACTIVE), as `hel-cursor-selections' returns it.  A cursor that
+DIRECTION ACTIVE), as `hel-selections' returns it.  A cursor that
 already has its value stays as it is, so its mark keeps its place even
 when the selection does not need it there."
   (let ((ids (make-hash-table :size (length cursors)))
@@ -484,18 +462,17 @@ when the selection does not need it there."
               ((null cursor)
                ;; A cursor of an undo step or of `g v' that was deleted
                ;; since keeps its ID.
-               (if id
-                   (apply #'hel--create-secondary-cursor-1 id selection)
-                 (apply #'hel-create-secondary-cursor selection)))
+               (-let [(range dir active) selection]
+                 (hel-create-secondary-cursor range dir active id)))
               ((not (equal value (hel--secondary-cursor-value cursor)))
-               (apply #'hel--set-secondary-cursor cursor selection)))))
+               (apply #'hel--set-secondary-selection cursor selection)))))
     ;; The main cursor goes last: the new secondary cursors copy its
     ;; variables, and `hel-select' may change them.
     (when (and main (not (equal main (hel--main-cursor-value))))
       (-let [(_ range dir active) main]
         (if active
             (hel-select range dir)
-          (hel-set-cursor (if (< 0 dir) (cdr range) (car range)) dir)))))
+          (hel-set-cursor (car range))))))
   (hel-auto-multiple-cursors-mode))
 
 (defun hel-select-ranges (regions direction)
@@ -589,7 +566,7 @@ makes sense for secondary cursor."
 Restore it after BODY evaluation if it is still alive."
   (declare (indent 0) (debug t))
   (cl-with-gensyms (main-cursor)
-    `(let ((,main-cursor (hel--create-secondary-cursor-1 0)))
+    `(let ((,main-cursor (hel-create-secondary-cursor nil nil nil 0)))
        (unwind-protect (progn ,@body)
          (-some-> (if (eq ,main-cursor (gethash 0 hel--cursors-table))
                       ,main-cursor
@@ -617,12 +594,12 @@ Restore it after BODY evaluation if it is still alive."
 When a group of overlapping cursors holds the main cursor, the main
 cursor survives with its own state.  Otherwise the first cursor of the
 group survives.  The other cursors of the group are deleted."
-  (let* ((cursors (hel-cursor-selections))
+  (let* ((cursors (hel-selections))
          (merged (hel--merge-cursors cursors)))
     ;; The merge only joins cursors, so a list of the same length is
     ;; the same list.
     (unless (length= cursors (length merged))
-      (hel-set-cursor-selections merged))))
+      (hel-set-selections merged))))
 
 (defun hel--merge-cursors (cursors)
   "Merge the cursors whose selections overlap.
@@ -694,7 +671,7 @@ unless they all are equal. You can paste them later with `yank-rectangle'."
                                          kill-ring
                                        (-> (gethash id hel--cursors-table)
                                            (overlay-get 'kill-ring)))))
-                         (hel-cursor-selections))))
+                         (hel-selections))))
       (unless (hel-all-elements-are-the-same-p entries)
         (setq killed-rectangle entries)))))
 

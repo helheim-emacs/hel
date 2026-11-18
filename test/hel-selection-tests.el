@@ -99,14 +99,12 @@ selection, when the head crosses it in either direction."
     (hel-move-onto-char 4 t)
     (should (equal (hel-selection) '((3 . 5) 1)))))
 
-(ert-deftest hel-move-onto-char-keeps-point-on-reversal ()
-  "Without EXTEND, `hel-move-onto-char' moves the character and keeps point
-when the new character touches point."
+(ert-deftest hel-move-onto-char-puts-point-before-it ()
+  "Without EXTEND, `hel-move-onto-char' puts point before the character."
   (hel-test-with #'fundamental-mode "ab|cd"
-    (hel-set-cursor 3 -1)                 ; on "c", point before it
     (hel-move-onto-char 2 nil)
-    (should (= (point) 3))
-    (should (equal (hel-selection) '((2 . 3) 1)))))
+    (should (= (point) 2))
+    (should (equal (hel-selection) '((2 . 3) -1)))))
 
 (ert-deftest hel-extend-selection-argument ()
   "`hel-extend-selection' reads its argument as a minor mode does."
@@ -182,10 +180,8 @@ when the new character touches point."
 
 ;;; Reading the cursor character
 
-;; Without an active region, `hel-selection' returns the cursor character.
-;; The motions that will move it are not written yet, so these tests put
-;; point and the inactive mark where those motions leave them: `h' puts the
-;; mark just before point, `l' just after it, and `j' keeps the side.
+;; Without an active region, `hel-selection' returns the character after
+;; point, whatever the inactive mark says.
 
 (defun hel-selection-tests--read ()
   "Return the selection as (TEXT DIRECTION), and check where point is.
@@ -195,110 +191,30 @@ selection that DIRECTION names."
     (should (= (point) (if (< 0 dir) end begin)))
     (list (buffer-substring-no-properties begin end) dir)))
 
-(defun hel-selection-tests--read-with-mark (offset)
-  "Put the inactive mark OFFSET characters after point and read the selection.
-The value is the one of `hel-selection-tests--read'."
-  (set-marker (mark-marker) (+ (point) offset))
-  (should-not (region-active-p))
-  (hel-selection-tests--read))
-
 (ert-deftest hel-selection-without-mark ()
   "Without a mark, the cursor character is the character after point."
   (hel-test-with #'fundamental-mode "ab|cd"
     (should-not (mark t))
     (should (equal (hel-selection-tests--read) '("c" -1)))))
 
-(ert-deftest hel-selection-after-h ()
-  "With the mark just before point, the cursor character is before point."
+(ert-deftest hel-selection-ignores-the-inactive-mark ()
+  "The inactive mark does not change the cursor character."
   (hel-test-with #'fundamental-mode "ab|cd"
-    (should (equal (hel-selection-tests--read-with-mark -1) '("b" 1)))))
+    (dolist (offset '(-2 -1 0 1 2))
+      (set-marker (mark-marker) (+ (point) offset))
+      (should-not (region-active-p))
+      (should (equal (list offset (hel-selection-tests--read))
+                     (list offset '("c" -1)))))))
 
-(ert-deftest hel-selection-after-l ()
-  "With the mark just after point, the cursor character is after point."
-  (hel-test-with #'fundamental-mode "ab|cd"
-    (should (equal (hel-selection-tests--read-with-mark 1) '("c" -1)))))
-
-(ert-deftest hel-selection-after-j ()
-  "A vertical motion keeps the side of the cursor character."
-  (hel-test-with #'fundamental-mode "abc\nde|fg"
-    (should (equal (hel-selection-tests--read-with-mark -1) '("e" 1)))
-    (should (equal (hel-selection-tests--read-with-mark 1) '("f" -1)))))
-
-(ert-deftest hel-selection-after-j-onto-a-longer-line ()
-  (hel-test-with #'fundamental-mode "ab|c\ndefgh"
-    (dolist (case '((1 ("e" 1)) (-1 ("f" -1))))
-      (-let [(dir expected) case]
-        (hel-test-goto "c")
-        (hel-set-cursor (point) dir)
-        (forward-line 1)
-        (move-to-column 2)
-        (hel-set-cursor (point) dir)
-        (should (equal (hel-selection-tests--read) expected))))))
-
-(ert-deftest hel-selection-after-j-onto-a-shorter-line ()
-  "On a short line, point stops before the newline.
-Before point, the cursor character is the last character of the line;
-after point, it is the newline."
-  (hel-test-with #'fundamental-mode "ab|c\nd\nxyz"
-    (dolist (case '((1 ("d" 1)) (-1 ("\n" -1))))
-      (-let [(dir expected) case]
-        (hel-test-goto "c")
-        (hel-set-cursor (point) dir)
-        (forward-line 1)
-        (move-to-column 2)
-        (should (= (current-column) 1))
-        (hel-set-cursor (point) dir)
-        (should (equal (hel-selection-tests--read) expected))))))
-
-(ert-deftest hel-selection-after-j-onto-an-empty-line ()
-  "On an empty line, the cursor character is its newline on either side."
-  (hel-test-with #'fundamental-mode "ab|c\n\nxyz"
-    (dolist (dir '(1 -1))
-      (hel-test-goto "c")
-      (hel-set-cursor (point) dir)
-      (forward-line 1)
-      (move-to-column 2)
-      (hel-set-cursor (point) dir)
-      (should (= (point) 5))
-      (should (equal (hel-selection-tests--read) '("\n" -1))))))
-
-(ert-deftest hel-selection-after-escape ()
-  "Leaving Insert state makes the last character before point the cursor
-character.  At the start of a line, that character is a newline, so the
-cursor character is the character after point."
-  (hel-test-with #'fundamental-mode "foo|"
-    (should (equal (hel-selection-tests--read-with-mark -1) '("o" 1))))
-  (hel-test-with #'fundamental-mode "foo\n|bar"
-    (should (equal (hel-selection-tests--read-with-mark -1) '("b" -1)))))
-
-(ert-deftest hel-selection-stale-mark ()
-  "A mark that is not next to point does not count."
-  (hel-test-with #'fundamental-mode "abcd|efgh"
-    (should (equal (hel-selection-tests--read-with-mark -3) '("e" -1)))
-    (should (equal (hel-selection-tests--read-with-mark 3) '("e" -1)))
-    (should (equal (hel-selection-tests--read-with-mark 0) '("e" -1)))))
-
-(ert-deftest hel-selection-across-a-newline ()
-  "The cursor character is a newline only after point."
+(ert-deftest hel-selection-before-a-newline ()
+  "Before a newline, the cursor character is the newline."
   (hel-test-with #'fundamental-mode "abc|\ndef"
-    (should (equal (hel-selection-tests--read-with-mark 1) '("\n" -1)))
-    (should (equal (hel-selection-tests--read-with-mark -1) '("c" 1))))
-  (hel-test-with #'fundamental-mode "abc\n|def"
-    (should (equal (hel-selection-tests--read-with-mark -1) '("d" -1)))))
+    (should (equal (hel-selection-tests--read) '("\n" -1)))))
 
 (ert-deftest hel-selection-at-the-end-of-the-buffer ()
-  "At the end of the buffer, the cursor character after point is empty."
+  "At the end of the buffer, the cursor character is empty."
   (hel-test-with #'fundamental-mode "abc|"
-    (should (equal (hel-selection) (list (cons 4 4) -1)))
-    (should (equal (hel-selection-tests--read-with-mark -1) '("c" 1))))
-  (hel-test-with #'fundamental-mode "abc\n|"
-    (should (equal (hel-selection-tests--read-with-mark -1) '("" -1)))))
-
-(ert-deftest hel-selection-at-the-start-of-a-narrowed-buffer ()
-  "A mark just before the accessible part of the buffer does not count."
-  (hel-test-with #'fundamental-mode "abc|def"
-    (narrow-to-region 4 7)
-    (should (equal (hel-selection-tests--read-with-mark -1) '("d" -1)))))
+    (should (equal (hel-selection) (list (cons 4 4) -1)))))
 
 (ert-deftest hel-selection-active-region ()
   "An active region that is not empty is the selection."
@@ -332,23 +248,16 @@ cursor character is the character after point."
                                 (should (equal (hel-selection) selection))))))))
 
 (ert-deftest hel-selection-law-of-set-cursor ()
-  "After `hel-set-cursor', the cursor character is on the side it names.
-The exception is the side before point when a newline or the start of the
-buffer is there: then the cursor character is the one after point."
+  "After `hel-set-cursor', the cursor character is the character after POS."
   (hel-test-with #'fundamental-mode "ab\n\ncd|"
     (hel-select (cons 1 3))
     (cl-loop for pos from (point-min) to (point-max)
-             do (dolist (side '(1 -1))
-                  (hel-set-cursor pos side)
-                  (should-not (region-active-p))
-                  (should (= (point) pos))
-                  (should (equal (hel-selection)
-                                 (if (and (< 0 side)
-                                          (< (point-min) pos)
-                                          (/= ?\n (char-before pos)))
-                                     (list (cons (1- pos) pos) 1)
-                                   (list (cons pos (min (1+ pos) (point-max)))
-                                         -1))))))))
+             do (hel-set-cursor pos)
+             (should-not (region-active-p))
+             (should (= (point) pos))
+             (should (equal (hel-selection)
+                            (list (cons pos (min (1+ pos) (point-max)))
+                                  -1))))))
 
 ;;; The selection of each window
 
@@ -376,8 +285,7 @@ The first window stays selected and owns the selection of the buffer."
     (hel-selection-tests--split)
     (hel-test-press! "h h")
     (let ((before (hel-selection-tests--window-state)))
-      ;; The cursor character is before point, where only the mark puts it.
-      (should (equal (car before) (list (cons (1- (point)) (point)) 1)))
+      (should (equal (car before) (list (cons (point) (1+ (point))) -1)))
       (hel-test-press! "C-x o l l l")
       (hel-test-press! "C-x o")
       (should (equal (hel-selection-tests--window-state) before)))))
@@ -446,7 +354,7 @@ The first window stays selected and owns the selection of the buffer."
   (hel-test-with #'fundamental-mode "one two thr|ee four five six"
     (hel-test-press! "h")
     (let ((before (hel-selection)))
-      (should (equal before (list (cons (1- (point)) (point)) 1)))
+      (should (equal before (list (cons (point) (1+ (point))) -1)))
       (hel-test-press! "C-x 3 C-x o")
       (should-not (eq (selected-window) (frame-first-window)))
       (should (equal (hel-selection) before)))))
@@ -498,27 +406,23 @@ The first window stays selected and owns the selection of the buffer."
 ;; Batch Emacs does no redisplay, so `hel-test-redisplay' calls
 ;; `pre-redisplay-function' there; `make test-display' runs the real one.
 
-(ert-deftest hel-cursor-char-drawn-on-each-side ()
-  "The face covers the cursor character before or after the bar."
+(ert-deftest hel-cursor-char-drawn-after-point ()
+  "The face covers the cursor character after point."
   (hel-test-with #'fundamental-mode "ab|cd"
-    (hel-set-cursor 3 1)
+    (hel-set-cursor 3)
     (hel-test-redisplay)
     (should (equal (hel-test-drawn-cursor-char)
-                   '(2 3 hel-cursor-highlight nil)))
-    (hel-set-cursor 3 -1)
-    (hel-test-redisplay)
-    (should (equal (hel-test-drawn-cursor-char)
-                   '(3 4 hel-cursor-highlight nil)))))
+                   '(3 4 hel-normal-state-main-cursor nil)))))
 
 (ert-deftest hel-cursor-char-drawn-on-a-newline ()
   "A cursor character on a newline is a cell after the last character."
   (hel-test-with #'fundamental-mode "ab|\ncd"
     (hel-test-redisplay)
     (should (equal (hel-test-drawn-cursor-char)
-                   '(3 3 nil hel-cursor-highlight)))
+                   '(3 3 nil hel-normal-state-main-cursor)))
     (should (get-text-property
              0 'cursor
-             (overlay-get (window-parameter nil 'hel--cursor-highlight-overlay)
+             (overlay-get (window-parameter nil 'hel--main-cursor-overlay)
                           'after-string)))))
 
 (ert-deftest hel-cursor-char-drawn-at-the-end-of-buffer ()
@@ -526,21 +430,26 @@ The first window stays selected and owns the selection of the buffer."
   (hel-test-with #'fundamental-mode "ab|"
     (hel-test-redisplay)
     (should (equal (hel-test-drawn-cursor-char)
-                   '(3 3 nil hel-cursor-highlight)))))
+                   '(3 3 nil hel-normal-state-main-cursor)))))
 
-(ert-deftest hel-cursor-char-hidden-with-an-active-region ()
-  "An active region that is not empty hides the cursor character."
+(ert-deftest hel-cursor-char-drawn-inside-an-active-region ()
+  "With an active region the box covers the head character, inside the
+region: before point in a forward region, after it in a backward one."
   (hel-test-with #'fundamental-mode "ab|cd"
-    (hel-test-redisplay)
-    (should (hel-test-drawn-cursor-char))
     (hel-select (cons 1 3))
     (hel-test-redisplay)
-    (should-not (hel-test-drawn-cursor-char))
+    (should (equal (hel-test-drawn-cursor-char)
+                   '(2 3 hel-normal-state-main-cursor nil)))
+    (hel-select (cons 1 3) -1)
+    (hel-test-redisplay)
+    (should (equal (hel-test-drawn-cursor-char)
+                   '(1 2 hel-normal-state-main-cursor nil)))
+    ;; An empty region reads as a bare cursor.
     (push-mark (point) t t)
     (should (region-active-p))
     (hel-test-redisplay)
     (should (equal (hel-test-drawn-cursor-char)
-                   '(3 4 hel-cursor-highlight nil)))))
+                   '(1 2 hel-normal-state-main-cursor nil)))))
 
 (ert-deftest hel-cursor-char-only-in-normal-state ()
   (hel-test-with #'fundamental-mode "ab|cd"
@@ -554,27 +463,89 @@ The first window stays selected and owns the selection of the buffer."
     (hel-test-redisplay)
     (should (hel-test-drawn-cursor-char))))
 
-(ert-deftest hel-cursor-char-only-in-the-selected-window ()
-  "Only the selected window shows its cursor character."
+(ert-deftest hel-cursor-char-in-every-window ()
+  "Every window shows the box of its cursor at its own point.
+The selected window uses the face of the main cursor, and another window
+the face `hel-other-window-cursor'.  Each window has its own overlay."
   (hel-test-with #'fundamental-mode "ab|cd"
     (let ((first (selected-window))
           (second (split-window)))
+      (set-window-point second 1)
       (hel-test-redisplay)
-      (should (hel-test-drawn-cursor-char first))
-      (should (eq first (overlay-get (window-parameter
-                                      first 'hel--cursor-highlight-overlay)
-                                     'window)))
+      (should (equal (hel-test-drawn-cursor-char first)
+                     '(3 4 hel-normal-state-main-cursor nil)))
+      (should (equal (hel-test-drawn-cursor-char second)
+                     '(1 2 hel-other-window-cursor nil)))
+      (should (eq second (overlay-get (window-parameter
+                                       second 'hel--main-cursor-overlay)
+                                      'window)))
       (select-window second)
       (hel-test-redisplay)
-      (should-not (hel-test-drawn-cursor-char first))
-      (should (hel-test-drawn-cursor-char second))
-      (should (eq second (overlay-get (window-parameter
-                                       second 'hel--cursor-highlight-overlay)
-                                      'window)))
-      (select-window first)
+      (should (equal (hel-test-drawn-cursor-char first)
+                     '(3 4 hel-other-window-cursor nil)))
+      (should (equal (hel-test-drawn-cursor-char second)
+                     '(1 2 hel-normal-state-main-cursor nil))))))
+
+(ert-deftest hel-cursor-box-in-another-window-under-highlights ()
+  "In another window the box lies under a highlight with a priority, as
+the match that Consult previews there with priority 2.  In the selected
+window it lies above that highlight."
+  (hel-test-with #'fundamental-mode "ab|cd"
+    (let* ((first (selected-window))
+           (second (split-window))
+           (match (make-overlay 1 3)))
+      (overlay-put match 'priority 2)
+      (cl-flet ((box-priority (window)
+                  (overlay-get (window-parameter window 'hel--main-cursor-overlay)
+                               'priority)))
+        (hel-test-redisplay)
+        (should (< (box-priority second) 2 (box-priority first)))
+        (select-window second)
+        (hel-test-redisplay)
+        (should (< (box-priority first) 2 (box-priority second)))))))
+
+(ert-deftest hel-cursor-box-of-a-deleted-window-goes ()
+  "A change of the window configuration deletes the boxes of deleted
+windows, and a new window draws a box of its own."
+  (hel-test-with #'fundamental-mode "ab|cd"
+    (cl-flet ((boxes ()
+                (seq-filter (lambda (overlay)
+                              (eq (overlay-get overlay 'type) 'main-cursor))
+                            (overlays-in (point-min) (point-max)))))
+      (dotimes (_ 3)
+        (let ((window (split-window)))
+          (hel-test-redisplay)
+          (should (= 2 (length (boxes))))
+          (delete-window window)
+          (run-hooks 'window-configuration-change-hook)
+          (should (equal (list (selected-window))
+                         (-map (lambda (overlay) (overlay-get overlay 'window))
+                               (boxes)))))))))
+
+(ert-deftest hel-hybrid-cursor-draws-a-bar-and-a-faint-box ()
+  "With the `hybrid' cursor type the main cursor is a bar at point on a graphic
+display, and its box has the face `hel-cursor-highlight'.  The secondary
+cursors keep their boxes, and a text terminal keeps its own cursor."
+  (hel-test-with #'fundamental-mode "ab|cd"
+    (let ((hel-cursor-type 'hybrid))
+      (cl-letf (((symbol-function 'display-graphic-p) #'always))
+        (should (equal (hel--cursor-look t)
+                       '(bar hel-normal-state-main-cursor
+                             hel-cursor-highlight)))
+        (should (equal (hel--cursor-look nil)
+                       '(box hel-normal-state-secondary-cursor
+                             hel-normal-state-secondary-cursor))))
+      (cl-letf (((symbol-function 'display-graphic-p) #'ignore))
+        (should (equal (hel--cursor-look t)
+                       '(box hel-normal-state-main-cursor
+                             hel-cursor-highlight))))
       (hel-test-redisplay)
-      (should (hel-test-drawn-cursor-char first))
-      (should-not (hel-test-drawn-cursor-char second)))))
+      (should (equal (hel-test-drawn-cursor-char)
+                     '(3 4 hel-cursor-highlight nil))))
+    (cl-letf (((symbol-function 'display-graphic-p) #'always))
+      (should (equal (hel--cursor-look t)
+                     '(nil hel-normal-state-main-cursor
+                           hel-normal-state-main-cursor))))))
 
 (ert-deftest hel-secondary-cursor-follows-edits ()
   "Point and the mark of a secondary cursor move with edits as markers do.
@@ -600,9 +571,9 @@ after it.  A deletion that covers them moves them to its start."
 (ert-deftest hel-secondary-cursor-drawn-on-its-cursor-char ()
   "A secondary cursor covers its own cursor character, as the main cursor does."
   (hel-test-with #'fundamental-mode "|ab\ncd\nef"
-    (hel-test-add-secondary-cursor 5 4)       ; "c", before point
-    (hel-test-add-secondary-cursor 8 9)       ; "f": the mark is not before point
-    (hel-test-add-secondary-cursor 3 4)       ; the newline after "b"
+    (hel-test-add-secondary-cursor 4)         ; "c"
+    (hel-test-add-secondary-cursor 8)         ; "f"
+    (hel-test-add-secondary-cursor 3)         ; the newline after "b"
     (should (equal (hel-test-drawn-secondary-cursors)
                    '((3 3 nil hel-normal-state-secondary-cursor)
                      (4 5 hel-normal-state-secondary-cursor nil)
@@ -630,8 +601,8 @@ the selection."
   "The shape of a cursor follows from the state and the kind of display."
   (hel-test-with #'fundamental-mode "|ab"
     (pcase-dolist (`(,state ,graphic ,main ,secondary)
-                   '((normal t   bar  box)
-                     (normal nil bar  box)
+                   '((normal t   nil  box)
+                     (normal nil box  box)
                      (insert t   bar  bar)
                      (insert nil box  box)
                      (emacs  t   hbar nil)
@@ -659,11 +630,13 @@ the selection."
                    'hel-insert-state-secondary-cursor))))
 
 (ert-deftest hel-main-cursor-drawn-by-state ()
-  "The main cursor is a bar in Normal state, a bar or a box in Insert state,
-and an underscore in Emacs state."
+  "The cursor of Emacs is hidden in Normal state on a graphic display,
+where Hel draws the box.  It is a bar or a box in Insert state, and an
+underscore in Emacs state."
   (hel-test-with #'fundamental-mode "|ab"
     (pcase-dolist (`(,state ,graphic ,type)
-                   '((normal t bar) (insert t bar) (insert nil box)
+                   '((normal t nil) (normal nil box)
+                     (insert t bar) (insert nil box)
                      (emacs t (hbar . 4))))
       (cl-letf (((symbol-function 'display-graphic-p)
                  (lambda (&rest _) graphic)))
@@ -770,30 +743,30 @@ display, and a box over the character after its point in a terminal."
   (let ((mark-active active))
     (hel-test-add-secondary-cursor point mark)))
 
-(ert-deftest hel-cursor-selections-law-of-reader-and-writer ()
+(ert-deftest hel-selections-law-of-reader-and-writer ()
   "Writing the values that the reader returned changes nothing."
   ;; a=1 b=2 c=4 d=5 e=7 f=8 g=10 h=11 i=13 j=14, and the end is 15.
   (hel-test-with #'fundamental-mode "ab\ncd\nef\ngh\nij"
     (hel-select '(1 . 3) -1)
-    (hel-selection-tests--secondary-cursor 5 4 nil)   ; "c", before point
+    (hel-selection-tests--secondary-cursor 4 5 nil)   ; "c"
     (hel-selection-tests--secondary-cursor 9 7 t)     ; region "ef"
     (hel-selection-tests--secondary-cursor 10 10 t)   ; empty region: "g"
-    (hel-selection-tests--secondary-cursor 13 15 nil) ; stale mark: "i"
-    (hel-selection-tests--secondary-cursor 15 14 nil) ; "j", before point
+    (hel-selection-tests--secondary-cursor 13 15 nil) ; far mark: "i"
+    (hel-selection-tests--secondary-cursor 14 13 nil) ; "j"
     (hel-selection-tests--secondary-cursor 15 15 nil) ; the end of the buffer
-    (let ((values (hel-cursor-selections))
+    (let ((values (hel-selections))
           (state (hel-selection-tests--cursors-state)))
       (should (equal (mapcar #'cdr values)
                      '(((1 . 3) -1 t)
-                       ((4 . 5) 1 nil)
+                       ((4 . 5) -1 nil)
                        ((7 . 9) 1 t)
                        ((10 . 11) -1 nil)
                        ((13 . 14) -1 nil)
-                       ((14 . 15) 1 nil)
+                       ((14 . 15) -1 nil)
                        ((15 . 15) -1 nil))))
-      (hel-set-cursor-selections values)
+      (hel-set-selections values)
       (should (equal (hel-selection-tests--cursors-state) state))
-      (should (equal (hel-cursor-selections) values)))))
+      (should (equal (hel-selections) values)))))
 
 (ert-deftest hel-secondary-cursor-law-of-writer-and-reader ()
   "A selection written into a secondary cursor reads back unchanged.
@@ -801,8 +774,8 @@ The writer goes straight into the cursor, both when it creates the
 cursor and when it moves one."
   ;; a=1 b=2 c=4 d=5 e=7 f=8 g=10 h=11 i=13 j=14, and the end is 15.
   (hel-test-with #'fundamental-mode "|ab\ncd\nef\ngh\nij"
-    (let ((selections '(((4 . 5) 1 nil)       ; "c", before point
-                        ((7 . 8) -1 nil)      ; "e", after point
+    (let ((selections '(((4 . 5) -1 nil)      ; "c"
+                        ((7 . 8) -1 nil)      ; "e"
                         ((7 . 9) 1 t)         ; region "ef" forward
                         ((10 . 12) -1 t)      ; region "gh" backward
                         ((15 . 15) -1 nil)))) ; the end of the buffer
@@ -810,14 +783,14 @@ cursor and when it moves one."
         (let ((cursor (apply #'hel-create-secondary-cursor selection)))
           (should (equal (cdr (hel--secondary-cursor-value cursor))
                          selection))
-          (apply #'hel--set-secondary-cursor cursor (car selections))
+          (apply #'hel--set-secondary-selection cursor (car selections))
           (should (equal (cdr (hel--secondary-cursor-value cursor))
                          (car selections)))
-          (apply #'hel--set-secondary-cursor cursor selection)
+          (apply #'hel--set-secondary-selection cursor selection)
           (should (equal (cdr (hel--secondary-cursor-value cursor))
                          selection)))))))
 
-(ert-deftest hel-set-cursor-selections-moves-creates-and-deletes ()
+(ert-deftest hel-set-selections-moves-creates-and-deletes ()
   "The writer moves a cursor by its ID, creates and deletes cursors."
   (hel-test-with #'fundamental-mode "|abcdefgh"
     (let* ((kept (hel-selection-tests--secondary-cursor 3 3 nil))
@@ -825,12 +798,12 @@ cursor and when it moves one."
            (kept-id (overlay-get kept 'id)))
       (overlay-put kept 'kill-ring '("kept"))
       (setq kill-ring '("main"))
-      (hel-set-cursor-selections `((0 (2 . 3) 1 nil)
+      (hel-set-selections `((0 (2 . 3) -1 nil)
                                    (,kept-id (4 . 6) -1 t)
                                    (nil (7 . 8) -1 nil)))
-      (should (equal (hel-test-render) "ab|c¦de¬f¦gh"))
+      (should (equal (hel-test-render) "a|bc¦de¬f¦gh"))
       (should (equal (hel-test-cursor-chars)
-                     '(("b" 1) ("de" -1) ("g" -1))))
+                     '(("b" -1) ("de" -1) ("g" -1))))
       (should (eq kept (gethash kept-id hel--cursors-table)))
       (should (equal (overlay-get kept 'kill-ring) '("kept")))
       (should (equal kill-ring '("main")))
@@ -838,10 +811,10 @@ cursor and when it moves one."
       (should (= 3 (hel-number-of-cursors)))
       ;; A value whose cursor was deleted since gets a cursor with its ID.
       (let ((id (overlay-get deleted 'id)))
-        (hel-set-cursor-selections `((0 (2 . 3) 1 nil)
+        (hel-set-selections `((0 (2 . 3) -1 nil)
                                      (,id (5 . 6) -1 nil)))
         (should (gethash id hel--cursors-table))
-        (should (equal (hel-test-cursor-chars) '(("b" 1) ("e" -1))))))))
+        (should (equal (hel-test-cursor-chars) '(("b" -1) ("e" -1))))))))
 
 (ert-deftest hel-merge-overlapping-cursors-keeps-main-state ()
   "A merge keeps the main cursor with its own state and deletes the others."
@@ -855,5 +828,37 @@ cursor and when it moves one."
     (should (equal (hel-test-render) "|abcde^f¦gh"))
     (should (equal kill-ring '("main")))
     (should (= 1 (length (hel-all-secondary-cursors))))))
+
+;;; Emacs commands that read the text before point
+
+(ert-deftest hel-preceding-sexp-ends-at-the-selection ()
+  "In Normal state the sexp before point ends where the selection ends."
+  (require 'pp)
+  (pcase-dolist (`(,input ,expected)
+                 '(("(a b|)" (a b))         ; on the closing bracket
+                   ("(fo|o bar)" foo)       ; on the last character of foo
+                   ("(^foo bar|)" bar)      ; a forward selection
+                   ("(|foo^ bar)" foo)))    ; a backward selection
+    (hel-test-with #'emacs-lisp-mode input
+      (should (equal (list input (elisp--preceding-sexp) (pp-last-sexp))
+                     (list input expected expected)))))
+  ;; In Insert state point is a gap, and the sexp ends at point.
+  (hel-test-with #'emacs-lisp-mode "(a b|)"
+    (hel-insert-state 1)
+    (should (equal (elisp--preceding-sexp) 'b))))
+
+(ert-deftest hel-show-paren-at-the-cursor ()
+  "In Normal state `show-paren-mode' shows the pair of the bracket under
+the box, the head character of the selection."
+  (require 'paren)
+  (pcase-dolist (`(,input ,pair)
+                 '(("(a |b)" nil)            ; not on a bracket
+                   ("|(a b)" (1 2 5 6))      ; on the opening bracket
+                   ("(a b|)" (5 6 1 2))      ; on the closing bracket
+                   ("^(a b)|" (5 6 1 2))     ; a forward selection
+                   ("|(a b)^" (1 2 5 6))))   ; a backward selection
+    (hel-test-with #'emacs-lisp-mode input
+      (should (equal (list input (-take 4 (funcall show-paren-data-function)))
+                     (list input pair))))))
 
 ;;; hel-selection-tests.el ends here

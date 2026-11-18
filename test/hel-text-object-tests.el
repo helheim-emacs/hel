@@ -914,13 +914,13 @@ apostrophe without a pair stays. A WORD of only punctuation stays."
     (should (equal (hel-test-selection) "Baz qux.\nMore here."))))
 
 (ert-deftest hel-sentence-motions ()
-  "]s and [s select from point to the end or the start of the sentence."
+  "]s and [s select from the cursor to the end or the start of the sentence."
   (hel-test-with #'text-mode (hel-test-mark hel-to--prose-paragraphs "qux")
     (hel-mark-sentence-forward 1)
     (should (equal (hel-test-selection) "qux."))
     (hel-test-goto "here")
     (hel-mark-sentence-backward 1)
-    (should (equal (hel-test-selection) "More "))))
+    (should (equal (hel-test-selection) "More h"))))
 
 (defun hel-test--WORD-steps (mode input keys)
   "Return the rendered buffers after each press of KEYS on INPUT in MODE.
@@ -944,8 +944,7 @@ end with the indentation after it is a step of its own."
                    "(defun f (&rest (n ^1|))\n  (foo bar))\n"
                    "(defun f (&rest (n 1))\n^  |(foo bar))\n"
                    "(defun f (&rest (n 1))\n  (^foo |bar))\n"
-                   "(defun f (&rest (n 1))\n  (foo ^bar|))\n"
-                   "(defun f (&rest (n 1))\n  (foo bar))\n|")))
+                   "(defun f (&rest (n 1))\n  (foo ^bar|))\n")))
   (should (equal (hel-test--WORD-steps
                   #'emacs-lisp-mode "|(defun f (&rest (n 1))\n  (foo bar))\n" "E")
                  '("(^defun| f (&rest (n 1))\n  (foo bar))\n"
@@ -955,8 +954,7 @@ end with the indentation after it is a step of its own."
                    "(defun f (&rest (n^ 1|))\n  (foo bar))\n"
                    "(defun f (&rest (n 1))\n^  |(foo bar))\n"
                    "(defun f (&rest (n 1))\n  (^foo| bar))\n"
-                   "(defun f (&rest (n 1))\n  (foo^ bar|))\n"
-                   "(defun f (&rest (n 1))\n  (foo bar))\n|")))
+                   "(defun f (&rest (n 1))\n  (foo^ bar|))\n")))
   (should (equal (hel-test--WORD-steps
                   #'emacs-lisp-mode "(defun f (n)\n  (foo |bar))\n" "B")
                  '("(defun f (n)\n  (|foo ^bar))\n"
@@ -964,7 +962,7 @@ end with the indentation after it is a step of its own."
                    "(defun f |(n)^\n  (foo bar))\n"
                    "(defun |f ^(n)\n  (foo bar))\n"
                    "(|defun ^f (n)\n  (foo bar))\n"
-                   "|(defun f (n)\n  (foo bar))\n"))))
+                  ))))
 
 (ert-deftest hel-word-motion-brackets-are-fences ()
   "w, e and b leave out the brackets at the edges of a run of non-blank
@@ -978,8 +976,7 @@ characters, as W, E and B do."
                    "(defun f (n^)|\n  (foo bar))\n"
                    "(defun f (n)\n^  |(foo bar))\n"
                    "(defun f (n)\n  (^foo |bar))\n"
-                   "(defun f (n)\n  (foo ^bar|))\n"
-                   "(defun f (n)\n  (foo bar))\n|")))
+                   "(defun f (n)\n  (foo ^bar|))\n")))
   (should (equal (hel-test--WORD-steps
                   #'emacs-lisp-mode "|(defun f (n)\n  (foo bar))\n" "e")
                  '("(^defun| f (n)\n  (foo bar))\n"
@@ -989,8 +986,7 @@ characters, as W, E and B do."
                    "(defun f (n^)|\n  (foo bar))\n"
                    "(defun f (n)\n^  |(foo bar))\n"
                    "(defun f (n)\n  (^foo| bar))\n"
-                   "(defun f (n)\n  (foo^ bar|))\n"
-                   "(defun f (n)\n  (foo bar))\n|")))
+                   "(defun f (n)\n  (foo^ bar|))\n")))
   (should (equal (hel-test--WORD-steps
                   #'emacs-lisp-mode "(defun f (n)\n  (foo bar))|\n" "b")
                  '("(defun f (n)\n  (foo |bar^))\n"
@@ -1001,7 +997,7 @@ characters, as W, E and B do."
                    "(defun f |(^n)\n  (foo bar))\n"
                    "(defun |f ^(n)\n  (foo bar))\n"
                    "(|defun ^f (n)\n  (foo bar))\n"
-                   "|(defun f (n)\n  (foo bar))\n"))))
+                  ))))
 
 (ert-deftest hel-word-object-on-a-fence ()
   "On a bracket at the edge of a run of non-blank characters, miw selects
@@ -1028,8 +1024,7 @@ the angle brackets of a timestamp go."
     (hel-mark-WORD 1)
     (should (equal (hel-test-selection) "~hel-mode~")))
   (should (equal (hel-test--WORD-steps #'org-mode "|~foo bar~ baz" "W")
-                 '("~^foo |bar~ baz" "~foo ^bar|~ baz" "~foo bar~ ^baz|"
-                   "~foo bar~ baz|")))
+                 '("~^foo |bar~ baz" "~foo ^bar|~ baz" "~foo bar~ ^baz|")))
   (hel-test-with #'org-mode "SCHEDULED: <2026-|11-15 Sun>"
     (hel-mark-WORD 1)
     (should (equal (hel-test-selection) "2026-11-15"))))
@@ -1095,10 +1090,10 @@ the word behind the fence."
   (let ((text "(setq x '(a b) y `(c ,d) f #'(lambda))"))
     (should (equal (hel-test--selection-steps
                     #'emacs-lisp-mode (hel-test-mark text "setq") "W")
-                   '("setq " "x " "a " "b" "y " "c " ",d" "f " "#'(lambda)" "")))
+                   '("setq " "x " "a " "b" "y " "c " ",d" "f " "#'(lambda)")))
     (should (equal (hel-test--selection-steps
                     #'emacs-lisp-mode (hel-test-mark text "setq") "w")
-                   '("setq " "x " "a " "b" "y " "c " "," "d" "f " "#'(" "lambda" ")" "")))
+                   '("setq " "x " "a " "b" "y " "c " "," "d" "f " "#'(" "lambda" ")")))
     (hel-test-with #'emacs-lisp-mode (hel-test-mark text "'(a")
       (hel-mark-WORD 1)
       (should (equal (hel-test-selection) "a")))))
@@ -1106,8 +1101,8 @@ the word behind the fence."
 (ert-deftest hel-word-motion-steps-over-fences-in-a-row ()
   "Fences in a row count as one: `w' steps over all of them at once."
   (should (equal (hel-test--selection-steps
-                  #'emacs-lisp-mode (hel-test-mark "a)) ((b c" "a") "w")
-                 '("a" "b " "c" ""))))
+                  #'emacs-lisp-mode (hel-test-mark "x a)) ((b c" "x") "w")
+                 '("x " "a" "b " "c"))))
 
 (ert-deftest hel-word-motion-steps-over-separators ()
   "A separator, such as `|' in a table row, is skipped with the blanks on
@@ -1120,11 +1115,11 @@ both sides of it and never selected, and the indentation stays a step."
     (should (equal (hel-test--selection-steps
                     #'fundamental-mode (hel-test-mark text "foo") "e"
                     #'hel-test--table-rules)
-                   '("foo" "bar" "  " "a" "b" "")))
+                   '("foo" "bar" "  " "a" "b")))
     (should (equal (hel-test--selection-steps
                     #'fundamental-mode (hel-test-mark text "b ") "b"
                     #'hel-test--table-rules)
-                   '("a" "  " "bar" "foo" "")))))
+                   '("a" "  " "bar" "foo")))))
 
 (ert-deftest hel-maw-stops-at-a-separator ()
   "A separator is a border: maw takes the gap before the last word of a
@@ -1173,8 +1168,7 @@ only brackets is a WORD."
                    "if (f(x) ^> |a[i]) {\n}\n"
                    "if (f(x) > ^a[i]|) {\n}\n"
                    "if (f(x) > a[i]) ^{|\n}\n"
-                   "if (f(x) > a[i]) {\n^}|\n"
-                   "if (f(x) > a[i]) {\n}\n|"))))
+                   "if (f(x) > a[i]) {\n^}|\n"))))
 
 (ert-deftest hel-WORD-motion-count-stops-before-fences ()
   "A count past the last WORD stops at its text, not after its brackets."
@@ -1786,7 +1780,7 @@ Return the objects that the check used."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python "pass")
     (skip-unless (hel-treesit-text-objects-p))
     (hel-mark-function-backward 1)
-    (should (equal (hel-test-selection) "    def h(self):\n        "))
+    (should (equal (hel-test-selection) "    def h(self):\n        p"))
     (should (= (point) (region-beginning)))
     (hel-mark-function-backward 1)
     (should (equal (hel-test-selection)
@@ -1802,7 +1796,7 @@ Return the objects that the check used."
     (should (equal (hel-test-selection) "pass\n"))
     (hel-test-goto "pass")
     (hel-mark-function-backward 1)
-    (should (equal (hel-test-selection) "    def inner():\n        "))))
+    (should (equal (hel-test-selection) "    def inner():\n        p"))))
 
 ;; Section "Moving to the edge of an object": "3]f inside a function selects
 ;; to the end of the function and of the two functions after it, with
@@ -1859,7 +1853,7 @@ Return the objects that the check used."
     (should (equal (hel-test-selection) "(defun b ()\n  2)\n"))
     (hel-test-goto "2)")
     (hel-mark-function-backward 1)
-    (should (equal (hel-test-selection) "(defun b ()\n  "))
+    (should (equal (hel-test-selection) "(defun b ()\n  2"))
     (should (= (point) (region-beginning)))
     (hel-mark-function-backward 1)
     (should (equal (hel-test-selection) "(defun a ()\n  1)\n"))))
@@ -1891,7 +1885,7 @@ Return the objects that the check used."
     (should (equal (cl-loop repeat 2
                             do (hel-mark-sentence-backward 1)
                             collect (hel-test-selection))
-                   '("Three " "One two.")))
+                   '("Three f" "One two.")))
     (should (= (point) (region-beginning)))))
 
 ;; Section "Moving to the edge of an object": "]s with a count passes the
@@ -1944,7 +1938,7 @@ Return the objects that the check used."
 (ert-deftest hel-to-paragraph-backward-start ()
   (hel-test-with #'text-mode (hel-test-mark hel-to--paragraphs "two")
     (hel-backward-paragraph 1)
-    (should (equal (hel-test-selection) "Second para.\nline "))
+    (should (equal (hel-test-selection) "Second para.\nline t"))
     (should (= (point) (region-beginning)))
     ;; From the start of the paragraph: to the start of the one before.
     (hel-backward-paragraph 1)
@@ -1953,7 +1947,7 @@ Return the objects that the check used."
     (hel-test-goto "two")
     (hel-backward-paragraph 2)
     (should (equal (hel-test-selection)
-                   "Foo bar.\nMore here.\n\nSecond para.\nline "))))
+                   "Foo bar.\nMore here.\n\nSecond para.\nline t"))))
 
 ;;; Prose objects
 
@@ -2639,7 +2633,7 @@ maf takes the gap before the function."
       "(defun f ()\n  ;; before\n  (g)\n    ;; one\n  |  ;; two\n    ;; three\n    a)\n"
     (hel-test-run #'hel-mark-comment-backward)
     (should (equal (hel-test-render)
-                   "(defun f ()\n  ;; before\n  (g)\n|    ;; one\n  ^  ;; two\n    ;; three\n    a)\n"))))
+                   "(defun f ()\n  ;; before\n  (g)\n|    ;; one\n   ^ ;; two\n    ;; three\n    a)\n"))))
 
 (ert-deftest hel-backward-comment-from-first-delimiter-of-a-line ()
   "[c on the delimiter of a later line stays in the comment."
@@ -2647,7 +2641,7 @@ maf takes the gap before the function."
       "(defun f ()\n  ;; before\n  (g)\n    ;; one\n    |;; two\n    ;; three\n    a)\n"
     (hel-test-run #'hel-mark-comment-backward)
     (should (equal (hel-test-render)
-                   "(defun f ()\n  ;; before\n  (g)\n|    ;; one\n    ^;; two\n    ;; three\n    a)\n"))))
+                   "(defun f ()\n  ;; before\n  (g)\n|    ;; one\n    ;^; two\n    ;; three\n    a)\n"))))
 
 (ert-deftest hel-backward-comment-from-first-delimiter ()
   "[c on the first delimiter of a comment stops at the start of its line."
@@ -2655,7 +2649,7 @@ maf takes the gap before the function."
       "(defun f ()\n  ;; before\n  (g)\n    |;; one\n    ;; two\n    a)\n"
     (hel-test-run #'hel-mark-comment-backward)
     (should (equal (hel-test-render)
-                   "(defun f ()\n  ;; before\n  (g)\n|    ^;; one\n    ;; two\n    a)\n"))))
+                   "(defun f ()\n  ;; before\n  (g)\n|    ;^; one\n    ;; two\n    a)\n"))))
 
 (ert-deftest hel-backward-comment-at-start-goes-to-previous ()
   "[c at the start of a comment selects the previous comment."
@@ -3012,7 +3006,9 @@ a stray comma."
   "]e selects to the end of the entry, then the whole next entry; [e
 does the same backward."
   (hel-test-need-queries 'python)
-  (dolist (case '((hel-mark-entry-forward "x = [|1, 2]\n" "x = [^1|, 2]\n")
+  ;; On the entry 1, which is the cursor character alone, ]e goes on to
+  ;; the next entry.
+  (dolist (case '((hel-mark-entry-forward "x = [|1, 2]\n" "x = [1, ^2|]\n")
                   (hel-mark-entry-forward "x = [1|, 2]\n" "x = [1, ^2|]\n")
                   (hel-mark-entry-backward "x = [1, 2|]\n" "x = [1, |2^]\n")
                   (hel-mark-entry-backward "x = [1, |2]\n" "x = [|1^, 2]\n")))
@@ -3163,13 +3159,13 @@ top-level function (section Moving to the edge of an object)."
                            "    pass\n|")))))
 
 (ert-deftest hel-backward-function-chain ()
-  "[f inside a method selects from point to its start, and the next
+  "[f inside a method selects from the cursor to its start, and the next
 [f selects the method before it whole."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode (hel-to--class-at " 2\n" "|")
     (hel-test-run #'hel-mark-function-backward)
     (should (equal (hel-test-render)
-                   (hel-to--class-at "    def m2" "|" " 2\n" "^")))
+                   (hel-to--class-at "    def m2" "|" "2\n" "^")))
     (hel-test-run #'hel-mark-function-backward)
     (should (equal (hel-test-render)
                    (hel-to--class-at "    def m1" "|" "\n    def m2" "^")))))
@@ -3256,12 +3252,12 @@ the blank lines before it."
     (should (equal (hel-test-render) "a^aa\nbbb\n\n|ccc\n"))))
 
 (ert-deftest hel-backward-paragraph-brace ()
-  "Section Moving to the edge of an object: { selects from point to the
+  "Section Moving to the edge of an object: { selects from the cursor to the
 start of the paragraph under the cursor, and when point is already there,
 to the start of the previous paragraph."
   (hel-test-with #'text-mode "aaa\n\nccc\nd|dd\n"
     (hel-test-run #'hel-backward-paragraph)
-    (should (equal (hel-test-render) "aaa\n\n|ccc\nd^dd\n"))
+    (should (equal (hel-test-render) "aaa\n\n|ccc\ndd^d\n"))
     (hel-test-run #'hel-backward-paragraph)
     (should (equal (hel-test-render) "|aaa\n\n^ccc\nddd\n"))))
 

@@ -254,8 +254,7 @@ to scope bindings to specific Hel states:
   `keybindings.org`), demo videos, and `design/`: the specification, the
   open questions (`open-questions.org`), the notes of work that is still
   open (`multiple-cursors-performance.org`,
-  `sean-parent-goals-review.org`, `cursor-side.org`), and `archive/` for
-  design notes that are
+  `sean-parent-goals-review.org`), and `archive/` for design notes that are
   implemented or out of date. Not part of the package.
 - `queries/`: tree-sitter text object queries, see above.
 - `test/`: the test suites, their harness `hel-test-helpers.el`, and the

@@ -550,9 +550,8 @@ index in `hel-search-counter' depends on point.")
     (let ((region-dir (if (use-region-p) (hel-region-direction) 1)))
       (hel-recenter-point-on-jump
         (hel-motion-loop (dir count)
-          (when-let* ((pos (if (use-region-p)
-                               (if (< dir 0) (region-beginning) (region-end))
-                             (point)))
+          (when-let* ((pos (-let [(begin . end) (hel-selection-bounds)]
+                             (if (< dir 0) begin end)))
                       (match (hel-search-session-next-match-from-pos
                               hel-search--session pos dir)))
             (-let [(_ start end closed-overlays) match]
@@ -639,7 +638,7 @@ Do not auto-detect word boundaries in the search pattern."
   :multiple-cursors nil
   (interactive)
   (when (region-active-p)
-    (let* ((cursors (hel-cursor-selections))
+    (let* ((cursors (hel-selections))
            ;; The main cursor goes first, so that it takes the first
            ;; match inside its own selection.
            (regions (-map #'cadr (-let [(main others)
@@ -655,12 +654,12 @@ Do not auto-detect word boundaries in the search pattern."
               (-lambda ((start . end))
                 (-each (overlays-in start end) #'hel-open-overlay)))
             (hel-recenter-point-on-jump
-              (hel-set-cursor-selections
+              (hel-set-selections
                (cons (list 0 (car regions) 1 t)
                      (-map (lambda (region) (list nil region 1 t))
                            (cdr regions))))))
         ;; Else restore original cursors.
-        (hel-set-cursor-selections cursors)))
+        (hel-set-selections cursors)))
     (hel-auto-multiple-cursors-mode)))
 
 ;; S
@@ -853,11 +852,7 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list hel-extend-selection))
-  (hel-move-to-pos (point)
-                   (save-excursion
-                     (hel-find-char (read-char "f" t) 1 nil)
-                     (point))
-                   extend))
+  (hel--find-char-motion "f" 1 nil extend))
 
 ;; F
 (hel-define-command hel-find-char-backward (&optional extend)
@@ -867,11 +862,7 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list hel-extend-selection))
-  (hel-move-to-pos (point)
-                   (save-excursion
-                     (hel-find-char (read-char "F" t) -1 nil)
-                     (point))
-                   extend))
+  (hel--find-char-motion "F" -1 nil extend))
 
 ;; t
 (hel-define-command hel-till-char-forward (&optional extend)
@@ -881,11 +872,7 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list hel-extend-selection))
-  (hel-move-to-pos (point)
-                   (save-excursion
-                     (hel-find-char (read-char "t" t) 1 t)
-                     (point))
-                   extend))
+  (hel--find-char-motion "t" 1 t extend))
 
 ;; T
 (hel-define-command hel-till-char-backward (&optional extend)
@@ -895,11 +882,26 @@ keys to repeat motion forward/backward."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list hel-extend-selection))
-  (hel-move-to-pos (point)
-                   (save-excursion
-                     (hel-find-char (read-char "T" t) -1 t)
-                     (point))
-                   extend))
+  (hel--find-char-motion "T" -1 t extend))
+
+(defun hel--find-char-motion (prompt dir exclusive? extend)
+  "Read a character with PROMPT and select up to it in DIR.
+EXCLUSIVE? stops before the character, as `t' and `T' do.  From a bare
+cursor the selection starts at the cursor character, which counts as
+passed: the search starts after it, and the selection takes it in, as
+in Helix.  From an active region the selection starts at point.  When
+the character is not found, the selection stays as it is.  EXTEND is
+as in `hel-move-to-pos'."
+  (-let* (((begin . end) (hel-selection-bounds))
+          ((from . start) (cond ((or extend (use-region-p))
+                                 (cons (point) (point)))
+                                ((< 0 dir) (cons begin end))
+                                (t (cons end begin)))))
+    (-when-let (to (save-excursion
+                     (goto-char start)
+                     (and (hel-find-char (read-char prompt t) dir exclusive?)
+                          (point))))
+      (hel-move-to-pos from to extend))))
 
 (defun hel-find-char (char direction exclusive?)
   (let* ((case (let (case-fold-search)

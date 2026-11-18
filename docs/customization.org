@@ -114,6 +114,14 @@ an element there wins over both variables above.
 The state decides the shape of the cursors, and the faces decide their
 colours, see [[*Faces][Faces]].
 
+- ~hel-cursor-type~ ::
+  How the main cursor looks in Normal state. With ~helix~, the default,
+  only the box shows, as in Helix. With ~hybrid~, Normal state also shows
+  point as a bar next to the box of the main cursor, and the box gets the
+  faint face ~hel-cursor-highlight~. Use ~hybrid~ with a proportional font,
+  where the width of a box changes from character to character, or to see
+  where Emacs commands act.
+
 #+begin_quote
 [!IMPORTANT]
 - ~hel-bar-secondary-cursor~ ::
@@ -123,9 +131,6 @@ colours, see [[*Faces][Faces]].
 #+end_quote
 
 ** Multiple Cursors Settings
-
-- ~hel-max-cursors-number~ ::
-  Safety ceiling for number of active cursors. If nil, no limit.
 
 - ~hel-minor-modes-incompatible-with-multiple-cursors~ ::
   List of minor modes temporarily disabled when multiple cursors are active.
@@ -190,8 +195,10 @@ colours, see [[*Faces][Faces]].
   Face used for all cursors when extending selection (=v= key) is active.
 
 - ~hel-cursor-highlight~ ::
-  Face of the character under the main cursor in Normal state, next to the
-  bar.
+  Face of the box of the main cursor when ~hel-cursor-type~ is ~hybrid~.
+
+- ~hel-other-window-cursor~ ::
+  Face of the box of the cursor in a window that is not selected.
 
 - ~hel-search-highlight~ ::
   Face for highlighting matches during interactive search with =/=, =?=, =*=, =M-*=, =n=, =N=.

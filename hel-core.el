@@ -48,10 +48,13 @@
 (require 'hel-vars)
 (require 'hel-lib)
 (require 'hel-multiple-cursors-core)
+(require 'paren)
 
 ;; Declarations
 (defvar edebug-mode)
 (defvar edebug-mode-map)
+(defvar hel--cursor-hidden?)
+(declare-function hel--show-paren-data "hel-integration")
 
 ;;; Hel mode
 
@@ -81,6 +84,9 @@
     (remove-hook 'input-method-deactivate-hook #'hel-deactivate-input-method t)
     (hel--single-undo-step-end)
     (hel-disable-multiple-cursors-mode)
+    ;; Normal state hides the cursor of Emacs.
+    (unless hel--cursor-hidden?
+      (kill-local-variable 'cursor-type))
     (setq hel-this-command nil
           hel--input-cache nil)
     (hel-disable-current-state)
@@ -111,10 +117,13 @@
         (add-hook 'window-buffer-change-functions #'hel--fundamental-mode-hack)
         (add-hook 'change-major-mode-after-body-hook #'hel--check-if-cursor-is-hidden)
         (add-hook 'window-configuration-change-hook #'hel-draw-cursor)
+        (add-hook 'window-configuration-change-hook
+                  #'hel--delete-dead-main-cursor-overlays)
         (add-hook 'enable-theme-functions  #'hel--on-theme-change)
         (add-hook 'disable-theme-functions #'hel--on-theme-change)
         (add-function :after pre-redisplay-function
-                      #'hel--draw-cursor-highlight)
+                      #'hel--draw-main-cursor-overlay)
+        (add-function :around show-paren-data-function #'hel--show-paren-data)
         ;; Setup ESC, C-i and C-m keys
         (-each (frame-list) #'hel-setup-terminal-keys)
         (add-hook 'after-make-frame-functions #'hel-setup-terminal-keys)
@@ -128,11 +137,15 @@
     (remove-hook 'window-buffer-change-functions #'hel--fundamental-mode-hack)
     (remove-hook 'change-major-mode-after-body-hook #'hel--check-if-cursor-is-hidden)
     (remove-hook 'window-configuration-change-hook #'hel-draw-cursor)
+    (remove-hook 'window-configuration-change-hook
+                 #'hel--delete-dead-main-cursor-overlays)
     (remove-hook 'enable-theme-functions  #'hel--on-theme-change)
     (remove-hook 'disable-theme-functions #'hel--on-theme-change)
     (remove-function pre-redisplay-function
-                     #'hel--draw-cursor-highlight)
-    (hel--delete-cursor-highlights)
+                     #'hel--draw-main-cursor-overlay)
+    (remove-function show-paren-data-function #'hel--show-paren-data)
+    (hel--delete-main-cursor-overlays)
+    (hel--delete-dead-main-cursor-overlays)
     (hel-setup-mode-line :remove)))
 
 (defun hel--initialize ()
@@ -471,7 +484,7 @@ MODE and STATE should be symbols."
               hel--selection-was-active-on-insert
               (and hel-reactivate-selection-after-insert-state
                    (region-active-p))
-              hel--insert-side (if (eq this-command 'hel-append) 1 -1))
+              hel--insert-appends (eq this-command 'hel-append))
         (hel-with-each-cursor
           (deactivate-mark)))
     ;; else
@@ -480,16 +493,13 @@ MODE and STATE should be symbols."
         (hel-with-each-cursor
           (activate-mark))
       (hel-with-each-cursor
-        (cond ((not (and (< 0 hel--insert-side)
-                         ;; `hel-append' left the start of the selection in
-                         ;; the mark; an empty selection has no text.
-                         (< (mark t) (point))))
-               (hel-set-cursor (point) -1))
-              ;; A cursor character on a newline has point before it.
-              ((eq ?\n (char-before))
-               (hel-set-cursor (1- (point)) -1))
-              (t
-               (hel-set-cursor (point) 1)))))))
+        ;; `hel-append' left the start of the selection in the mark, so
+        ;; the text after it is the selection with the typed text.  Its
+        ;; last character becomes the cursor character.
+        (hel-set-cursor (if (and hel--insert-appends
+                                 (< (mark t) (point)))
+                            (1- (point))
+                          (point)))))))
 
 (hel-define-state emacs
   "Emacs state."
@@ -943,7 +953,7 @@ action. The step is terminated with `hel--single-undo-step-end'."
     (when (car-safe buffer-undo-list)
       (undo-boundary))
     (setq hel--buffer-undo-list-pointer buffer-undo-list
-          hel-undo--cursor-selections (hel-cursor-selections))))
+          hel-undo--selections (hel-selections))))
 
 (defun hel--single-undo-step-end ()
   "Finalize undo step started by `hel--single-undo-step-beginning'."
@@ -961,7 +971,7 @@ action. The step is terminated with `hel--single-undo-step-end'."
           (hel--merge-undo-step))
       (setq hel--in-single-undo-step nil
             hel--buffer-undo-list-pointer nil
-            hel-undo--cursor-selections nil))))
+            hel-undo--selections nil))))
 
 (defun hel--buffer-undo-list-tip-is-redo-record-p ()
   "Return non-nil if the tip of `buffer-undo-list' was produced by an undo.
@@ -996,12 +1006,12 @@ Emacs marks such records in `undo-equiv-table'."
       ;; Else put on the both ends of the undo step records that hold the
       ;; positions of every cursor, so that undo can put the cursors back.
       (setq buffer-undo-list
-            (cons `(apply hel--undo-step-start ,(hel-cursor-selections))
+            (cons `(apply hel--undo-step-start ,(hel-selections))
                   undo-list))
       (let ((tail undo-list))
         (while (not (eq (cdr tail) hel--buffer-undo-list-pointer))
           (setq tail (cdr tail)))
-        (setcdr tail (cons `(apply hel--undo-step-end ,hel-undo--cursor-selections)
+        (setcdr tail (cons `(apply hel--undo-step-end ,hel-undo--selections)
                            hel--buffer-undo-list-pointer))))))
 
 (defun hel-commit-undo-checkpoint ()
@@ -1074,7 +1084,7 @@ Return one of the symbols:
 at beginning and end of a single undo step and restores main and secondary
 cursors selections after undo/redo step.
 
-CURSORS is a list of cursor values, as `hel-cursor-selections' returns it."
+CURSORS is a list of cursor values, as `hel-selections' returns it."
   (push `(apply hel--undo-step-end ,cursors)
         buffer-undo-list))
 
@@ -1085,8 +1095,8 @@ CURSORS is a list of cursor values, as `hel-cursor-selections' returns it."
 at beginning and end of a single undo step and restores main and secondary
 cursors selections after undo/redo step.
 
-CURSORS is a list of cursor values, as `hel-cursor-selections' returns it."
-  (hel-set-cursor-selections cursors)
+CURSORS is a list of cursor values, as `hel-selections' returns it."
+  (hel-set-selections cursors)
   (push `(apply hel--undo-step-start ,cursors)
         buffer-undo-list))
 
@@ -1154,29 +1164,40 @@ CURSORS is a list of cursor values, as `hel-cursor-selections' returns it."
   (setq hel--cursor-hidden? (and (local-variable-p 'cursor-type)
                                  (null cursor-type))))
 
-(defun hel--cursor-look (main)
-  "Return (SHAPE FACE): how to draw a cursor in the current state.
-MAIN is non-nil for the main cursor and nil for a secondary one.  SHAPE
-is `bar', `box', `hbar' or nil for no cursor.  In Normal state the main
-cursor is a bar at point and a secondary cursor is a box over its
-character.  In Insert state every cursor is a bar at point on a graphic
-display, and a box over the character after point in a text terminal,
-where a bar string would push the text aside.  In Emacs state the main
-cursor is an underscore, and there are no secondary cursors.  FACE comes
-from the `:cursor' property of the state, and it is
-`hel-extend-selection-cursor' while motions extend the selection."
-  (list (pcase hel-state
-          ('normal (if main 'bar 'box))
-          ('insert (if (display-graphic-p) 'bar 'box))
-          ('emacs (if main 'hbar)))
-        (if hel-extend-selection
-            'hel-extend-selection-cursor
-          (nth (if main 0 1) (hel-state-property hel-state :cursor)))))
+(defun hel--cursor-look (main?)
+  "Return (SHAPE FACE BOX): how to draw a cursor in the current state.
+MAIN? is non-nil for the main cursor and nil for a secondary one. SHAPE is
+`bar', `box', `hbar' or nil for no cursor. FACE is the face whose background
+colors it. BOX is the face of the box that Hel draws over the character of the
+cursor in Normal state, or nil in other states.
+
+In Normal state every cursor is a box over its character, drawn by Hel.
+The main cursor of Emacs is hidden on a graphic display, or a bar at point when
+`hel-cursor-type' is `hybrid'; then the box of the main cursor has the faint
+face `hel-cursor-highlight'. A text terminal shows its own cursor anyway, as
+a box at point. In Insert state every cursor is a bar at point on a graphic
+display, and a box over the character after point in a text terminal, where
+a bar string would push the text aside. In Emacs state the main cursor is an
+underscore, and there are no secondary cursors. FACE comes from the `:cursor'
+property of the state, and it is `hel-extend-selection-cursor' while motions
+extend the selection."
+  (let ((face (if hel-extend-selection
+                  'hel-extend-selection-cursor
+                (nth (if main? 0 1) (hel-state-property hel-state :cursor)))))
+    (pcase hel-state
+      ('normal (list (cond ((not main?) 'box)
+                           ((not (display-graphic-p)) 'box)
+                           ((eq hel-cursor-type 'hybrid) 'bar))
+                     face
+                     (if (and main? (eq hel-cursor-type 'hybrid))
+                         'hel-cursor-highlight
+                       face)))
+      ('insert (list (if (display-graphic-p) 'bar 'box) face nil))
+      ('emacs (list (if main? 'hbar) face nil)))))
 
 (defun hel-draw-cursor ()
   "Give Emacs the shape and the colour of the main cursor.
-The state of Hel decides them, see `hel--cursor-look'.  Only the selected
-window shows the cursor of the current buffer."
+The state of Hel decides them, see `hel--cursor-look'."
   (when (and (eq (window-buffer) (current-buffer))
              hel-local-mode
              (not hel--cursor-hidden?))
@@ -1184,6 +1205,96 @@ window shows the cursor of the current buffer."
       (setq cursor-type (if (eq shape 'hbar) '(hbar . 4) shape))
       (when face
         (hel--set-cursor-color (face-background face nil t))))))
+
+;;;; The overlay of the main cursor
+
+(defun hel--cursor-bounds (selection)
+  "Return the bounds of the cursor of SELECTION, a (BEGIN . END) pair.
+The cursor covers the head character of SELECTION: the cursor character,
+or the character at the head end of an active region.  When the head
+character is a newline, or at the end of the buffer, BEGIN equals END:
+the cursor is drawn there as a cell of one space, because a face on
+a newline would paint to the edge of the window.  SELECTION is (RANGE
+DIRECTION), as `hel-selection' returns it."
+  (let ((head (hel--head-char selection)))
+    (cons head (if (memq (char-after head) '(?\n nil))
+                   head
+                 (1+ head)))))
+
+(defun hel--draw-main-cursor-overlay (windows)
+  "Draw the box of the main cursor in each of WINDOWS.
+Redisplay calls this function with the WINDOWS that it is about to
+redisplay, or t for all of them, so the box follows point also after
+a command outside Hel.  The box is shown in Normal state at the bounds
+that `hel--cursor-bounds' returns.  The selected window shows it with
+the face that `hel--cursor-look' gives the main cursor.  Another window
+shows it at its own point, with the face `hel-other-window-cursor'.
+A character without a cell of its own shows as a cell of one space,
+whose `cursor' property puts the cursor of Emacs before it.
+
+Each window keeps its own overlay in its `hel--main-cursor-overlay'
+parameter."
+  (dolist (window (if (consp windows) windows (window-list-1 nil t t)))
+    (when (window-live-p window)
+      (let ((overlay (window-parameter window 'hel--main-cursor-overlay))
+            (selected? (eq window (selected-window))))
+        (with-current-buffer (window-buffer window)
+          (if (or hel--cursor-hidden? (not hel-normal-state))
+              (when overlay
+                (delete-overlay overlay))
+            ;; else
+            (-let* ((selection (if selected?
+                                   (hel-selection)
+                                 (hel--selection-from (window-point window) nil nil)))
+                    ((begin . end) (hel--cursor-bounds selection))
+                    (face (if selected?
+                              (nth 2 (hel--cursor-look t))
+                            'hel-other-window-cursor)))
+              (unless overlay
+                (setq overlay (make-overlay begin end))
+                (overlay-put overlay 'type 'main-cursor)
+                (overlay-put overlay 'window window)
+                (set-window-parameter window 'hel--main-cursor-overlay overlay))
+              ;; In the selected window the box lies above the region of Emacs,
+              ;; which has (nil . 100), and the bracket that `show-paren-mode'
+              ;; highlights, which has `show-paren-priority', 1000 by default.
+              ;; In another window it lies under every highlight with
+              ;; a priority, such as the matches that Consult previews there
+              ;; from the minibuffer.
+              (overlay-put overlay 'priority (if selected? 1001 0))
+              (unless (and (eq (overlay-buffer overlay) (current-buffer))
+                           (eql (overlay-start overlay) begin)
+                           (eql (overlay-end overlay) end))
+                (move-overlay overlay begin end (current-buffer)))
+              (if (= begin end)
+                  (progn
+                    (overlay-put overlay 'face nil)
+                    (overlay-put overlay 'after-string
+                                 (propertize " " 'face face 'cursor t)))
+                (overlay-put overlay 'face face)
+                (overlay-put overlay 'after-string nil)))))))))
+
+(defun hel--delete-dead-main-cursor-overlays ()
+  "Delete the boxes of deleted windows in the buffers that the frame shows.
+A deleted window leaves the overlay of its box in its buffer, where no
+window shows it.  Emacs runs this function when a window of the frame is
+added or deleted, so the buffer of a deleted window is usually still
+shown."
+  (dolist (buffer (-distinct (-map #'window-buffer (window-list))))
+    (with-current-buffer buffer
+      (save-restriction
+        (widen)
+        (dolist (overlay (overlays-in (point-min) (point-max)))
+          (when (and (eq (overlay-get overlay 'type) 'main-cursor)
+                     (not (window-live-p (overlay-get overlay 'window))))
+            (delete-overlay overlay)))))))
+
+(defun hel--delete-main-cursor-overlays ()
+  "Delete the overlays of the cursor highlight in every window."
+  (walk-windows (lambda (window)
+                  (-some-> (window-parameter window 'hel--main-cursor-overlay)
+                    (delete-overlay)))
+                t t))
 
 ;;;; Update cursor color on theme change
 
@@ -1195,90 +1306,15 @@ window shows the cursor of the current buffer."
     (modify-frame-parameters (selected-frame) `((cursor-color . ,color)))))
 
 (defun hel--update-main-cursor-color (color)
-  (set-face-attribute 'hel-normal-state-main-cursor nil :background color)
+  (set-face-attribute 'hel-normal-state-main-cursor nil
+                      :background color
+                      :foreground (face-background 'default))
   (hel-draw-cursor))
 
 (hel-advice-add 'set-cursor-color :after #'hel--update-main-cursor-color)
 
 (defun hel--on-theme-change (_theme)
   (hel--update-main-cursor-color (face-background 'cursor)))
-
-;;;; The highlight of the cursor character
-
-(defun hel--cursor-highlight (value)
-  "Return (BEGIN END) of the face over the character of the cursor VALUE.
-The character is the cursor character, and with an active region it is
-the head character: the character of the selection at point, inside it.
-VALUE is a cursor value (ID RANGE DIRECTION ACTIVE).  BEGIN equal to END
-means a cell after a newline or after the end of the buffer: a face on
-a newline would paint to the edge of the window."
-  (-let* (((_ (begin . end) dir active) value)
-          (begin (if (and active (< 0 dir)) (1- end) begin))
-          (end (min end (1+ begin))))
-    (list begin (if (eq ?\n (char-after begin)) begin end))))
-
-(defvar hel--cursor-highlight-window nil
-  "The window that showed the cursor character at the last redisplay.")
-
-(defconst hel--cursor-highlight-cell
-  (propertize " " 'face 'hel-cursor-highlight 'cursor t)
-  "The cell that shows a cursor character that has no cell of its own.
-The `cursor' property puts the cursor of Emacs before the cell.")
-
-(defun hel--draw-cursor-highlight (&rest _)
-  "Highlight the character of the main cursor in the selected window.
-Redisplay calls this function, so the highlight follows point also
-after a command outside Hel.  The highlight is shown in Normal state at
-the bounds that `hel--cursor-highlight' returns, and not over an active
-region, which draws itself.
-
-Each window keeps its own overlay in its `hel--cursor-highlight-overlay'
-parameter, and only the selected window shows it."
-  (let* ((window (selected-window))
-         (overlay (window-parameter window 'hel--cursor-highlight-overlay)))
-    (unless (eq window hel--cursor-highlight-window)
-      (when (windowp hel--cursor-highlight-window)
-        (-some-> (window-parameter hel--cursor-highlight-window
-                                   'hel--cursor-highlight-overlay)
-          (delete-overlay)))
-      (setq hel--cursor-highlight-window window))
-    (with-current-buffer (window-buffer window)
-      (-if-let ((begin end) (and hel-normal-state
-                                 (not hel--cursor-hidden?)
-                                 (let ((value (hel--main-cursor-value)))
-                                   (unless (-fourth-item value)
-                                     (hel--cursor-highlight value)))))
-          (progn
-            (unless overlay
-              (setq overlay (make-overlay begin end))
-              (overlay-put overlay 'window window)
-              ;; The priority of the region overlay of Emacs.
-              (overlay-put overlay 'priority '(nil . 100))
-              (set-window-parameter window 'hel--cursor-highlight-overlay
-                                    overlay))
-            (unless (and (eq (overlay-buffer overlay) (current-buffer))
-                         (eql (overlay-start overlay) begin)
-                         (eql (overlay-end overlay) end))
-              (move-overlay overlay begin end (current-buffer)))
-            (if (= begin end)
-                (progn
-                  (overlay-put overlay 'face nil)
-                  (overlay-put overlay 'after-string
-                               hel--cursor-highlight-cell))
-              (overlay-put overlay 'face 'hel-cursor-highlight)
-              (overlay-put overlay 'after-string nil)))
-        ;; else
-        (when overlay
-          (delete-overlay overlay))))))
-
-(defun hel--delete-cursor-highlights ()
-  "Delete the overlays of the cursor highlight in every window."
-  (walk-windows (lambda (window)
-                  (-some-> (window-parameter window
-                                             'hel--cursor-highlight-overlay)
-                    (delete-overlay)))
-                t t)
-  (setq hel--cursor-highlight-window nil))
 
 ;;; .
 (provide 'hel-core)

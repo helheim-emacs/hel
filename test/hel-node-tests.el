@@ -392,7 +392,7 @@ character.  Without a mark, that is the character after point."
     (hel-mark-word 1)
     (should (equal (hel-test-selection) ".")))
   (hel-test-with #'text-mode (hel-test-mark "foo.\n" ".")
-    (hel-set-cursor (point) 1)
+    (hel-set-cursor (1- (point)))
     (hel-mark-word 1)
     (should (equal (hel-test-selection) "foo"))))
 

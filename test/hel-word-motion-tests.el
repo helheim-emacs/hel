@@ -4,7 +4,7 @@
 ;;
 ;;; Commentary:
 ;;
-;; The word motions select from point to the next edge of a word or
+;; The word motions select from the cursor to the next edge of a word or
 ;; a WORD, and with `v' they extend the selection.
 ;;
 ;; The texts of the tests use the notation of `hel-test-helpers.el'.
@@ -55,16 +55,18 @@ the cursor."
   (should (equal (hel-word-motion-tests--run
                   "foo bar  baz" "oo " '(hel-forward-word-start))
                  '("f^oo |bar  baz")))
+  ;; From the space before a word: the space is a step of its own, so the
+  ;; motion goes on after it, as in Helix.
   (should (equal (hel-word-motion-tests--run
                   "foo bar  baz" " bar" '(hel-forward-word-start))
-                 '("foo^ |bar  baz"))))
+                 '("foo ^bar  |baz"))))
 
 (ert-deftest hel-word-motion-w-end-of-buffer ()
-  "`w' at the last word of the buffer leaves no selection."
+  "`w' at the end of the buffer keeps the selection, as in Helix."
   (should (equal (hel-word-motion-tests--run
                   "foo bar  baz" "baz"
                   '(hel-forward-word-start hel-forward-word-start))
-                 '("foo bar  ^baz|" "foo bar  baz|"))))
+                 '("foo bar  ^baz|" "foo bar  ^baz|"))))
 
 (ert-deftest hel-word-motion-w-count ()
   (should (equal (hel-word-motion-tests--run
@@ -122,11 +124,11 @@ It skips an empty line."
                  '("^foo| bar  baz" "foo^ bar|  baz" "foo bar^  baz|"))))
 
 (ert-deftest hel-word-motion-e-end-of-buffer ()
-  "`e' at the end of the buffer leaves no selection."
+  "`e' at the end of the buffer keeps the selection, as in Helix."
   (should (equal (hel-word-motion-tests--run
                   "foo bar  baz" "baz"
                   '(hel-forward-word-end hel-forward-word-end))
-                 '("foo bar  ^baz|" "foo bar  baz|"))))
+                 '("foo bar  ^baz|" "foo bar  ^baz|"))))
 
 (ert-deftest hel-word-motion-e-count ()
   (should (equal (hel-word-motion-tests--run
@@ -161,16 +163,16 @@ It skips an empty line."
 ;;; b and B
 
 (ert-deftest hel-word-motion-b ()
-  "`b' selects from point back to the start of the previous word."
+  "`b' selects from the cursor back to the start of the previous word."
   (should (equal (hel-word-motion-tests--run
                   "foo bar  baz" "baz"
                   '(hel-backward-word-start hel-backward-word-start))
                  '("foo |bar  ^baz" "|foo ^bar  baz")))
-  ;; From the middle of a word: back to its start, without the character
+  ;; From the middle of a word: back to its start, with the character
   ;; under the cursor.
   (should (equal (hel-word-motion-tests--run
                   "foo bar  baz" "az" '(hel-backward-word-start))
-                 '("foo bar  |b^az"))))
+                 '("foo bar  |ba^z"))))
 
 (ert-deftest hel-word-motion-b-beginning-of-buffer ()
   "`b' at the start of the buffer leaves no selection."
@@ -207,7 +209,24 @@ It takes the indentation as a step."
   (should (equal (hel-word-motion-tests--run
                   "foo.bar(baz) qux" "qux"
                   '(hel-backward-WORD-start hel-backward-WORD-start))
-                 '("|foo.bar(baz) ^qux" "|foo.bar(baz) qux"))))
+                 ;; At the start of the buffer the selection stays.
+                 '("|foo.bar(baz) ^qux" "|foo.bar(baz) ^qux"))))
+
+(ert-deftest hel-word-motion-blanks-at-buffer-edge ()
+  "Blanks at the edge of the buffer are a step of their own, as in Helix."
+  (should (equal (hel-word-motion-tests--run
+                  "    Jump" "Jump" '(hel-backward-word-start))
+                 '("|    ^Jump")))
+  (should (equal (hel-word-motion-tests--run
+                  "    Jump" "Jump" '(hel-backward-WORD-start))
+                 '("|    ^Jump")))
+  (should (equal (hel-word-motion-tests--run
+                  "foo   " "o " '(hel-forward-word-end))
+                 '("foo^   |")))
+  ;; A fence between the word and the blanks stays out of the selection.
+  (hel-test-with #'emacs-lisp-mode "  (|foo"
+    (hel-backward-word-start 1)
+    (should (equal (hel-test-render) "|  ^(foo"))))
 
 ;;; Extending the selection
 
@@ -273,17 +292,17 @@ after it."
 
 (ert-deftest hel-ge ()
   "Section Commands are thin: ge (`hel-backward-word-end') selects from
-point back to the end of the previous word."
+the cursor back to the end of the previous word."
   (hel-test-with #'text-mode "foo bar b|az\n"
     (hel-test-run #'hel-backward-word-end)
-    (should (equal (hel-test-render) "foo bar| b^az\n"))))
+    (should (equal (hel-test-render) "foo bar| ba^z\n"))))
 
 (ert-deftest hel-ge-count ()
   "Section Commands are thin: `2 ge' goes back to the end of the second
 previous word."
   (hel-test-with #'text-mode "foo bar b|az\n"
     (hel-test-run #'hel-backward-word-end 2)
-    (should (equal (hel-test-render) "foo| bar b^az\n"))))
+    (should (equal (hel-test-render) "foo| bar ba^z\n"))))
 
 ;;; Blanks
 
@@ -386,5 +405,193 @@ Both modes give the same answer."
         (should-not (hel-visual-lines-p))
         (hel-select (cons 1 12))
         (should-not (hel-visual-lines-p))))))
+
+;;; The cases of Helix
+
+;; The cases of `helix-core/src/movement.rs' in Helix that start from
+;; a bare cursor with a count of 1.  Each one is (COMMAND TEXT POS ANCHOR
+;; HEAD): the cursor stands on the character at index POS, and the
+;; motion selects from index ANCHOR to index HEAD.  Indices count from 0.
+;; Four cases of Helix are left out, because `_' ends a word in the
+;; syntax of `text-mode'.
+(defconst hel-word-motion-tests--helix-cases
+  '(
+    (hel-forward-word-start "Basic forward motion stops at the first space" 0 0 6)
+    (hel-forward-word-start " Starting from a boundary advances the anchor" 0 1 10)
+    (hel-forward-word-start "Long       whitespace gap is bridged by the head" 0 0 11)
+    (hel-forward-word-start "    Starting from whitespace moves to last space in sequence" 0 0 4)
+    (hel-forward-word-start "Starting from mid-word leaves anchor at start position and moves head" 3 3 9)
+    (hel-forward-word-start "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 0 0 12)
+    (hel-forward-word-start "...   ... punctuation and spaces behave as expected" 0 0 6)
+    (hel-forward-word-start "Newlines\n\nare bridged seamlessly." 0 0 8)
+    (hel-forward-word-start "oh oh oh two character words!" 0 0 3)
+    (hel-forward-word-start "\n   \n   \n Jumping through alternated space blocks and newlines selects the space blocks" 0 1 4)
+    (hel-forward-word-start "ヒーリクス multibyte characters behave as normal characters" 0 0 6)
+    (hel-forward-WORD-start "Basic forward motion stops at the first space" 0 0 6)
+    (hel-forward-WORD-start " Starting from a boundary advances the anchor" 0 1 10)
+    (hel-forward-WORD-start "Long       whitespace gap is bridged by the head" 0 0 11)
+    (hel-forward-WORD-start "    Starting from whitespace moves to last space in sequence" 0 0 4)
+    (hel-forward-WORD-start "Starting from mid-word leaves anchor at start position and moves head" 3 3 9)
+    (hel-forward-WORD-start "Identifiers_with_underscores are considered a single word" 0 0 29)
+    (hel-forward-WORD-start "alphanumeric.!,and.?=punctuation are not treated any differently than alphanumerics" 0 0 33)
+    (hel-forward-WORD-start "...   ... punctuation and spaces behave as expected" 0 0 6)
+    (hel-forward-WORD-start ".._.._ punctuation is joined by underscores into a single word, as it behaves like alphanumerics" 0 0 7)
+    (hel-forward-WORD-start "Newlines\n\nare bridged seamlessly." 0 0 8)
+    (hel-forward-WORD-start "oh oh oh two character words!" 0 0 3)
+    (hel-forward-WORD-start "\n   \n   \n Jumping through alternated space blocks and newlines selects the space blocks" 0 1 4)
+    (hel-forward-WORD-start "ヒー..リクス multibyte characters behave as normal characters, including their interaction with punctuation" 0 0 8)
+    (hel-backward-word-start "Basic backward motion from the middle of a word" 3 4 0)
+    (hel-backward-word-start "    Jump to start of a word preceded by whitespace" 5 6 4)
+    (hel-backward-word-start "    Jump to start of line from start of word preceded by whitespace" 4 4 0)
+    (hel-backward-WORD-start "Basic backward motion from the middle of a word" 3 4 0)
+    (hel-backward-WORD-start "    Jump to start of a word preceded by whitespace" 5 6 4)
+    (hel-forward-word-end "Basic forward motion from the start of a word to the end of it" 0 0 5)
+    (hel-forward-word-end "Basic forward motion from the middle of a word to the end of it" 2 2 5)
+    (hel-forward-word-end "    Jumping to end of a word preceded by whitespace" 0 0 11)
+    (hel-forward-word-end "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 0 0 12)
+    (hel-forward-word-end "...   ... punctuation and spaces behave as expected" 0 0 3)
+    (hel-forward-word-end "Newlines\n\nare bridged seamlessly." 0 0 8)
+    (hel-forward-word-end "\n   \n   \n Jumping through alternated space blocks and newlines selects the space blocks" 0 1 4)
+    (hel-forward-word-end "ヒーリクス multibyte characters behave as normal characters" 0 0 5)
+    (hel-forward-WORD-end "Basic forward motion from the start of a word to the end of it" 0 0 5)
+    (hel-forward-WORD-end "Basic forward motion from the middle of a word to the end of it" 2 2 5)
+    (hel-forward-WORD-end "    Jumping to end of a word preceded by whitespace" 0 0 11)
+    (hel-forward-WORD-end "Identifiers_with_underscores are considered a single word" 0 0 28)
+    (hel-forward-WORD-end "alphanumeric.!,and.?=punctuation are treated the same way" 0 0 32)
+    (hel-forward-WORD-end "...   ... punctuation and spaces behave as expected" 0 0 3)
+    (hel-forward-WORD-end ".._.._ punctuation is joined by underscores into a single block" 0 0 6)
+    (hel-forward-WORD-end "Newlines\n\nare bridged seamlessly." 0 0 8)
+    (hel-forward-WORD-end "\n   \n   \n Jumping through alternated space blocks and newlines selects the space blocks" 0 1 4)
+    (hel-forward-WORD-end "ヒーリ..クス multibyte characters behave as normal characters, including  when they interact with punctuation" 0 0 7)
+    (hel-backward-word-end "Basic backward motion from the middle of a word" 9 10 5)
+    (hel-backward-word-end "Jump     to end of a word succeeded by whitespace" 11 11 4)
+    (hel-backward-word-end "    Jump to start of line from end of word preceded by whitespace" 8 8 0)
+    (hel-backward-word-end "Jumping to start of word from the end selects the whole word" 16 16 10)
+    (hel-backward-word-end "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 30 31 21)
+    (hel-backward-WORD-end "Basic backward motion from the middle of a word" 3 4 0)
+    (hel-backward-WORD-end "Jump    to end of a word succeeded by whitespace" 10 10 4)))
+
+(ert-deftest hel-word-motion-helix-cases ()
+  "The word motions agree with the tests of Helix from a bare cursor."
+  (pcase-dolist (`(,command ,text ,pos ,anchor ,head)
+                 hel-word-motion-tests--helix-cases)
+    (hel-test-with #'text-mode
+        (concat (substring text 0 pos) "|" (substring text pos))
+      (funcall command 1)
+      (should (equal (list command text (mark) (point))
+                     (list command text (1+ anchor) (1+ head)))))))
+
+;; The cases of the same file that start from a selection, with a count
+;; of 1.  Each one is (COMMAND TEXT ANCHOR HEAD NEW-ANCHOR NEW-HEAD): the
+;; selection runs from index ANCHOR to index HEAD, and the motion selects
+;; from NEW-ANCHOR to NEW-HEAD.  As in Helix, the motion starts at the
+;; head character of the selection.  Four cases of Helix are left out,
+;; because `_' ends a word in `text-mode'.
+(defconst hel-word-motion-tests--helix-selection-cases
+  '(
+    (hel-forward-word-start "Previous anchor is irrelevant for forward motions" 12 0 0 9)
+    (hel-forward-word-start "Jumping\n    into starting whitespace selects the spaces before 'into'" 0 7 8 12)
+    (hel-forward-word-start "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 0 12 12 15)
+    (hel-forward-word-start "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 12 15 15 18)
+    (hel-forward-word-start "...   ... punctuation and spaces behave as expected" 0 6 6 10)
+    (hel-forward-word-start "Newlines\n\nare bridged seamlessly." 0 8 10 14)
+    (hel-forward-word-start "Jumping\n\n\n\n\n\n   from newlines to whitespace selects whitespace." 0 9 13 16)
+    (hel-forward-word-start "oh oh oh two character words!" 0 3 3 6)
+    (hel-forward-word-start "oh oh oh two character words!" 0 2 1 3)
+    (hel-forward-word-start "\n   \n   \n Jumping through alternated space blocks and newlines selects the space blocks" 1 4 5 8)
+    (hel-forward-WORD-start "Previous anchor is irrelevant for forward motions" 12 0 0 9)
+    (hel-forward-WORD-start "Jumping\n    into starting whitespace selects the spaces before 'into'" 0 7 8 12)
+    (hel-forward-WORD-start "...   ... punctuation and spaces behave as expected" 0 6 6 10)
+    (hel-forward-WORD-start "Newlines\n\nare bridged seamlessly." 0 8 10 14)
+    (hel-forward-WORD-start "Jumping\n\n\n\n\n\n   from newlines to whitespace selects whitespace." 0 9 13 16)
+    (hel-forward-WORD-start "oh oh oh two character words!" 0 3 3 6)
+    (hel-forward-WORD-start "oh oh oh two character words!" 0 1 0 3)
+    (hel-forward-WORD-start "\n   \n   \n Jumping through alternated space blocks and newlines selects the space blocks" 1 4 5 8)
+    (hel-backward-word-start "Previous anchor is irrelevant for backward motions" 12 5 6 0)
+    (hel-backward-word-start "    Starting from whitespace moves to first space in sequence" 0 4 4 0)
+    (hel-backward-word-start "Jumping\n    \nback through a newline selects whitespace" 0 13 12 8)
+    (hel-backward-word-start "Jumping to start of word from the end selects the word" 6 7 7 0)
+    (hel-backward-word-start "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 29 30 30 21)
+    (hel-backward-word-start "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 30 21 21 18)
+    (hel-backward-word-start "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 21 18 18 15)
+    (hel-backward-word-start "...   ... punctuation and spaces behave as expected" 0 10 10 6)
+    (hel-backward-word-start "...   ... punctuation and spaces behave as expected" 10 6 6 0)
+    (hel-backward-word-start "Newlines\n\nare bridged seamlessly." 0 10 8 0)
+    (hel-backward-word-start "Jumping    \n\n\n\n\nback from within a newline group selects previous block" 0 13 11 0)
+    (hel-backward-word-start "   \n   \nJumping back through alternated space blocks and newlines selects the space blocks" 0 8 7 4)
+    (hel-backward-word-start "   \n   \nJumping back through alternated space blocks and newlines selects the space blocks" 7 4 3 0)
+    (hel-backward-word-start "ヒーリクス multibyte characters behave as normal characters" 0 6 6 0)
+    (hel-backward-WORD-start "    Jump to start of line from start of word preceded by whitespace" 3 4 4 0)
+    (hel-backward-WORD-start "Previous anchor is irrelevant for backward motions" 12 5 6 0)
+    (hel-backward-WORD-start "    Starting from whitespace moves to first space in sequence" 0 4 4 0)
+    (hel-backward-WORD-start "Identifiers_with_underscores are considered a single word" 0 20 20 0)
+    (hel-backward-WORD-start "Jumping\n    \nback through a newline selects whitespace" 0 13 12 8)
+    (hel-backward-WORD-start "Jumping to start of word from the end selects the word" 6 7 7 0)
+    (hel-backward-WORD-start "alphanumeric.!,and.?=punctuation are treated exactly the same" 29 30 30 0)
+    (hel-backward-WORD-start "...   ... punctuation and spaces behave as expected" 0 10 10 6)
+    (hel-backward-WORD-start "...   ... punctuation and spaces behave as expected" 10 6 6 0)
+    (hel-backward-WORD-start ".._.._ punctuation is joined by underscores into a single block" 0 6 6 0)
+    (hel-backward-WORD-start "Newlines\n\nare bridged seamlessly." 0 10 8 0)
+    (hel-backward-WORD-start "Jumping    \n\n\n\n\nback from within a newline group selects previous block" 0 13 11 0)
+    (hel-backward-WORD-start "   \n   \nJumping back through alternated space blocks and newlines selects the space blocks" 0 8 7 4)
+    (hel-backward-WORD-start "   \n   \nJumping back through alternated space blocks and newlines selects the space blocks" 7 4 3 0)
+    (hel-backward-WORD-start "ヒーリ..クス multibyte characters behave as normal characters, including when interacting with punctuation" 0 8 8 0)
+    (hel-forward-word-end "Basic forward motion from the end of a word to the end of the next" 0 5 5 13)
+    (hel-forward-word-end "Previous anchor is irrelevant for end of word motion" 12 2 2 8)
+    (hel-forward-word-end "Jumping\n    into starting whitespace selects up to the end of next word" 0 7 8 16)
+    (hel-forward-word-end "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 0 12 12 15)
+    (hel-forward-word-end "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 12 15 15 18)
+    (hel-forward-word-end "...   ... punctuation and spaces behave as expected" 0 3 3 9)
+    (hel-forward-word-end "Newlines\n\nare bridged seamlessly." 0 8 10 13)
+    (hel-forward-word-end "Jumping\n\n\n\n\n\n   from newlines to whitespace selects to end of next word." 0 8 13 20)
+    (hel-forward-word-end "\n   \n   \n Jumping through alternated space blocks and newlines selects the space blocks" 1 4 5 8)
+    (hel-backward-word-end "Starting from after boundary retreats the anchor" 0 14 13 8)
+    (hel-backward-word-end "Previous anchor is irrelevant for backward motions" 26 12 13 8)
+    (hel-backward-word-end "    Starting from whitespace moves to first space in sequence" 0 4 4 0)
+    (hel-backward-word-end "Jumping\n    \nback through a newline selects whitespace" 0 13 12 8)
+    (hel-backward-word-end "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 31 21 21 18)
+    (hel-backward-word-end "alphanumeric.!,and.?=punctuation are considered 'words' for the purposes of word motion" 21 18 18 15)
+    (hel-backward-word-end "...   ... punctuation and spaces behave as expected" 0 10 9 3)
+    (hel-backward-word-end "...   ... punctuation and spaces behave as expected" 9 3 3 0)
+    (hel-backward-word-end "Newlines\n\nare bridged seamlessly." 0 10 8 0)
+    (hel-backward-word-end "Jumping    \n\n\n\n\nback from within a newline group selects previous block" 0 13 11 7)
+    (hel-backward-word-end "   \n   \nJumping back through alternated space blocks and newlines selects the space blocks" 0 8 7 4)
+    (hel-backward-word-end "   \n   \nJumping back through alternated space blocks and newlines selects the space blocks" 7 4 3 0)
+    (hel-backward-word-end "Test ヒーリクス multibyte characters behave as normal characters" 0 10 10 4)
+    (hel-forward-WORD-end "Basic forward motion from the end of a word to the end of the next" 0 5 5 13)
+    (hel-forward-WORD-end "Previous anchor is irrelevant for end of word motion" 12 2 2 8)
+    (hel-forward-WORD-end "Jumping\n    into starting whitespace selects up to the end of next word" 0 7 8 16)
+    (hel-forward-WORD-end "...   ... punctuation and spaces behave as expected" 0 3 3 9)
+    (hel-forward-WORD-end "Newlines\n\nare bridged seamlessly." 0 8 10 13)
+    (hel-forward-WORD-end "Jumping\n\n\n\n\n\n   from newlines to whitespace selects to end of next word." 0 9 13 20)
+    (hel-forward-WORD-end "\n   \n   \n Jumping through alternated space blocks and newlines selects the space blocks" 1 4 5 8)
+    (hel-backward-WORD-end "Starting from after boundary retreats the anchor" 0 9 8 0)
+    (hel-backward-WORD-end "    Jump to start of line from end of word preceded by whitespace" 3 4 4 0)
+    (hel-backward-WORD-end "Previous anchor is irrelevant for backward motions" 12 5 6 0)
+    (hel-backward-WORD-end "    Starting from whitespace moves to first space in sequence" 0 4 4 0)
+    (hel-backward-WORD-end "Identifiers_with_underscores are considered a single word" 0 20 20 0)
+    (hel-backward-WORD-end "Jumping\n    \nback through a newline selects whitespace" 0 13 12 8)
+    (hel-backward-WORD-end "Jumping to start of word from the end selects the word" 6 7 7 0)
+    (hel-backward-WORD-end "alphanumeric.!,and.?=punctuation are treated exactly the same" 29 30 30 0)
+    (hel-backward-WORD-end "...   ... punctuation and spaces behave as expected" 0 10 9 3)
+    (hel-backward-WORD-end "...   ... punctuation and spaces behave as expected" 10 6 7 3)
+    (hel-backward-WORD-end ".._.._ punctuation is joined by underscores into a single block" 0 6 6 0)
+    (hel-backward-WORD-end "Newlines\n\nare bridged seamlessly." 0 10 8 0)
+    (hel-backward-WORD-end "Jumping    \n\n\n\n\nback from within a newline group selects previous block" 0 13 11 7)
+    (hel-backward-WORD-end "   \n   \nJumping back through alternated space blocks and newlines selects the space blocks" 0 8 7 4)
+    (hel-backward-WORD-end "   \n   \nJumping back through alternated space blocks and newlines selects the space blocks" 7 4 3 0)
+    (hel-backward-WORD-end "ヒーリ..クス multibyte characters behave as normal characters, including when interacting with punctuation" 0 8 7 0)))
+
+(ert-deftest hel-word-motion-helix-selection-cases ()
+  "The word motions agree with the tests of Helix from a selection."
+  (pcase-dolist (`(,command ,text ,anchor ,head ,new-anchor ,new-head)
+                 hel-word-motion-tests--helix-selection-cases)
+    (hel-test-with #'text-mode
+        (concat (substring text 0 head) "|" (substring text head))
+      (set-mark (1+ anchor))
+      (activate-mark)
+      (funcall command 1)
+      (should (equal (list command text (mark) (point))
+                     (list command text (1+ new-anchor) (1+ new-head)))))))
 
 ;;; hel-word-motion-tests.el ends here

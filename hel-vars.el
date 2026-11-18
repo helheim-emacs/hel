@@ -51,6 +51,25 @@ buffer local variable."
 
 ;;; Appearence
 
+(defcustom hel-cursor-type 'helix
+  "How the main cursor looks in Normal state.
+Normal state draws every cursor as a box over its character. The value
+is one of:
+
+- `helix'   Cursor match the one in Helix.
+
+- `hybrid'  The cursor of Emacs is a bar at point with the color of the
+          main cursor, and the box has the faint face `hel-cursor-highlight'.
+          The bar shows where Emacs commands act, and it keeps its width with
+          a proportional font, where the width of a box changes from character
+          to character.
+
+A text terminal always shows its own cursor at point, so there only the
+face of the box changes."
+  :type '(choice (const :tag "Helix: a box" helix)
+                 (const :tag "Hybrid: a bar at point and a faint box" hybrid))
+  :group 'hel)
+
 (defcustom hel-bar-secondary-cursor ?\u2000
   "Character that shows a secondary cursor as a bar.
 Secondary cursors are bars in Insert state on a graphic display.
@@ -79,9 +98,14 @@ shown between two cells and moves the rest of the line to the right."
                                     (char-to-string ?\u2000))))))
 
 (defface hel-normal-state-main-cursor
-  `((t :background ,(face-background 'cursor)))
-  "The `:background' attribute of this face defines the color of the main cursor
-when Hel is in  Normal state. All other attributes are ignored."
+  `((t :background ,(face-background 'cursor)
+       :foreground ,(face-background 'default)))
+  "Face of the main cursor in Normal state.
+Hel draws this face over the character under the cursor.  Its background
+is the color of the cursor, and Hel keeps it equal to the cursor color
+of the theme.  Its foreground is the color of that character, and Hel
+keeps it equal to the background of the default face, so the character
+stays readable, as under the box cursor of Emacs."
   :group 'hel)
 
 (defface hel-insert-state-main-cursor
@@ -103,7 +127,7 @@ Hel is in Emacs state. All other attributes are ignored."
   :group 'hel)
 
 (defface hel-normal-state-secondary-cursor
-  '((t :foreground "black"
+  '((t :foreground "white"
        :background "#ea0064"))
   "Face for secondary cursors when Hel is in Normal state."
   :group 'hel)
@@ -120,10 +144,14 @@ Hel is in Emacs state. All other attributes are ignored."
     (((class color) (min-colors 88) (background dark))
      :background "gray30")
     (t :inverse-video t))
-  "Face of the cursor character in Normal state.
-The cursor character is the character that a command acts on when no
-region is active.  The face marks it with a faint background next to
-the bar of the cursor."
+  "Face of the box of the main cursor when `hel-cursor-type' is `hybrid'.
+The box covers the character that a command acts on when no region is
+active, and the head character of an active region."
+  :group 'hel)
+
+(defface hel-other-window-cursor
+  '((t :inherit hel-cursor-highlight))
+  "Face of the box of the cursor in a window that is not selected."
   :group 'hel)
 
 (defface hel-search-highlight '((t :inherit lazy-highlight))
@@ -292,19 +320,6 @@ was active on entering it."
   "File to save users preferences which commands to execute for one cursor
 and which for all."
   :type 'file
-  :group 'hel)
-
-(defcustom hel-max-cursors-number nil
-  "Safety ceiling for the number of active cursors.
-If your Emacs slows down or freezes when using too many cursors,
-customize this value appropriately.
-
-Cursors will be added until this value is reached, at which point
-you can either temporarily override the value or abort the
-operation entirely.
-
-If this value is nil, there is no ceiling."
-  :type '(integer)
   :group 'hel)
 
 (defvar hel-minor-modes-incompatible-with-multiple-cursors
@@ -498,12 +513,12 @@ FIRST and LAST are the first and the last selected objects.")
 (hel-defvar-permanent-local hel--selection-was-active-on-insert nil
   "Whether a selection was active the last time Hel switched to Insert state.")
 
-(hel-defvar-permanent-local hel--insert-side -1
-  "The side of point where leaving Insert state puts the cursor character.
+(hel-defvar-permanent-local hel--insert-appends nil
+  "Whether `hel-append' started Insert state.
 Insert state never moves the selection.  `hel-append' types inside it,
-so the cursor character becomes the last character before point (1).
+so leaving Insert state moves point back onto the last character typed.
 Every other command types before it, so the cursor character stays the
-one after point (-1).")
+one after point.")
 
 (hel-defvar-permanent-local hel-scroll-count 0
   "Hold last used prefix for `hel-scroll-up' and `hel-scroll-down' commands.
@@ -525,7 +540,7 @@ Default value is 0 - scroll half the screen.")
   (add-to-list 'savehist-additional-variables 'hel-regex-history))
 
 (hel-defvar-permanent-local hel--cursors-table nil
-  "Hash table mapping secondary cursors IDs to cursors overlays.")
+  "Hash table mapping secondary cursors IDs to their overlays.")
 
 (defvar hel--secondary-cursor-last-used-id 0
   "Last used secondary cursor ID.")
@@ -577,16 +592,16 @@ multiple cursors.")
 (hel-defvar-permanent-local hel--buffer-undo-list-pointer nil
   "Stores the start of the current undo step in `buffer-undo-list'.")
 
-(hel-defvar-permanent-local hel-undo--cursor-selections nil
+(hel-defvar-permanent-local hel-undo--selections nil
   "The values of all cursors at the beginning of the current undo step.
-The list is the one that `hel-cursor-selections' returns.")
+The list is the one that `hel-selections' returns.")
 
 (hel-defvar-permanent-local hel-undo--previous-command-kind 'other
   "Kind of the previous editing command, as `hel-undo--command-kind' returns it.")
 
-(hel-defvar-permanent-local hel--cursor-selections-history nil
+(hel-defvar-permanent-local hel--selections-history nil
   "The values of the cursors that `hel-restore-cursors' brings back.
-The list is the one that `hel-cursor-selections' returns.")
+The list is the one that `hel-selections' returns.")
 
 (defvar-local hel--input-cache nil)
 

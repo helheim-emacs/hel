@@ -118,7 +118,7 @@ Each object has four commands, such as ~hel-mark-function~,
 pairs of paragraph motions are hard to tell apart.
 
 The word motions run the same algorithm as =]= and =[= over ~word~ and
-~WORD~, always from point: =w= to the start of the next word, =b= back to
+~WORD~, from the cursor: =w= to the start of the next word, =b= back to
 the start, =e= to the end, and ~hel-backward-word-end~ (=ge= in Vim) back to
 the end of the previous word, with point after its last character. A word
 is a /body/, and a /fence/ stands between two bodies. A fence is a line
@@ -248,8 +248,8 @@ run in Normal state. The nested Hel keymaps of minor modes come first in
    character, the one that the screen shows, as in Helix, whose cursor is
    always a one-character selection. =mi=, =ma= and the pair keys take the
    object at the cursor, and the tree commands the node under the selection
-   (rule 10). =]= and =[= are motions: they go from point, as the word
-   motions do, and take the object on their side of point.
+   (rule 10). =]= and =[= are motions: they go from the cursor, as the word
+   motions do, and take the object on their side of it.
 10. *The tree commands start from the node under the selection.* This is
     the smallest named node that covers the selection without the
     whitespace at its edges. =w= and =x= select trailing space and
@@ -276,9 +276,9 @@ run in Normal state. The nested Hel keymaps of minor modes come first in
       selection, both take the children of the node around it: =M-a= in
       =(f a | b)= puts a cursor on =f=, =a= and =b=.
 
-    The texts have no mark, so the cursor character is the character after
-    =|=, except in the rows marked =h=, where =h= has moved it to the
-    character before =|=. A dash means that the selection stays.
+    The cursor character is the character after =|=, except in the rows
+    marked =h=, where =h= first moves it to the character before =|=. A dash
+    means that the selection stays.
 
     #+begin_example
     Text                   M-n           M-p                 M-o
@@ -476,9 +476,9 @@ Every text object follows the rules of the word and the paragraph:
   signature.
 - =ma= selects it with the gap after it: the spaces after a word, the blank
   lines after a paragraph or a function.
-- =]= selects from point to the end of the object under the cursor, =[= to
-  its start. When point is already there, the key selects the whole next or
-  previous object.
+- =]= selects from the cursor to the end of the object under it, =[= to
+  its start. When the cursor is already there, the key selects the whole
+  next or previous object.
 
 So =maf= and =d= cut a function with its blank lines, the text around keeps
 one gap, and =p= elsewhere puts back the function with its own gap.
@@ -838,7 +838,28 @@ Then the driver applies the same rules to every producer:
 
 ** Moving to the edge of an object
 
-=]= and =[= select from point to an edge of an object:
+=]= and =[= select from the cursor to an edge of an object. The motion
+starts at the head character of the selection, which for a bare cursor is
+the cursor character. It counts as passed, as in Helix: the selection
+takes it in, so =b= on the last letter of a word selects the whole word,
+and =w= after =e= on =foo bar= selects =o =. The anchor of a selection
+plays no part. A count adds the steps: the selection runs from the head
+character to the edge of the COUNT-th object, so =2w= selects two words.
+Helix starts a new selection on each step, so its =2w= selects only the
+second word. When the head character alone is a step of the motion, the
+motion goes on from its other edge and leaves it out: =w= on the space
+before a word selects the word, and =]f= on the newline that ends
+a function selects the next function. When no object lies ahead, the
+selection stays, so a motion toward the edge of the buffer from a cursor
+on that edge does nothing; a bare cursor on the last character selects
+that character, which looks the same. With =v= the motion starts at point
+and extends the selection. A selection of one character keeps its
+character, so the motion starts past it: on =-if-let=, =vw= selects
+=-if=. The tests of Helix for its word motions hold in
+Hel, except where a word differs: =_= ends a word in ~text-mode~. Blanks at the edge of the buffer are a step of
+their own, as in Helix: =b= on the first word of =    Jump= selects the
+four blanks, and =e= on the last word of =foo   = selects the three.
+
 
 - *Inside an object*, =]f= selects to the end of the innermost object that
   holds the character after point, and =[f= to the start of the one that
@@ -866,11 +887,11 @@ without its comma, =]f= a decorated function with its decorators, and in
 comment of =# b= and =# c=. The motion ignores parents, so =]s= with
 a count passes the end of a paragraph, while =mis= stops there.
 
-={= and =}= go to the start of a paragraph and always select from point,
-never the whole object: =}= to the start of the next paragraph, with the
-blank lines before it; ={= to the start of the paragraph under the cursor,
-or of the previous one when point is there. With no paragraph left they
-select to the buffer edge. At the edge the selection stays and the echo area
+={= and =}= go to the start of a paragraph and always select from the
+cursor, never the whole object: =}= to the start of the next paragraph,
+with the blank lines before it; ={= to the start of the paragraph under the
+cursor, or of the previous one when the cursor is there. With no
+paragraph left they select to the buffer edge. At the edge the selection stays and the echo area
 says "End of buffer" or "Beginning of buffer"; the message stays out of
 =*Messages*=, and a keyboard macro goes on.
 
@@ -1071,8 +1092,9 @@ brackets.
 
 ** Surround
 
-=ms= wraps the selection in the delimiters of a key, =md= deletes the
-delimiters of a pair, and =mr= replaces them with those of another key.
+=ms= wraps the selection in the delimiters of a key, and a bare cursor
+wraps its character, as a selection of one character, and stays on it.
+=md= deletes the delimiters of a pair, and =mr= replaces them with those of another key.
 ~hel-surround-delimiters~ maps a key character to its two strings and its
 /padding/, the whitespace between a delimiter and the text. A character
 without an element has itself on both sides.
@@ -1455,45 +1477,65 @@ moving.
   of the history of =M-i= also records whether the region was active, so
   a chain that began at a bare cursor returns to its cursor character.
 - A selection always exists. It is the active region when that is not
-  empty, and otherwise the /cursor character/: one character next to point,
-  drawn with a faint face, on which every command acts. =h= and =l= move it
-  by one character, as a block cursor moves, and point goes to its nearest
-  edge, so on a reversal the character moves and the bar stays. The
-  inactive mark lies on its other edge, because the side depends on the
-  last motion and point alone does not record it. The mark is checked on
-  every read, never repaired: it counts only at point − 1 with no newline
-  before point, and otherwise the cursor character is the character after
-  point, so a command outside Hel that moves point gives that fallback. At
-  the end of the buffer the selection is empty. The block cursor is the one
-  rule that moves the character on every key and still puts it on the
-  character that the user moved toward, so =h d= after =<Esc>= deletes the
-  character that the user looks at.
+  empty, and otherwise the /cursor character/: the character after point,
+  on which every command acts, as under the box cursor of Emacs and the
+  cursor of Helix. =h= and =l= move it by one character, and point moves
+  with it. The inactive mark plays no part, so a command outside Hel that
+  moves point always leaves the right cursor character, and no rule has to
+  guard against a stale mark. At the end of the buffer the selection is
+  empty. A direction belongs only to an active selection: a forward one has
+  its head character before point, the one case where point is after the
+  cursor. So =;= and =<Esc>= move point onto the head character, =j= and
+  =k= first collapse a selection onto it and then keep its column, as Emacs
+  keeps the column of point.
 - Insert state never moves the selection, as in Helix. The text typed
   after =a= joins the selection, so the cursor character becomes the last
-  character typed; after every other command the text lands before the
-  selection, and the cursor character stays the one after it. So =<Esc>=
-  with nothing typed leaves the selection as it was, and the same key
-  continues the typing at the same place.
+  character typed, and point steps back before it; after every other
+  command the text lands before the selection, and the cursor character
+  stays the one after it. So =<Esc>= with nothing typed leaves the
+  selection as it was, and the same key continues the typing at the same
+  place.
 - =a= never leaves the line where the selection ends: when the selection
   ends with a newline, the typing starts before it. =o= and =O= open a new
   line.
-- =M-;= on the cursor character moves point to its other edge, as Helix
-  swaps the anchor and the head of a one-character selection.
+- =M-;= does nothing on the cursor character, as Helix swaps nothing on
+  a cursor whose anchor and head are one position.
+- =f=, =t=, =F= and =T= start from the cursor as Helix does: from a bare
+  cursor the search starts after the cursor character, and the selection
+  takes it in. So =t= skips the character right after the cursor, and
+  a repeated =t= moves on. From an active region they start at point. When
+  the character is not found, the selection stays.
+- =p= without a selection pastes after the cursor character and =P=
+  before it. Like =a=, =p= keeps to the line: on a newline the text goes
+  before the newline. =n= and =N= search from the edge of the selection,
+  so from a bare cursor =n= starts after the cursor character and never
+  finds the match that the cursor is already on.
+- =R= without a selection replaces the cursor character, and the pasted
+  text becomes a forward selection, so the cursor ends on its last
+  character. =v= on a bare cursor keeps the direction -1: its selection of
+  one character has point before the character, so a command that drops
+  the region leaves the same cursor character.
 - =mm= moves the cursor character from a bracket to its match, and from
   inside a pair to the closing bracket, as in Helix. When extending, the
   head character moves and the anchor character stays, as with =h= and =l=.
 - Two levels write the selection. Two primitives store it and decide
   nothing: ~hel-select~ stores an active region from a range and
-  a direction, and ~hel-set-cursor~ stores a bare cursor from point and the
-  side of the cursor character. Two motions decide where the cursor goes
-  and end with a primitive. ~hel-move-onto-char~ goes to a character, for
-  =h=, =l= and =mm=, and computes the direction itself. ~hel-move-to-pos~
-  goes to a position, for every other motion: it selects the text that the
-  motion passed over, or leaves a bare cursor when it has no start, as the
-  jumps =gg=, =G= and the mark ring do. The two kinds differ in both modes,
-  so neither is written with the other: without extending, a step back
-  onto a character keeps point where it is, and with extending, a motion
-  to a character keeps the anchor character, see below.
+  a direction, and ~hel-set-cursor~ stores a bare cursor from point. Two
+  motions decide where the cursor goes and end with a primitive.
+  ~hel-move-onto-char~ goes to a character, for =h=, =l= and =mm=, and
+  computes the direction itself. ~hel-move-to-pos~ goes to a position, for
+  every other motion: it selects the text that the motion passed over, or
+  leaves a bare cursor when it has no start, as the jumps =gg=, =G= and the
+  mark ring do. The two kinds differ when extending: a motion to
+  a character keeps the anchor character, see below.
+- Emacs commands that read the text before point, such as
+  =eval-last-sexp= and =pp-eval-last-sexp=, are written for a bar between
+  characters. In Normal state they see point at the end of the selection,
+  so on a closing bracket they read the whole list. =show-paren-mode= sees
+  point beside the bracket at the head of the selection, so it shows the
+  pair of the bracket under the box. Hel wraps the public
+  ~show-paren-data-function~ while ~hel-mode~ is on, so a function that the
+  user put there still runs.
 - =v= is a flag, ~hel-extend-selection~, not a state of its own: Helix
   needs a Select keymap because a key names one function, while in Hel the
   ~interactive~ form of a command reads the flag and passes it on as the
@@ -1576,28 +1618,50 @@ secondary cursors, whose state lives in overlays.
   a command that edits at every cursor costs the square of it. Overlays
   live in a tree. Point advances on an insertion at its position, as
   a marker of insertion type t, and the mark does not.
-- *The state decides the shape of a cursor, and no setting does.* In Normal
-  state the main cursor is a bar at point with a face on its character, so the
-  two together show the character and the side of point; a secondary cursor is
-  a box over its character, and with an active region over its head character,
-  inside the selection, as in Helix. In Insert state every cursor is a
-  position: a bar on a graphic display, and in a text terminal a box over the
-  character after point, because a bar string there would push the line one
-  cell to the right. The display is the frame of the selected window when Hel
-  draws. Emacs state uses an underscore and names a face only for its main
-  cursor. Normal and Insert state name the faces of their main and secondary
-  cursors, and =v= gives both one face. One function answers the shape and the
-  face for both kinds, and one the bounds of the face on the character; a
-  renderer for each medium applies them, because the set of kinds is closed.
+- *The state decides the shape of a cursor.* In Normal state every cursor
+  is a box over its head character, as in Helix: the character after point,
+  or the character before point in a forward selection. Hel draws the box
+  of the main cursor too, so the cursor of Emacs is hidden on a graphic
+  display; a text terminal shows it anyway, at point. One setting,
+  ~hel-cursor-type~, chooses between this look of Helix and a /hybrid/ one,
+  which shows point as a bar and gives the box of the main cursor a faint
+  face. A box changes its width from character to
+  character with a proportional font, and the bar does not; the bar also
+  shows where Emacs commands act. Every cursor lies above the region of
+  Emacs and above the highlight of ~show-paren-mode~, so a cursor on
+  a bracket stays visible and only the matching bracket is highlighted.
+  The background of the main cursor is the cursor color of the theme, and
+  its character takes the background of the default face, as under the
+  box cursor of Emacs, so the character stays readable on a dark cursor
+  in a light theme and on a bright cursor in a dark theme. Every window
+  that shows a buffer in Normal state draws a box: the selected window over the head character of the selection,
+  another window over the character after its own point, with a dimmer
+  face. That dimmer box lies under the highlights of other packages, so
+  the matches that Consult previews from the minibuffer stay fully
+  visible; the box in the selected window lies above them. A window that
+  is not selected keeps no selection of its own, but its point is enough
+  for a bare cursor. In
+  Insert state every cursor is a position: a bar on a graphic display, and
+  in a text terminal a box over the character after point, because a bar
+  string there would push the line one cell to the right. The display is
+  the frame of the selected window when Hel draws. Emacs state uses an
+  underscore and names a face only for its main cursor. Normal and Insert
+  state name the faces of their main and secondary cursors, and =v= gives
+  both one face. One function answers the shape and the face for both
+  kinds, and one the bounds of the box; a renderer for each medium applies
+  them, because the set of kinds is closed.
 - *The names are main and secondary.* Helix says primary and secondary,
   but in Emacs "primary" names the X selection that
   ~select-active-regions~ fills, and Hel's window switch binds that
   variable. A secondary cursor is a full cursor that waits in a container,
   so no name calls it fake. Its selection is its /region/, because Emacs
   says "secondary selection" for the text of =M-mouse-1=.
-- *Each window has one highlight overlay*, in its window parameter, and
-  only the function that draws the highlight writes that parameter and the
-  record of the window that showed it last.
+- *Each window has one overlay of the main cursor*, in its window
+  parameter, and only the function that draws it writes that parameter and the
+  record of the window that showed it last. A deleted window leaves its
+  overlay in its buffer, and Emacs gives no hook for the deletion, so
+  a change of the window configuration deletes the overlays of dead
+  windows in the buffers that the frame shows.
 - *Emacs state has no secondary cursors.* Emacs commands know nothing of
   them, so the change to Emacs state removes them itself. Every road into
   Emacs state, such as =magit-blame-mode= or the end of a wdired edit, keeps

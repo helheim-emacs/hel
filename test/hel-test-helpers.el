@@ -127,7 +127,7 @@ nil when it draws no cell."
 (defun hel-test-drawn-cursor-char (&optional window)
   "Return the cursor character that WINDOW shows, as `hel-test--drawing' does.
 WINDOW is the selected window by default."
-  (hel-test--drawing (window-parameter window 'hel--cursor-highlight-overlay)))
+  (hel-test--drawing (window-parameter window 'hel--main-cursor-overlay)))
 
 (defun hel-test-drawn-secondary-cursors ()
   "Return the drawing of every secondary cursor, as `hel-test--drawing' does.
@@ -266,7 +266,7 @@ afterwards.  A tree-sitter MODE without its grammar skips the test."
 The cursor character is the first character of NEEDLE."
   (goto-char (point-min))
   (search-forward needle)
-  (hel-set-cursor (match-beginning 0) -1))
+  (hel-set-cursor (match-beginning 0)))
 
 (defun hel-test-select (needle)
   "Select the first NEEDLE, with point at its end."

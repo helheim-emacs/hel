@@ -289,6 +289,42 @@ in the command loop, and the secondary cursors can pick up on those instead."
   "g"   nil
   ", r" #'emacs-lisp-compilation-recompile)
 
+;; In Normal state the cursor character stands after point, so a command
+;; that reads the sexp before point reads it before the selection end.
+
+(defun hel-at-selection-end-a (fun &rest args)
+  "Around advice: call FUN with point at the end of the selection.
+In Normal state a command that reads the text before point then reads
+the cursor character, or the selection, and what precedes it."
+  (if hel-normal-state
+      (save-excursion
+        (goto-char (cdr (hel-selection-bounds)))
+        (apply fun args))
+    (apply fun args)))
+
+;; `eval-last-sexp' and `eval-print-last-sexp'.
+(hel-advice-add 'elisp--preceding-sexp :around #'hel-at-selection-end-a)
+;; `pp-eval-last-sexp' and `pp-macroexpand-last-sexp'.
+(hel-advice-add 'pp-last-sexp :around #'hel-at-selection-end-a)
+
+;;;; show-paren-mode
+
+;; Hel wraps `show-paren-data-function' while `hel-mode' is on, see
+;; `hel-mode'.
+
+(defun hel--show-paren-data (fun)
+  "Call FUN, which finds the pair to show, from the bracket under the cursor.
+In Normal state point goes after a closing bracket at the head of the
+selection, and before an opening one, because Emacs shows a closing
+bracket before point and an opening one after it."
+  (save-excursion
+    (when hel-normal-state
+      (let ((head (hel--head-char (hel-selection))))
+        (pcase (syntax-class (syntax-after head))
+          (4 (goto-char head))
+          (5 (goto-char (1+ head))))))
+    (funcall fun)))
+
 ;;;; Help
 
 (with-eval-after-load 'help-mode

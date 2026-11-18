@@ -520,7 +520,7 @@ stays inactive."
   (-let [((begin . end) dir active) entry]
     (if active
         (hel-select (cons begin end) dir)
-      (hel-set-cursor (if (< 0 dir) end begin) dir))))
+      (hel-set-cursor begin))))
 
 (defun hel-mark-text-object (thing kind count)
   "Select COUNT THINGs at the cursor, inner or around as KIND says.
@@ -569,13 +569,22 @@ KIND is:
     (hel--no-thing-producer-message thing)))
 
 (defun hel-mark-to-thing-edge (thing count edge skip-gap? extend)
-  "Select from point to the EDGE of the COUNT-th THING.
+  "Select from the cursor to the EDGE of the COUNT-th THING.
 A negative COUNT goes backward. EDGE and SKIP-GAP? are as in
-`hel-thing-reach'. With EXTEND, extend the selection instead of
-replacing it, and go on to the next edge when the
-motion would stop on the anchor of the selection, where the selection
-would be empty. When no thing exists in the direction, the selection
-stays as it is."
+`hel-thing-reach'.
+
+The motion starts at the head character of the selection, the
+character under the cursor, which counts as passed, as in Helix: the
+selection takes it in.  When the head character alone is a step of the
+motion, the motion goes on from its other edge and leaves it out, so
+`w' on the space before a word selects that word.
+
+With EXTEND, start at point and extend the selection instead of
+replacing it.  A selection of one character keeps its character, see
+`hel--selection-anchor', so the motion starts past it.  Go on to the
+next edge when the motion would stop on the anchor of the selection,
+where the selection would be empty.  When no thing exists in the
+direction, the selection stays as it is."
   (if-let* ((producer (hel-thing-producer thing)))
       (cl-flet ((reach (pos count)
                   ;; The range in the order of the motion: (START . END).
@@ -584,7 +593,37 @@ stays as it is."
                     (if (< count 0) (cons end begin) (cons begin end)))))
         (let ((anchor (and extend
                            (hel--selection-anchor (hel-sign count)))))
-          (-when-let* (((start . end) (reach (point) count))
+          (-when-let* (((start . end)
+                        (if extend
+                            (reach (-let [((begin . end)) (hel-selection)]
+                                     (cond ((/= 1 (- end begin)) (point))
+                                           ((< 0 count) end)
+                                           (t begin)))
+                                   count)
+                          ;; NEAR and FAR are the edges of the head
+                          ;; character behind and ahead of the motion.
+                          (let* ((begin (hel--head-char (hel-selection)))
+                                 (end (min (1+ begin) (point-max)))
+                                 (near (if (< 0 count) begin end))
+                                 (far (if (< 0 count) end begin))
+                                 (step (reach near (hel-sign count))))
+                            (cond ((= (point) (if (< count 0)
+                                                  (point-min)
+                                                (point-max)))
+                                   ;; As in Helix, nothing lies ahead of
+                                   ;; a cursor at the edge of the buffer.
+                                   nil)
+                                  ((and step (/= near far) (eql (cdr step) far))
+                                   ;; At the edge of the buffer the motion
+                                   ;; from FAR gives an empty range.  Then
+                                   ;; a bare cursor selects its character,
+                                   ;; and a selection stays.
+                                   (-let [(start . end) (reach far count)]
+                                     (cond ((and start (/= start end))
+                                            (cons start end))
+                                           ((not (use-region-p)) step))))
+                                  ((= 1 (abs count)) step)
+                                  (t (reach near count))))))
                        ((start . end) (if (eql end anchor)
                                           (reach end (hel-sign count))
                                         (cons start end))))
@@ -1084,10 +1123,13 @@ A fence and the blanks before it are each a step of their own, see
 point over the body of one word."
   (let ((origin (point)))
     (hel--word-skip-fence dir)
-    (hel-skip-blanks dir)
-    (cond ((if (< dir 0) (bobp) (eobp))
+    (cond ((and (= 0 (hel-skip-blanks dir))
+                (if (< dir 0) (bobp) (eobp)))
            ;; Only a fence is left: no step.
            (goto-char origin))
+          ((if (< dir 0) (bobp) (eobp))
+           ;; Blanks at the edge of the buffer are a step, as in Helix.
+           nil)
           ((or (hel-line-boundary-p dir)
                ;; A fence comes next: the blanks were a step of their own.
                (let ((next (if (< dir 0) (preceding-char) (following-char))))
@@ -1111,7 +1153,9 @@ point over the body of one word."
     (goto-char pos)
     (let ((word-motion (hel-motion-producer-function producer))
           (backward-to-end? (and (< count 0) (eq edge :end))))
-      (unless backward-to-end?
+      (if backward-to-end?
+          ;; As in Helix, the newlines before POS are not a step.
+          (skip-chars-backward "\r\n")
         (hel--word-skip-fence (if (< count 0) -1 1)))
       (let ((start (point)))
         (cond (backward-to-end?

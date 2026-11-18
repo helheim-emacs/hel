@@ -591,7 +591,7 @@ EXTEND, stretch the selection from its anchor to TO, see
          (hel-select (cons (min from to) (max from to))
                      (if (< to from) -1 1)))
         (t
-         (hel-set-cursor to -1))))
+         (hel-set-cursor to))))
 
 (defun hel--selection-anchor (dir)
   "Return the end of the selection that a motion in DIR extends it from.
@@ -605,14 +605,11 @@ a bare point it is the cursor character."
           ((< 0 side) begin)
           (t end))))
 
-(defun hel-set-cursor (pos side)
+(defun hel-set-cursor (pos)
   "Leave a bare cursor at POS: point there, and no active region.
-The cursor character is the one on side SIDE of POS: SIDE is 1 for the
-character before POS and -1 for the character after it, as the direction
-of a selection says at which end point is."
+The cursor character is the character after POS."
   (deactivate-mark)
-  (goto-char pos)
-  (set-marker (mark-marker) (- pos side)))
+  (goto-char pos))
 
 ;; These functions switch between two kinds of coordinates: gaps and characters.
 ;; A ruler shows the difference:
@@ -645,26 +642,21 @@ of a selection says at which end point is."
 ;; (BEGIN . BEGIN+N), and an empty range is (P . P).
 (defun hel-move-onto-char (char extend)
   "Move the cursor onto the character CHAR.
-Without EXTEND, CHAR becomes the cursor character, and point goes to its
-edge that is nearest to point, as a block cursor moves.  A newline has
-point before it, on its line.  With EXTEND, the selection keeps the
-character at its other end and stretches to CHAR.  When CHAR is that
-character, the selection of one character faces the way the head moved."
+Without EXTEND, CHAR becomes the cursor character: point goes before
+it.  With EXTEND, the selection keeps the character at its other end and
+stretches to CHAR.  When CHAR is that character, the selection of one
+character faces the way the head moved."
   (if extend
-      (-let* ((((begin . end) side) (hel-selection))
-              (head (if (< 0 side) (1- end) begin))
-              (anchor (if (< 0 side) begin (1- end))))
+      (-let* (((selection &as (begin . end) dir) (hel-selection))
+              (head (hel--head-char selection))
+              (anchor (if (< 0 dir) begin (1- end))))
         (hel-select (cons (min char anchor) (1+ (max char anchor)))
                     (cond ((< anchor char) 1)
                           ((< char anchor) -1)
                           ((< char head) -1)
                           ((< head char) 1)
-                          (t side))))
-    (let ((edge (cond ((eq ?\n (char-after char)) char)
-                      ((<= char (point) (1+ char)) (point))
-                      ((< (point) char) char)
-                      (t (1+ char)))))
-      (hel-set-cursor edge (if (= edge char) -1 1)))))
+                          (t dir))))
+    (hel-set-cursor char)))
 
 (defun hel-selection ()
   "Return the selection as (RANGE DIRECTION).
@@ -685,23 +677,26 @@ its arguments. RANGE is empty only at the end of the buffer."
 (defun hel--selection-from (point mark active)
   "Return the selection of a cursor with POINT, MARK and ACTIVE.
 The value is (RANGE DIRECTION), as `hel-selection' returns it.  ACTIVE
-is non-nil when the region of the cursor is active.  POINT and MARK
-are numbers; MARK may be nil."
+is non-nil when the region of the cursor is active.  Without an active
+region the selection is the character after POINT.  POINT and MARK are
+numbers; MARK may be nil."
   (cond ((and active (/= point mark))
          (if (< point mark)
              (list (cons point mark) -1)
            (list (cons mark point) 1)))
-        ;; Use `eql' instead of `=' because MARK can be nil.
-        ;; `char-before' is nil at the start of a narrowed buffer, where
-        ;; the mark can still lie just before point.
-        ((and (eql mark (1- point))
-              (char-before point)
-              (/= ?\n (char-before point)))
-         (list (cons mark point) 1))
         (t
          (list (cons point
                      (min (1+ point) (point-max)))
                -1))))
+
+(defun hel--head-char (selection)
+  "Return the position of the head character of SELECTION.
+The head character is the character that the cursor covers: the last
+character of a forward selection, and the first character otherwise,
+which for a bare cursor is the character after point.  SELECTION is
+\((BEGIN . END) DIRECTION), as `hel-selection' returns it."
+  (-let [((begin . end) dir) selection]
+    (if (< dir 0) begin (1- end))))
 
 (defun hel-ensure-region-direction (direction)
   "Exchange point and mark if the region direction mismatches DIRECTION.
@@ -716,10 +711,8 @@ the whitespace at the edges of the selection is left out. At a bare
 point the selection is the cursor character, so this is the cursor
 character itself. At the end of the buffer, see
 `hel-trimmed-selection-bounds'."
-  (-when-let ((begin . end) (hel-trimmed-selection-bounds))
-    (if (< 0 (hel-selection-direction))
-        (1- end)
-      begin)))
+  (-when-let (bounds (hel-trimmed-selection-bounds))
+    (hel--head-char (list bounds (hel-selection-direction)))))
 
 (defun hel-trimmed-selection-bounds ()
   "Return the bounds that the structural commands start from, or nil.
@@ -847,9 +840,15 @@ If NOMSG is nil show `Mark set' message in echo area."
 
 (defun hel-paste (yank-function direction)
   "Paste before/after selection depending on DIRECTION.
+Without an active region the selection is the cursor character, and
+pasting after it keeps to its line: on a newline the text goes before it.
 YANK-FUNCTION should be a `yank' like function."
   (let ((region-dir (if (use-region-p) (hel-region-direction) 1))
         (deactivate-mark nil))
+    (when (and (not (use-region-p))
+               (< 0 direction)
+               (not (memq (char-after) '(?\n nil))))
+      (forward-char))
     (setq hel--yank-transform-linewise-selection?
           (when (use-region-p)
             (hel-ensure-region-direction direction)

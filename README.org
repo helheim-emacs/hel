@@ -180,6 +180,9 @@ alternatives in Emacs.
 
 - Mark commands accept numeric arguments: =m2ip= or =2mip= — select 2 paragraphs.
 
+- Motions with a count select everything they pass over: =2w= selects two
+  words, while in Helix it selects only the second one.
+
 - You can restore last multiple selections with =gv=.
 
 - =gs=, =gh=, and =gl= create selections. This is for consistency, since all other
@@ -266,13 +269,15 @@ deactivate the mark before undoing.
 
 #+begin_quote
 [!TIP]
-In Normal state the cursor is a bar with a faint highlight on the character
-that commands act on: the bar shows on which side of that character point
-is. In Insert state every cursor is a bar where the next character goes; in
-a text terminal, which cannot draw a bar between two cells, every cursor is
-a box over the character after that place. Emacs state uses an underscore.
-These shapes follow from the states, so Hel has no setting for them; the
-faces of the cursors choose their colours.
+In Normal state every cursor is a box over the character that commands act
+on, as in Helix: the character after point, or the character at the head of
+an active selection. In Insert state every cursor is a bar where the next
+character goes; in a text terminal, which cannot draw a bar between two
+cells, every cursor is a box over the character after that place. Emacs
+state uses an underscore. These shapes follow from the states; the faces of
+the cursors choose their colours. With a proportional font, set
+~hel-cursor-type~ to ~hybrid~: Normal state then also shows point as a bar,
+and the box of the main cursor gets a faint face.
 #+end_quote
 
 #+begin_quote
