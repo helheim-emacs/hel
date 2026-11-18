@@ -1221,6 +1221,22 @@ DIRECTION), as `hel-selection' returns it."
                    head
                  (1+ head)))))
 
+(defun hel--cursor-display (begin face)
+  "Return the string that draws the box of a cursor on trailing whitespace.
+Redisplay paints the trailing whitespace of a line with the face
+`trailing-whitespace' when `show-trailing-whitespace' is on, and that
+face replaces every other face, the box too.  Redisplay leaves alone the
+text of a display string, so the box over a trailing space or tab is
+a display string of that character with FACE.  The display string of
+a tab keeps the width of the tab.  BEGIN is the position of the cursor
+character.  Return nil when the character is not trailing whitespace
+or the option is off."
+  (when (and show-trailing-whitespace
+             (save-excursion
+               (goto-char begin)
+               (looking-at-p "[ \t]+$")))
+    (propertize (string (char-after begin)) 'face face)))
+
 (defun hel--draw-main-cursor-overlay (windows)
   "Draw the box of the main cursor in each of WINDOWS.
 Redisplay calls this function with the WINDOWS that it is about to
@@ -1230,10 +1246,10 @@ that `hel--cursor-bounds' returns.  The selected window shows it with
 the face that `hel--cursor-look' gives the main cursor.  Another window
 shows it at its own point, with the face `hel-other-window-cursor'.
 A character without a cell of its own shows as a cell of one space,
-whose `cursor' property puts the cursor of Emacs before it.
+whose `cursor' property puts the cursor of Emacs before it.  A box over
+trailing whitespace is the string from `hel--cursor-display'.
 
-Each window keeps its own overlay in its `hel--main-cursor-overlay'
-parameter."
+Each window keeps its own overlay in its `hel--main-cursor-overlay' parameter."
   (dolist (window (if (consp windows) windows (window-list-1 nil t t)))
     (when (window-live-p window)
       (let ((overlay (window-parameter window 'hel--main-cursor-overlay))
@@ -1269,9 +1285,11 @@ parameter."
               (if (= begin end)
                   (progn
                     (overlay-put overlay 'face nil)
+                    (overlay-put overlay 'display nil)
                     (overlay-put overlay 'after-string
                                  (propertize " " 'face face 'cursor t)))
                 (overlay-put overlay 'face face)
+                (overlay-put overlay 'display (hel--cursor-display begin face))
                 (overlay-put overlay 'after-string nil)))))))))
 
 (defun hel--delete-dead-main-cursor-overlays ()

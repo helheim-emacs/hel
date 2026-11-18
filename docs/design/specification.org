@@ -1650,8 +1650,10 @@ secondary cursors, whose state lives in overlays.
   the matches that Consult previews from the minibuffer stay fully
   visible; the box in the selected window lies above them. A window that
   is not selected keeps no selection of its own, but its point is enough
-  for a bare cursor. In
-  Insert state every cursor is a position: a bar on a graphic display, and
+  for a bare cursor. A box over trailing whitespace is a display string of
+  its character, because the face of ~show-trailing-whitespace~ replaces
+  every face of buffer text and leaves the text of a display string alone.
+  In Insert state every cursor is a position: a bar on a graphic display, and
   in a text terminal a box over the character after point, because a bar
   string there would push the line one cell to the right. The display is
   the frame of the selected window when Hel draws. Emacs state uses an

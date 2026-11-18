@@ -61,6 +61,7 @@
 (declare-function hel-draw-cursor "hel-core")
 (declare-function hel--cursor-look "hel-core")
 (declare-function hel--cursor-bounds "hel-core")
+(declare-function hel--cursor-display "hel-core")
 
 ;;; Multiple cursors minor mode
 
@@ -178,12 +179,15 @@ A bar is the string `hel-bar-secondary-cursor' at its point."
       ('box
        (move-overlay cursor begin end)
        (overlay-put cursor 'face (if (/= begin end) face))
+       (overlay-put cursor 'display (if (/= begin end)
+                                        (hel--cursor-display begin face)))
        (overlay-put cursor 'before-string nil)
        (overlay-put cursor 'after-string (if (= begin end)
                                              (propertize " " 'face face))))
       ('bar
        (move-overlay cursor point point)
        (overlay-put cursor 'face nil)
+       (overlay-put cursor 'display nil)
        (overlay-put cursor 'before-string
                     (propertize hel-bar-secondary-cursor
                                 'face `(,face (:height
@@ -192,6 +196,7 @@ A bar is the string `hel-bar-secondary-cursor' at its point."
       (_
        (move-overlay cursor point point)
        (overlay-put cursor 'face nil)
+       (overlay-put cursor 'display nil)
        (overlay-put cursor 'before-string nil)
        (overlay-put cursor 'after-string nil))))
   (hel--draw-secondary-region cursor)

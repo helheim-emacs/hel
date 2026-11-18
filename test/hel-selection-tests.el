@@ -504,6 +504,33 @@ window it lies above that highlight."
         (hel-test-redisplay)
         (should (< (box-priority first) 2 (box-priority second)))))))
 
+(ert-deftest hel-cursor-box-on-trailing-whitespace ()
+  "A box over a trailing space or tab is a display string of the
+character with the face of the box, because the face of
+`show-trailing-whitespace' would hide the face of the box.  A space
+inside the line keeps the face alone.  So do the secondary cursors."
+  (hel-test-with #'fundamental-mode "a b| \t\nc"
+    (setq-local show-trailing-whitespace t)
+    (cl-flet ((display ()
+                (overlay-get (window-parameter nil 'hel--main-cursor-overlay)
+                             'display)))
+      (hel-test-redisplay)
+      (should (equal (display) " "))
+      (should (get-text-property 0 'face (display)))
+      (goto-char 5)
+      (hel-test-redisplay)
+      (should (equal (display) "\t"))
+      (goto-char 2)
+      (hel-test-redisplay)
+      (should-not (display))
+      (goto-char 4)
+      (setq-local show-trailing-whitespace nil)
+      (hel-test-redisplay)
+      (should-not (display))
+      (setq-local show-trailing-whitespace t)
+      (should (equal (overlay-get (hel-test-add-secondary-cursor 4) 'display)
+                     " ")))))
+
 (ert-deftest hel-cursor-box-of-a-deleted-window-goes ()
   "A change of the window configuration deletes the boxes of deleted
 windows, and a new window draws a box of its own."
