@@ -48,11 +48,14 @@ A command chooses its producer each time it runs, at the cursor:
 - *Expand and the node commands* use the tree-sitter nodes when the buffer
   has a parser, and the syntax table otherwise.
 - *A text object* is a symbol, such as ~function~. Its property
-  ~hel-thing-sources~ holds an ordered list of /sources/: functions of no
-  arguments that return a producer, or nil when they do not apply at the
-  cursor. The first producer wins. The source of a query applies when
-  ~hel-treesit-text-objects-p~ is non-nil: the buffer has a parser, the
-  language at the cursor has a query file, and Emacs is 31 or later.
+  ~hel-thing-sources~ holds an ordered list of /sources/: functions of
+  a position that return a producer, or nil when they do not apply there.
+  The first producer wins. Each command passes the position that its search
+  starts from, so the source decides where the search runs: in a buffer
+  with embedded languages, in the same language. The source of a query
+  applies when ~hel-treesit-text-objects-p~ is non-nil at that position: the
+  buffer has a parser, the language there has a query file, and Emacs is 31
+  or later.
   ~function~ lists its query, then ~hel-function-motion~; ~argument~ lists
   its query, then the syntax table. Class and entry have only a query, and
   without it their commands keep the selection and show a message.
@@ -1029,8 +1032,8 @@ a neighbour.
 ** Finding a pair
 
 ~hel-pair-sources~ maps a key character to its sources, as ~hel-thing-sources~
-does for a thing: functions that return a /pair producer/ at the cursor, or
-nil. A producer answers two questions: the pair at a position, and the pair
+does for a thing: functions of a position that return a /pair producer/
+for a search from there, or nil. A producer answers two questions: the pair at a position, and the pair
 around a pair. A character without sources pairs with itself, as the stars
 of =*bold*=. The variable is buffer-local: Emacs Lisp maps =`= and ='= to the
 legacy quotes =`like this'=, and Org maps =*=, =/=, =_= and =+= to its emphasis.
@@ -1562,7 +1565,10 @@ moving.
 - Each window keeps its own selection: point belongs to the window and the
   mark to the buffer, so a switch between two windows on one buffer saves
   the selection of the window that the user leaves and restores the one of
-  the window that the user enters, unless point has moved there.
+  the window that the user enters, unless point has moved there. When the
+  window that owned the selection was deleted or shows another buffer, the
+  window that the user enters still gets its own selection, not the mark
+  that the gone window left.
 - The cursors are values ~(ID RANGE DIRECTION ACTIVE)~: one reader returns
   them all, an algorithm computes a new list, and one writer moves the
   cursors by their ID, so each secondary cursor keeps its kill ring. The merge

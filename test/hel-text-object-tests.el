@@ -50,7 +50,7 @@ def last():
 
 (ert-deftest hel-function-object ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function 1)
     (should (equal (hel-test-selection)
                    "    def f(self, a, b):\n        return g(a, b)\n"))
@@ -65,17 +65,17 @@ def last():
   "The around range takes the header comment above the function, and
 leaves out the header comment of the next one."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return x")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
                    "# Header of top.\ndef top(x):\n    return x\n\n")))
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "def h")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
                    "    def h(self):\n        pass\n\n")))
   (hel-test-with #'python-ts-mode (hel-test-mark "# Header of f.\ndef f():\n    pass\n\n# Header of g.\ndef g():\n    pass\n" "pass")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
                    "# Header of f.\ndef f():\n    pass\n\n"))))
@@ -94,7 +94,7 @@ class C:
 
 (ert-deftest hel-function-object-decorated ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--decorated "def f")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-around-function 1)
     (should (equal (hel-test-selection)
                    "# Header.\n@dec\ndef f():\n    def inner():\n        pass\n\n"))
@@ -106,33 +106,33 @@ class C:
   "A nested function that ends where its outer function ends is a separate
 object, also when the outer function is decorated."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--decorated "pass")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function 1)
     (should (equal (hel-test-selection)
                    "    def inner():\n        pass\n")))
   (hel-test-with #'python-ts-mode (hel-test-mark "def f():\n    def inner():\n        pass\n" "pass")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function 1)
     (should (equal (hel-test-selection)
                    "    def inner():\n        pass\n"))))
 
 (ert-deftest hel-object-in-gaps ()
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b)\n" ", b")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-argument 1)
     (should (equal (hel-test-selection) "a")))
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b, c)\n" ", c")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-argument 1)
     (should (equal (hel-test-selection) "b")))
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "\n\n    def h")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function 1)
     (should (equal (hel-to--first-line) "def f(self, a, b):"))))
 
 (ert-deftest hel-object-on-header-comment ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "Header of top")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function 1)
     (should (equal (hel-to--first-line) "def top(x):"))
     (hel-test-goto "Header of top")
@@ -146,14 +146,14 @@ object, also when the outer function is decorated."
 
 (ert-deftest hel-function-object-on-signature ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "def f")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function 1)
     (should (equal (hel-to--first-line) "def f(self, a, b):"))))
 
 (ert-deftest hel-object-push-point ()
   "A text object pushes point only when it selects."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "class A")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (let ((pushes 0))
       (cl-letf (((symbol-function 'hel-push-point)
                  (lambda (&rest _) (cl-incf pushes))))
@@ -167,13 +167,13 @@ object, also when the outer function is decorated."
 
 (ert-deftest hel-class-object ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-class 1)
     (should (equal (hel-to--first-line) "class A:"))))
 
 (ert-deftest hel-argument-object ()
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b, c)\n" "a,")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-around-argument 1)
     (should (equal (hel-test-selection) "a, "))
     (hel-test-goto "c)")
@@ -187,7 +187,7 @@ object, also when the outer function is decorated."
 (ert-deftest hel-comment-object ()
   "A comment of whole lines covers them as a paragraph does."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "first")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-around-comment 1)
     (should (equal (hel-test-selection) "# first\n# second\n\n"))
     (hel-test-goto "second")
@@ -254,7 +254,7 @@ object, also when the outer function is decorated."
 (ert-deftest hel-comment-object-line-end-with-parser ()
   "The query producer finds a run from the line ends of its lines too."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "first")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (end-of-line)
     (hel-mark-comment 1)
     (should (equal (hel-test-selection) "# first\n# second\n"))))
@@ -281,7 +281,7 @@ object, also when the outer function is decorated."
                    (c-mode "/* open" ((1 (1 . 8)) (4 (1 . 8)) (8 nil)))
                    (emacs-lisp-mode ";; a" ((1 (1 . 5)) (2 (1 . 5)) (5 nil)))))
     (hel-test-with mode (hel-test-mark text "")
-      (let ((producer (hel-syntax-comment-source)))
+      (let ((producer (hel-syntax-comment-producer--create)))
         (pcase-dolist (`(,position ,range) cases)
           (ert-info ((format "%S at %d" text position))
             (should (equal (hel--comment-piece-under producer position)
@@ -291,7 +291,7 @@ object, also when the outer function is decorated."
   "Backward, the next piece ends at or before POS, so the piece that holds
 POS is skipped."
   (hel-test-with #'python-mode (hel-test-mark "x = 1  # first\ny = 2  # second\n" "")
-    (let ((producer (hel-syntax-comment-source)))
+    (let ((producer (hel-syntax-comment-producer--create)))
       (should (equal (hel--comment-piece-next producer 26 -1) '(8 . 15)))
       (should (equal (hel--comment-piece-next producer 31 -1) '(23 . 31))))))
 
@@ -340,7 +340,7 @@ tree-sitter query."
                     (treesit-language-available-p 'javascript)))
   (hel-test-with #'mhtml-ts-mode (hel-test-mark "<script>\n// one\n// two\n</script>\n" "one")
     (treesit-update-ranges)
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (should (eq 'javascript (treesit-language-at (point))))
     (hel-join-line)
     (should (equal (buffer-substring-no-properties (point-min) (point-max))
@@ -416,7 +416,7 @@ tree-sitter query."
 
 (ert-deftest hel-function-jumps ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "class A")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (let (forward backward)
       (dotimes (_ 3)
         (hel-mark-function-forward 1)
@@ -435,7 +435,7 @@ tree-sitter query."
 
 (ert-deftest hel-function-jump-count ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "class A")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     ;; Three whole functions, with everything between them.
     (hel-mark-function-forward 3)
     (should (equal (hel-to--first-line) "def f(self, a, b):"))
@@ -450,13 +450,13 @@ tree-sitter query."
 (ert-deftest hel-function-jump-decorated ()
   "A motion selects a decorated function with its decorators."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--decorated "# Header")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function-forward 1)
     (should (equal (hel-to--first-line) "@dec"))))
 
 (ert-deftest hel-argument-jumps ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "self, a")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (let (steps)
       (dotimes (_ 3)
         (hel-mark-argument-forward 1)
@@ -468,13 +468,13 @@ tree-sitter query."
 (ert-deftest hel-backward-jump-to-adjacent-object ()
   "A backward motion reaches an object that ends right before the cursor."
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a,b)\n" "b")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-argument-backward 1)
     (should (equal (hel-test-selection) "a"))))
 
 (ert-deftest hel-object-count ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function 2)
     (should (equal (hel-test-selection)
                    "    def f(self, a, b):\n        return g(a, b)\n\n    def h(self):\n        pass\n"))
@@ -484,7 +484,7 @@ tree-sitter query."
     (should (equal (string-trim (hel-test-selection))
                    "def h(self):\n        pass")))
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b, c)\n" "a,")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-argument 2)
     (should (equal (hel-test-selection) "a, b"))
     (hel-test-goto "a,")
@@ -496,7 +496,7 @@ tree-sitter query."
 
 (ert-deftest hel-object-repeated-key ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-around-function 1)
     (let ((one (hel-test-selection)))
       (hel-mark-around-function 1)
@@ -510,7 +510,7 @@ tree-sitter query."
 
 (ert-deftest hel-object-shrink-returns ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (set-mark (point))
     (forward-char 6)
     (hel-mark-around-function 1)
@@ -520,7 +520,7 @@ tree-sitter query."
 (ert-deftest hel-object-inherited-queries ()
   "The TypeScript file inherits the function object from `ecma'."
   (hel-test-with #'typescript-ts-mode (hel-test-mark "function f(a: number) {\n  return a;\n}\n" "return")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-around-function 1)
     (should (equal (hel-to--first-line) "function f(a: number) {"))))
 
@@ -535,7 +535,7 @@ tree-sitter query."
                   ('rust-ts-mode 'rust) ('c-ts-mode 'c)
                   ('js-ts-mode 'javascript) ('go-ts-mode 'go))))
       (hel-test-with (car spec) (hel-test-mark (nth 1 spec) "a")
-        (skip-unless (hel-treesit-text-objects-p))
+        (skip-unless (hel-treesit-text-objects-p (point)))
         (goto-char (point-max))
         (search-backward "a")
         (hel-mark-around-function 1)
@@ -545,7 +545,7 @@ tree-sitter query."
 (ert-deftest hel-treesit-argument-is-built-as-argument ()
   "A tree-sitter argument is an instance of the thing `argument'."
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b)\n" "a,")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (let (things)
       (cl-letf* ((expand #'hel-thing-maybe-expand-bounds-to-full-lines)
                  (original (symbol-function expand))
@@ -565,7 +565,7 @@ tree-sitter query."
                     (treesit-language-available-p 'javascript)))
   (hel-test-with #'mhtml-ts-mode (hel-test-mark "<p>text</p>\n<!-- note -->\n<script>\nfunction f(a) {\n  return a;\n}\n</script>\n" "return")
     (treesit-update-ranges)
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (should (eq 'javascript (treesit-language-at (point))))
     (hel-mark-function 1)
     (should (equal (hel-to--first-line) "function f(a) {"))
@@ -648,7 +648,7 @@ tree-sitter query."
   "A comment after code and the comment lines below it are separate
 comments. A jump selects comments of whole lines."
   (hel-test-with #'python-ts-mode (hel-test-mark "x = 1  # a\n# b\n# c\n\ny = 2\n# d\n" "x =")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (should (equal (cl-loop repeat 3
                             do (hel-mark-comment-forward 1)
                             collect (hel-test-selection))
@@ -667,7 +667,7 @@ comments. A jump selects comments of whole lines."
   "Without a parser, a comma at the level of the parentheses separates
 the arguments, and a comma in nested brackets or in a string does not."
   (hel-test-with #'python-mode (hel-test-mark hel-to--call "a,")
-    (should (hel-syntax-argument-producer-p (hel-thing-producer 'argument)))
+    (should (hel-syntax-argument-producer-p (hel-thing-producer 'argument (point))))
     (dolist (case '(("a," "a")
                     ("g(" "g(b, c)")
                     ("(b" "g(b, c)")
@@ -736,7 +736,7 @@ header comment."
     (hel-mark-around-argument 1)
     (should (equal (hel-test-selection) ", b"))
     (hel-test-goto ")\ng(")
-    (should-not (hel-thing-at 'argument (hel-thing-producer 'argument)
+    (should-not (hel-thing-at 'argument (hel-thing-producer 'argument (point))
                               (point)))
     (let ((inhibit-message t))
       (hel-test-goto "()")
@@ -748,7 +748,7 @@ header comment."
   "A search in small ranges finds the same arguments as one search over
 the whole buffer, from every position and in both directions."
   (hel-test-with #'python-mode (hel-test-mark hel-to--search-text "def first")
-    (let* ((producer (hel-thing-producer 'argument))
+    (let* ((producer (hel-thing-producer 'argument (point)))
            (results (lambda ()
                       (cl-loop for pos from (point-min) to (point-max)
                                append (cl-loop for dir in '(1 -1)
@@ -768,7 +768,7 @@ the whole buffer, from every position and in both directions."
 arguments, with the same around ranges."
   (hel-test-with #'python-ts-mode
       (hel-test-mark "def f(self, a, b=[1, 2],\n      c=None):\n    return g(a, h(b, c), \"x, y\")\n" "def")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (let ((query (hel-treesit-query-producer--create))
           (syntax (hel-syntax-argument-producer--create)))
       (cl-flet ((ranges (producer)
@@ -1122,8 +1122,8 @@ both sides of it and never selected, and the indentation stays a step."
                    '("a" "  " "bar" "foo")))))
 
 (ert-deftest hel-maw-stops-at-a-separator ()
-  "A separator is a border: maw takes the gap before the last word of a
-cell, and no gap when the word fills its cell."
+  "A gap may not end at a separator: maw takes the gap before the last
+word of a cell, and no gap when the word fills its cell."
   (pcase-dolist (`(,text ,needle ,around)
                  '(("| foo bar |" "bar" " bar")
                    ("| foo bar |" "foo" "foo ")
@@ -1318,7 +1318,7 @@ and argument in both directions."
   "A search in small ranges finds the same objects as one whole-buffer
 scan, from every position and in both directions."
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--search-text "def first")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (let ((whole (let ((hel--search-range-size (buffer-size)))
                    (hel-to--search-results)))
           (small (let ((hel--search-range-size 16))
@@ -1357,7 +1357,7 @@ scan, from every position and in both directions."
   (hel-to--with-query-file
       "(no_such_node) @function\n(function_definition) @function\n"
     (hel-test-with #'python-ts-mode (hel-test-mark "def f():\n    return 1\n" "return")
-      (skip-unless (hel-treesit-text-objects-p))
+      (skip-unless (hel-treesit-text-objects-p (point)))
       (hel-mark-around-function 1)
       (should (equal (hel-to--first-line) "def f():")))))
 
@@ -1442,7 +1442,7 @@ function object comes from `hel-function'."
   (hel-to--with-query-file
       "(function_definition) @function\n(class_definition\n"
     (hel-test-with #'python-ts-mode (hel-test-mark "def f():\n    return 1\n" "return")
-      (should-not (hel-treesit-text-objects-p))
+      (should-not (hel-treesit-text-objects-p (point)))
       (hel-mark-function 1)
       (should (equal (hel-test-selection)
                      "def f():\n    return 1\n")))))
@@ -1610,7 +1610,7 @@ TEXT must follow exactly one blank line."
 (defun hel-to--producer (object)
   "Return the producer of OBJECT at point.
 It is the result of the first source of OBJECT that applies at point."
-  (-some #'funcall (get object 'hel-thing-sources)))
+  (-some (lambda (source) (funcall source (point))) (get object 'hel-thing-sources)))
 
 (defun hel-to--key (object)
   "Return the essential parts of OBJECT, which define its equality."
@@ -1760,7 +1760,7 @@ Return the objects that the check used."
 ;; comment (section "The ranges of an object").
 (ert-deftest hel-to-function-forward-from-inside ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function-forward 1)
     (should (equal (hel-test-selection) "return g(a, b)\n"))
     (should (= (point) (region-end)))
@@ -1778,7 +1778,7 @@ Return the objects that the check used."
 ;; previous object. Point goes to the start after `['.
 (ert-deftest hel-to-function-backward-from-inside ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python "pass")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function-backward 1)
     (should (equal (hel-test-selection) "    def h(self):\n        p"))
     (should (= (point) (region-beginning)))
@@ -1791,7 +1791,7 @@ Return the objects that the check used."
 ;; innermost one counts."
 (ert-deftest hel-to-function-edge-innermost ()
   (hel-test-with #'python-ts-mode (hel-test-mark "def f():\n    def inner():\n        pass\n    return 1\n" "pass")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function-forward 1)
     (should (equal (hel-test-selection) "pass\n"))
     (hel-test-goto "pass")
@@ -1804,7 +1804,7 @@ Return the objects that the check used."
 ;; the last one." Section "Tests": one more `]f' keeps the selection.
 (ert-deftest hel-to-function-forward-count ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (let ((expected (concat "return g(a, b)\n\n"
                             "    def h(self):\n        pass\n\n"
                             "# Header of top.\n"
@@ -1822,7 +1822,7 @@ Return the objects that the check used."
 ;; inside the object, and `]f' selects from point to its end: the same text.
 (ert-deftest hel-to-function-forward-decorated ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--decorated "# Header")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function-forward 1)
     (should (equal (hel-test-selection)
                    "@dec\ndef f():\n    def inner():\n        pass\n"))
@@ -1836,7 +1836,7 @@ Return the objects that the check used."
 ;; their commas."
 (ert-deftest hel-to-argument-forward ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python "self")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (should (equal (cl-loop repeat 3
                             do (hel-mark-argument-forward 1)
                             collect (hel-test-selection))
@@ -1998,18 +1998,18 @@ Return the objects that the check used."
     (should (equal (buffer-string)
                    "One two.\nFive six.\n\nSeven eight. Nine ten.\n"))))
 
-;; Section "The around range": a gap counts unless it is empty or ends at
-;; a border, the edge of the buffer or a bracket.
-(ert-deftest hel-to-around-gap-and-border ()
+;; Section "The around range": a gap counts unless it is empty or ends
+;; where a gap may not end, at the edge of the buffer or at a bracket.
+(ert-deftest hel-to-around-gap-and-allowed-end ()
   ;; The blank line after a function counts before code of another kind.
   (hel-test-with #'python-ts-mode (hel-test-mark "def f():\n    pass\n\nx = 1\n" "pass")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-around-function 1)
     (should (equal (hel-test-selection) "def f():\n    pass\n\n")))
   ;; The blank line before a closing bracket does not.
   (when (treesit-language-available-p 'javascript)
     (hel-test-with #'js-ts-mode (hel-test-mark "class A {\n  f() {}\n\n  g() {}\n\n}\n" "g()")
-      (skip-unless (hel-treesit-text-objects-p))
+      (skip-unless (hel-treesit-text-objects-p (point)))
       (hel-mark-around-function 1)
       (should (equal (hel-test-selection) "\n  g() {}\n"))))
   ;; The blanks before a comment after code count even after a bracket.
@@ -2069,26 +2069,26 @@ Return the objects that the check used."
     (let ((sources (get 'function 'hel-thing-sources)))
       (should (= (length sources) 2))
       (should (-all? #'functionp sources))
-      (should-not (funcall (car sources)))
-      (should (funcall (cadr sources))))
+      (should-not (funcall (car sources) (point)))
+      (should (funcall (cadr sources) (point))))
     ;; The comment object has the query and the syntax table.
     (let ((sources (get 'comment 'hel-thing-sources)))
       (should (= (length sources) 2))
-      (should-not (funcall (car sources)))
-      (should (funcall (cadr sources))))
+      (should-not (funcall (car sources) (point)))
+      (should (funcall (cadr sources) (point))))
     ;; The class object has only a query, and the syntax source of the
     ;; argument object does not apply in Lisp.
     (should (= 1 (length (get 'class 'hel-thing-sources))))
     (dolist (object '(class argument))
-      (should-not (-some #'funcall (get object 'hel-thing-sources))))))
+      (should-not (-some (lambda (source) (funcall source (point))) (get object 'hel-thing-sources))))))
 
 ;; Section "Choosing a producer": the source of a Helix query applies when
 ;; `hel-treesit-text-objects-p' returns non-nil at the cursor.
 (ert-deftest hel-to-sources-with-parser ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (dolist (object '(function class argument comment))
-      (should (funcall (car (get object 'hel-thing-sources)))))))
+      (should (funcall (car (get object 'hel-thing-sources)) (point))))))
 
 ;; Section "Text objects and motions": word, WORD, sentence and paragraph
 ;; each have one motion source, and it applies in every buffer.
@@ -2096,7 +2096,7 @@ Return the objects that the check used."
   (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "Three")
     (setq-local sentence-end-double-space nil)
     (dolist (object '(word WORD sentence paragraph))
-      (should (hel-thing-producer object)))))
+      (should (hel-thing-producer object (point))))))
 
 ;; Section "Sources and the definition of an object": "A user adds a source
 ;; with (push SOURCE (get 'function 'hel-thing-sources))." "The first source
@@ -2119,10 +2119,29 @@ Return the objects that the check used."
   (let ((sources (get 'word 'hel-thing-sources)))
     (unwind-protect
         (progn
-          (push (lambda () nil) (get 'word 'hel-thing-sources))
+          (push (lambda (_pos) nil) (get 'word 'hel-thing-sources))
           (hel-test-with #'text-mode (hel-test-mark "foo bar baz\n" "bar")
             (hel-mark-around-word 1)
             (should (equal (hel-test-selection) "bar "))))
+      (put 'word 'hel-thing-sources sources))))
+
+;; Section "Text objects and motions": a source gets the position that the
+;; search starts from. A text object starts from the head of the selection
+;; without the whitespace at its edges, and a motion from the head itself.
+(ert-deftest hel-to-source-gets-the-search-position ()
+  (let ((sources (get 'word 'hel-thing-sources))
+        (positions nil))
+    (unwind-protect
+        (progn
+          (push (lambda (pos) (push pos positions) nil)
+                (get 'word 'hel-thing-sources))
+          (hel-test-with #'text-mode "foo bar baz\n"
+            (hel-test-select "bar ")
+            (hel-mark-word 1)
+            (should (equal positions '(7)))
+            (hel-test-select "bar ")
+            (hel-forward-word-start 1)
+            (should (equal positions '(8 7)))))
       (put 'word 'hel-thing-sources sources))))
 
 ;;; The laws of the protocol
@@ -2146,10 +2165,11 @@ Return the objects that the check used."
       (should-not (hel-thing-sibling thing producer five 1)))))
 
 ;; Section "The ranges of an object": the gap of a sentence is the blanks
-;; on its line, and a line end is a border. Section "The finding operations
-;; have two levels": `hel-thing-after-gap' returns the position after the
-;; gap from POS in direction DIR, and `hel-thing-border-p' holds at the line
-;; end after the last sentence of a line.
+;; on its line, and a gap may not end at a line end. Section "The finding
+;; operations have two levels": `hel-thing-after-gap' returns the position
+;; after the gap from POS in direction DIR, and
+;; `hel-thing-gap-end-allowed-p' fails at the line end after the last
+;; sentence of a line.
 (ert-deftest hel-to-after-gap-sentence ()
   (hel-test-with #'text-mode (hel-test-mark hel-to--sentences "One")
     (setq-local sentence-end-double-space nil)
@@ -2160,16 +2180,16 @@ Return the objects that the check used."
           (end-of-three (progn (search-forward "four.") (point))))
       (should (equal (hel-thing-after-gap thing producer end-of-one 1) three))
       (should (equal (hel-thing-after-gap thing producer three -1) end-of-one))
-      (should (hel-thing-border-p
-               thing producer
-               (hel-thing-after-gap thing producer end-of-three 1) 1))
-      (should-not (hel-thing-border-p thing producer three -1)))))
+      (should-not (hel-thing-gap-end-allowed-p
+                   thing producer
+                   (hel-thing-after-gap thing producer end-of-three 1) 1))
+      (should (hel-thing-gap-end-allowed-p thing producer three -1)))))
 
 ;; Section "The finding operations have two levels" and "Tests": the laws of the protocol on the
 ;; Python query, for functions.
 (ert-deftest hel-to-laws-treesit-function ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python-laws "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (let* ((thing 'function)
            (producer (hel-to--producer thing))
            (objects (hel-to--check-laws thing))
@@ -2191,7 +2211,7 @@ Return the objects that the check used."
 ;; Python query, for arguments.
 (ert-deftest hel-to-laws-treesit-argument ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python-laws "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-to--check-laws 'argument)))
 
 ;; Section "The finding operations have two levels": `hel-thing-next' from the end of a top-level
@@ -2199,7 +2219,7 @@ Return the objects that the check used."
 ;; the function is the second top-level function.
 (ert-deftest hel-to-treesit-sibling-skips-nested ()
   (hel-test-with #'python-ts-mode (hel-test-mark "def a():\n    pass\n\nclass K:\n    def m(self):\n        pass\n\ndef b():\n    pass\n" "pass")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (let* ((thing 'function)
            (producer (hel-to--producer thing))
            (objects (hel-to--known-objects thing producer))
@@ -2265,10 +2285,10 @@ the comment from that start."
                                              piece)))))))
     (let ((text "int a; // one\n// two\n/* three\n   four */\nint b; /* five */ // six\n|"))
       (hel-test-with #'c-mode text
-        (check (hel-syntax-comment-source)))
+        (check (hel-syntax-comment-producer--create)))
       (when (treesit-language-available-p 'c)
         (hel-test-with #'c-ts-mode text
-          (when (hel-treesit-text-objects-p)
+          (when (hel-treesit-text-objects-p (point))
             (check (hel-treesit-comment-producer--create))))))
     (hel-test-with #'fundamental-mode "# a\n# b\n\n# c\n|"
       (check (hel-test-list-comment-producer-create
@@ -2310,7 +2330,7 @@ the comment from that start."
 ;; and argument have a header comment, and comment has none.
 (ert-deftest hel-to-header-p-treesit ()
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--python "return g")
-    (skip-unless (hel-treesit-text-objects-p))
+    (skip-unless (hel-treesit-text-objects-p (point)))
     (dolist (object '(function class argument))
       (should (hel-thing-owns-header-comment-p object)))
     (should-not (hel-thing-owns-header-comment-p 'comment))))
@@ -2360,9 +2380,9 @@ in a buffer with a parser and a query file on Emacs 31, and nil in
 text-mode."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "x = |1\n"
-    (should (hel-treesit-text-objects-p)))
+    (should (hel-treesit-text-objects-p (point))))
   (hel-test-with #'text-mode "x = |1\n"
-    (should-not (hel-treesit-text-objects-p))))
+    (should-not (hel-treesit-text-objects-p (point)))))
 
 (ert-deftest hel-thing-rules ()
   "Section Two questions, two arguments: owning the header comment and
@@ -2414,8 +2434,8 @@ that result (the sentence motion)."
     (goto-char 4)
     (hel-to--after-gap-idempotent 'argument 4)))
 
-;; Section "The ranges of an object": a closing bracket is a border, and the
-;; gap of the last argument runs up to it. The candidates of the query
+;; Section "The ranges of an object": a gap may not end at a closing
+;; bracket, and the gap of the last argument runs up to it. The candidates of the query
 ;; producer search over that gap and find the arguments of this call only.
 (ert-deftest hel-to-candidates-python-before-bracket ()
   (hel-test-need-queries 'python)
@@ -2423,7 +2443,7 @@ that result (the sentence motion)."
     (let* ((producer (hel-to--producer 'argument))
            (end-of-b 7))
       (should (= 9 (hel-thing-after-gap 'argument producer end-of-b 1)))
-      (should (hel-thing-border-p 'argument producer 9 1))
+      (should-not (hel-thing-gap-end-allowed-p 'argument producer 9 1))
       (should (equal (->> (hel-thing-candidates 'argument producer end-of-b)
                           (-map #'hel-to--text)
                           (-uniq))
@@ -3519,7 +3539,7 @@ table."
 (ert-deftest hel-thing-reach-of-words ()
   "A backward edge gives a range with its begin before its end."
   (hel-test-with #'fundamental-mode "one two three|"
-    (let ((word (hel-thing-producer 'word)))
+    (let ((word (hel-thing-producer 'word (point))))
       (should (equal (hel-thing-reach 'word word 9 1 :begin nil)
                      (cons 9 14)))
       (should (equal (hel-thing-reach 'word word 9 -1 :begin nil)
@@ -3530,7 +3550,7 @@ table."
 (ert-deftest hel-thing-reach-default-method ()
   (hel-test-with #'fundamental-mode "One. Two. Three.|"
     (let ((sentence-end-double-space nil)
-          (sentence (hel-thing-producer 'sentence)))
+          (sentence (hel-thing-producer 'sentence (point))))
       (should (equal (hel-thing-reach 'sentence sentence 7 1 :end nil)
                      (cons 7 10)))
       (should (equal (hel-thing-reach 'sentence sentence 7 -1 :begin nil)

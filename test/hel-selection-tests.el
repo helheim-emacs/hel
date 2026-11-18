@@ -350,6 +350,37 @@ The first window stays selected and owns the selection of the buffer."
         (hel-test-press! "C-x o")
         (should (equal (hel-test-selection) "one"))))))
 
+(ert-deftest hel-window-selection-owner-deleted ()
+  "When the owner of the selection is deleted, the window that the user
+lands in gets back its own selection, not the mark of the deleted owner."
+  (hel-test-with #'fundamental-mode "one |two three four five six"
+    (hel-selection-tests--split)
+    (hel-test-press! "C-x o w w")
+    (let ((before (hel-selection-tests--window-state)))
+      (should (equal (hel-test-selection) "three "))
+      (hel-test-press! "C-x o w")
+      (should (equal (hel-test-selection) "two "))
+      (hel-test-press! "C-x 0")
+      (should (equal (hel-selection-tests--window-state) before)))))
+
+(ert-deftest hel-window-selection-owner-shows-another-buffer ()
+  "When the owner of the selection shows another buffer, the window that
+the user lands in gets back its own selection."
+  (hel-test-with #'fundamental-mode "one |two three four five six"
+    (let ((buffer (current-buffer))
+          (other (get-buffer-create "*hel-test-other*")))
+      (unwind-protect
+          (progn
+            (hel-selection-tests--split)
+            (hel-test-press! "C-x o w w")
+            (let ((before (hel-selection-tests--window-state)))
+              (hel-test-press! "C-x o w")
+              (switch-to-buffer other)
+              (hel-test-press! "C-x o")
+              (should (eq (current-buffer) buffer))
+              (should (equal (hel-selection-tests--window-state) before))))
+        (kill-buffer other)))))
+
 (ert-deftest hel-window-selection-first-switch-after-split ()
   (hel-test-with #'fundamental-mode "one two thr|ee four five six"
     (hel-test-press! "h")
@@ -358,19 +389,6 @@ The first window stays selected and owns the selection of the buffer."
       (hel-test-press! "C-x 3 C-x o")
       (should-not (eq (selected-window) (frame-first-window)))
       (should (equal (hel-selection) before)))))
-
-(ert-deftest hel-window-selection-deleted-owner ()
-  (hel-test-with #'fundamental-mode "one |two three four five six"
-    (hel-selection-tests--split)
-    (hel-test-press! "w C-x o w w")
-    (should (equal (hel-test-selection) "three "))
-    (let ((mark (mark t)))
-      ;; The first window takes the selection of the deleted one as it is,
-      ;; and does not restore its own.
-      (hel-test-press! "C-x 0")
-      (should (one-window-p))
-      (should (= (mark t) mark))
-      (should mark-active))))
 
 (ert-deftest hel-window-selection-through-another-buffer ()
   (hel-test-with #'fundamental-mode "one |two three four five six"

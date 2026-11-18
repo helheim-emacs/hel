@@ -234,15 +234,14 @@ Optional KEY keyword arguments:
 
 `:keymap'        Keymap that will be active while Hel is in STATE.
                Can be accessed later via `hel-STATE-state-map' variable
-               or `hel-state-property' funciton.
+               or `hel-state-property' function.
 
 `:cursor'        The faces of the cursors when Hel is in STATE: a list
                (MAIN SECONDARY).  The `:background' of MAIN is the colour
                of the main cursor, and SECONDARY is the face of the
-               secondary cursors.  The state decides the shape of the
-               cursors, see `hel--cursor-look'.
+               secondary cursors.
 
-`:input-method'  When non-nil Hell will activate the enabled input method
+`:input-method'  When non-nil Hel will activate the enabled input method
                on switching to STATE.
 
 `:modes'         A list of major and minor modes for which Hel’s initial
@@ -792,13 +791,152 @@ a Hel modal state. Can be a symbol or list of symbols.
   (apply #'hel-keymap-set hel-overriding-local-map args)
   (hel-update-active-keymaps))
 
+;;; The selection of each window
+;;
+;; `Point' belongs to the window, while `mark' belongs to the buffer.
+;; The selection (region) consists of `point' and `mark', so when focus moves
+;; into another window `point' jumps, while `mark' stays in place. So we need to
+;; manually manage selections per window. The selected window owns the selection
+;; in the buffer. The other windows that show the buffer keep theirs in the
+;; window parameter `hel--selection' until they are selected again.
+;;
+;; The owner changes around a command, in three steps:
+;;
+;; 1. `hel--pre-command-hook' takes a snapshot of the selection of the
+;;    current buffer into `hel--selection-record'.
+;;
+;; 2. The command runs. It may select another window, and it may change the
+;;    selection too: a mouse click deactivates the mark.
+;;
+;; 3. `hel--post-command-hook' checks whether the selected window is still the
+;;    owner. If it is not, `hel--switch-selection-owner' saves the snapshot in
+;;    the window that the user left. Then it decides which selection the new
+;;    window gets:
+;;
+;;    - The `mark' and `mark-active' are the same as in the snapshot. Then the
+;;      command only moved the user into another window and the new window gets
+;;      back the selection that it remembers.
+;;
+;;    - The `mark' or `mark-active' differs from the snapshot. Then the command
+;;      made a selection of its own, for example a command that moves into
+;;      another window and selects a word there. This selection stays.
+;;
+;;    Then the new window becomes the owner. The window that the user left
+;;    stores the snapshot.
+
+(hel-defvar-permanent-local hel--selection-owner nil
+  "The window that owns the selection of the buffer.")
+
+(defvar hel--selection-record nil
+  "The selection of the current buffer before the current command.
+It is a list (BUFFER MARK ACTIVE? EXTENDING?): the buffer, the position of
+the `mark', `mark-active' and `hel-extend-selection'.")
+
+(cl-defstruct (hel--window-selection
+               (:constructor hel--window-selection-create)
+               (:copier nil))
+  "The selection that a window saves while it is not the owner.
+BUFFER is the buffer that the selection belongs to. POINT is a marker
+at the point of the window, and MARK a marker at the mark. ACTIVE and
+EXTENDING are the values of `mark-active' and `hel-extend-selection'."
+  buffer point mark active extending)
+
+(defun hel--switch-selection-owner ()
+  "Make the selected window the owner of the current buffer's selection.
+When ownership changes, save the selection in the previous owner's window
+parameter `hel--selection', then restore the selection saved by the newly
+selected window.
+
+Do not restore a saved selection if the command has changed the mark or its
+active state; this preserves selections made by the command. If the previous
+owner is no longer live or no longer displays this buffer, its selection cannot
+be saved. A window with no saved selection, or one whose point has moved since,
+gets no active selection, and the mark stays where it is. A buffer that has
+never had an owner keeps its selection."
+  (let ((window (selected-window))
+        (owner hel--selection-owner)
+        (buffer (current-buffer)))
+    (when (eq (window-buffer window) buffer)
+      (when owner
+        ;; A record of another buffer says nothing about this one: the
+        ;; command did not touch the selection of this buffer.
+        (-let [(mark active? extending?)
+               (if (eq (car hel--selection-record) buffer)
+                   (cdr hel--selection-record)
+                 (list (mark t) mark-active hel-extend-selection))]
+          (when (and (window-live-p owner)
+                     (eq (window-buffer owner) buffer))
+            (hel--save-window-selection owner mark active? extending?))
+          ;; The `mark' and `mark-active' are the same as in the snapshot.
+          ;; Then the command only moved the user into another window and the
+          ;; new window gets back the selection that it remembers.
+          (when (and (eql mark (mark t))
+                     (eq active? mark-active))
+            (hel--restore-window-selection window))))
+      (hel--forget-window-selection window)
+      (setq hel--selection-owner window))))
+
+(defun hel--save-window-selection (window mark active? extending?)
+  "Save in WINDOW the selection of the current buffer.
+The selection is the point of WINDOW and MARK, a position or nil.
+ACTIVE? says whether the region is active, and EXTENDING? whether
+motions extend the selection."
+  (let ((saved (or (window-parameter window 'hel--selection)
+                   (set-window-parameter
+                    window 'hel--selection
+                    (hel--window-selection-create :point (make-marker)
+                                                  :mark (make-marker))))))
+    (setf (hel--window-selection-buffer saved) (current-buffer)
+          (hel--window-selection-active saved) active?
+          (hel--window-selection-extending saved) extending?)
+    (set-marker (hel--window-selection-point saved) (window-point window))
+    (set-marker (hel--window-selection-mark saved) mark)))
+
+(defun hel--restore-window-selection (window)
+  "Give the current buffer the selection saved in WINDOW.
+The saved selection is out of date when it belongs to another buffer, or
+when the point of WINDOW has moved since it was saved: with the old mark,
+the moved point would make a selection that the user never made. Without
+an up-to-date saved selection the region is inactive and motions do not
+extend, but the mark stays where it is."
+  (let* ((saved (window-parameter window 'hel--selection))
+         (valid? (and saved
+                      (eq (hel--window-selection-buffer saved)
+                          (current-buffer))
+                      (eql (marker-position (hel--window-selection-point saved))
+                           (window-point window))))
+         ;; The region of the buffer is the region of another window, so it
+         ;; must not become the primary selection.
+         (select-active-regions nil)
+         (was-extending? hel-extend-selection))
+    (deactivate-mark)
+    (setq hel-extend-selection nil)
+    (when valid?
+      (set-marker (mark-marker)
+                  (marker-position (hel--window-selection-mark saved)))
+      (setq hel-extend-selection (hel--window-selection-extending saved))
+      (when (hel--window-selection-active saved)
+        (activate-mark)))
+    ;; The color of the cursor shows whether motions extend.
+    (unless (eq was-extending? hel-extend-selection)
+      (hel-draw-cursor))))
+
+(defun hel--forget-window-selection (window)
+  "Forget the selection saved in WINDOW."
+  ;; A remembered selection holds markers, and every marker slows down the
+  ;; edits of its buffer.
+  (when-let* ((saved (window-parameter window 'hel--selection)))
+    (setf (hel--window-selection-buffer saved) nil)
+    (set-marker (hel--window-selection-point saved) nil)
+    (set-marker (hel--window-selection-mark saved) nil)))
+
 ;;; Command loop hooks
 
 (defun hel--pre-command-hook ()
   "Hook run before each command is executed. See `pre-command-hook'."
   (unless hel-executing-command-for-secondary-cursor
-    (setq hel-this-command this-command
-          hel--selection-record (list (current-buffer) (mark t) mark-active
+    (setq hel-this-command this-command)
+    (setq hel--selection-record (list (current-buffer) (mark t) mark-active
                                       hel-extend-selection))
     (cond (hel-normal-state
            (hel--single-undo-step-beginning))
@@ -841,102 +979,6 @@ a Hel modal state. Can be a symbol or list of symbols.
 
 (put 'hel--pre-command-hook 'permanent-local-hook t)
 (put 'hel--post-command-hook 'permanent-local-hook t)
-
-;;; The selection of each window
-
-;; The buffer holds the selection of one window, its owner.  The other
-;; windows that show the buffer keep theirs in the window parameter
-;; `hel--selection' until they are selected again.  The saved point tells a
-;; return to the window, which finds its point where it was, from a jump that
-;; moves point, such as a mouse click.
-
-(cl-defstruct (hel--window-selection
-               (:constructor hel--window-selection-create)
-               (:copier nil))
-  "The selection of a window that does not own its buffer.
-BUFFER is the buffer that the selection belongs to.  POINT is a marker at
-the point of the window, and MARK a marker at the mark.  ACTIVE and
-EXTENDING are the values of `mark-active' and `hel-extend-selection'."
-  buffer point mark active extending)
-
-(defun hel--switch-selection-owner ()
-  "Give the buffer the selection of the selected window.
-When a command moves the user into another window on the current buffer,
-save the selection of the window that the user left, and restore the
-selection that the selected window had when the user left it.  A selection
-that the command itself made stays as it is.
-
-Then the selected window becomes the owner of the selection of the buffer.
-A buffer without an owner keeps its selection.  An owner that is deleted or
-shows another buffer counts as no owner."
-  (let ((window (selected-window))
-        (owner hel--selection-owner)
-        (buffer (current-buffer))
-        (was-extending? hel-extend-selection))
-    (when (eq (window-buffer window) buffer)
-      (when (and (window-live-p owner)
-                 (eq (window-buffer owner) buffer))
-        ;; A record of another buffer says nothing about this one: the
-        ;; command did not touch the selection of this buffer.
-        (pcase-let ((`(,mark ,active ,extending)
-                     (if (eq (car hel--selection-record) buffer)
-                         (cdr hel--selection-record)
-                       (list (mark t) mark-active hel-extend-selection))))
-          (hel--save-window-selection owner mark active extending)
-          (when (and (eql mark (mark t))
-                     (eq active mark-active))
-            (hel--restore-window-selection window))))
-      (hel--forget-window-selection window)
-      (setq hel--selection-owner window)
-      ;; The color of the cursor shows whether motions extend.
-      (unless (eq was-extending? hel-extend-selection)
-        (hel-draw-cursor)))))
-
-(defun hel--save-window-selection (window mark active extending)
-  "Save in WINDOW the selection with MARK, ACTIVE and EXTENDING.
-MARK is a position or nil.  ACTIVE and EXTENDING are the values of
-`mark-active' and `hel-extend-selection'."
-  (let ((saved (or (window-parameter window 'hel--selection)
-                   (set-window-parameter
-                    window 'hel--selection
-                    (hel--window-selection-create :point (make-marker)
-                                                  :mark (make-marker))))))
-    (setf (hel--window-selection-buffer saved) (current-buffer)
-          (hel--window-selection-active saved) active
-          (hel--window-selection-extending saved) extending)
-    (set-marker (hel--window-selection-point saved) (window-point window))
-    (set-marker (hel--window-selection-mark saved) mark)))
-
-(defun hel--restore-window-selection (window)
-  "Give the current buffer the selection that WINDOW saved.
-Restore it only when it belongs to this buffer and the point of WINDOW is
-where it was saved.  Otherwise leave WINDOW without a selection: deactivate
-the mark and turn extending off, but keep the mark where it is."
-  (let* ((saved (window-parameter window 'hel--selection))
-         (valid? (and saved
-                      (eq (hel--window-selection-buffer saved)
-                          (current-buffer))
-                      (eql (marker-position (hel--window-selection-point saved))
-                           (window-point window))))
-         ;; The region of the buffer is the region of another window, so it
-         ;; must not become the primary selection.
-         (select-active-regions nil))
-    (deactivate-mark)
-    (setq hel-extend-selection nil)
-    (when valid?
-      (set-marker (mark-marker)
-                  (marker-position (hel--window-selection-mark saved)))
-      (setq hel-extend-selection (hel--window-selection-extending saved))
-      (when (hel--window-selection-active saved)
-        (activate-mark)))))
-
-(defun hel--forget-window-selection (window)
-  "Drop the selection that WINDOW saved.
-Its markers stop pointing anywhere, so they do not slow down edits."
-  (when-let* ((saved (window-parameter window 'hel--selection)))
-    (setf (hel--window-selection-buffer saved) nil)
-    (set-marker (hel--window-selection-point saved) nil)
-    (set-marker (hel--window-selection-mark saved) nil)))
 
 ;;; Undo
 
@@ -1165,22 +1207,21 @@ CURSORS is a list of cursor values, as `hel-selections' returns it."
                                  (null cursor-type))))
 
 (defun hel--cursor-look (main?)
-  "Return (SHAPE FACE BOX): how to draw a cursor in the current state.
-MAIN? is non-nil for the main cursor and nil for a secondary one. SHAPE is
-`bar', `box', `hbar' or nil for no cursor. FACE is the face whose background
-colors it. BOX is the face of the box that Hel draws over the character of the
-cursor in Normal state, or nil in other states.
+  "Return how a cursor looks in the current state: (SHAPE FACE BOX).
+SHAPE is the shape of the cursor: `bar', `box', `hbar' or nil for none.
+FACE colours it.  BOX is the face of the box that Hel draws over the
+cursor character in Normal state, and nil in other states.  MAIN? is
+non-nil for the main cursor and nil for a secondary one.
 
-In Normal state every cursor is a box over its character, drawn by Hel.
-The main cursor of Emacs is hidden on a graphic display, or a bar at point when
-`hel-cursor-type' is `hybrid'; then the box of the main cursor has the faint
-face `hel-cursor-highlight'. A text terminal shows its own cursor anyway, as
-a box at point. In Insert state every cursor is a bar at point on a graphic
-display, and a box over the character after point in a text terminal, where
-a bar string would push the text aside. In Emacs state the main cursor is an
-underscore, and there are no secondary cursors. FACE comes from the `:cursor'
-property of the state, and it is `hel-extend-selection-cursor' while motions
-extend the selection."
+In Normal state every cursor is a box that Hel draws.  With
+`hel-cursor-type' set to `hybrid', the main cursor is a bar at point and
+a faint box.  In Insert state every cursor is a bar at point.  In Emacs
+state the main cursor is an underscore.  While motions extend the
+selection, every cursor has the face `hel-extend-selection-cursor'.
+
+In a text terminal every bar is a box over the character after point.
+The terminal shows its own cursor as a box, and a bar drawn as a string
+would move the text to the right."
   (let ((face (if hel-extend-selection
                   'hel-extend-selection-cursor
                 (nth (if main? 0 1) (hel-state-property hel-state :cursor)))))
@@ -1196,8 +1237,8 @@ extend the selection."
       ('emacs (list (if main? 'hbar) face nil)))))
 
 (defun hel-draw-cursor ()
-  "Give Emacs the shape and the colour of the main cursor.
-The state of Hel decides them, see `hel--cursor-look'."
+  "Give the cursor of Emacs the shape and the colour of the current state.
+The colour also shows whether motions extend the selection."
   (when (and (eq (window-buffer) (current-buffer))
              hel-local-mode
              (not hel--cursor-hidden?))
@@ -1216,21 +1257,19 @@ character is a newline, or at the end of the buffer, BEGIN equals END:
 the cursor is drawn there as a cell of one space, because a face on
 a newline would paint to the edge of the window.  SELECTION is (RANGE
 DIRECTION), as `hel-selection' returns it."
-  (let ((head (hel--head-char selection)))
+  (let ((head (hel-selection-head selection)))
     (cons head (if (memq (char-after head) '(?\n nil))
                    head
                  (1+ head)))))
 
 (defun hel--cursor-display (begin face)
-  "Return the string that draws the box of a cursor on trailing whitespace.
-Redisplay paints the trailing whitespace of a line with the face
-`trailing-whitespace' when `show-trailing-whitespace' is on, and that
-face replaces every other face, the box too.  Redisplay leaves alone the
-text of a display string, so the box over a trailing space or tab is
-a display string of that character with FACE.  The display string of
-a tab keeps the width of the tab.  BEGIN is the position of the cursor
-character.  Return nil when the character is not trailing whitespace
-or the option is off."
+  "Return a string that draws the box of a cursor on trailing whitespace.
+With `show-trailing-whitespace' on, Emacs draws trailing whitespace with
+the face `trailing-whitespace' only, so the box disappears.  Emacs does
+not use that face for a display string.  So the box over a trailing space
+or tab is a display string of that character with FACE.  A tab keeps its
+width.  BEGIN is the position of the cursor character.  Return nil when
+the character is not trailing whitespace or the option is off."
   (when (and show-trailing-whitespace
              (save-excursion
                (goto-char begin)
@@ -1239,37 +1278,29 @@ or the option is off."
 
 (defun hel--draw-main-cursor-overlay (windows)
   "Draw the box of the main cursor in each of WINDOWS.
-Redisplay calls this function with the WINDOWS that it is about to
-redisplay, or t for all of them, so the box follows point also after
-a command outside Hel.  The box is shown in Normal state at the bounds
-that `hel--cursor-bounds' returns.  The selected window shows it with
-the face that `hel--cursor-look' gives the main cursor.  Another window
-shows it at its own point, with the face `hel-other-window-cursor'.
-A character without a cell of its own shows as a cell of one space,
-whose `cursor' property puts the cursor of Emacs before it.  A box over
-trailing whitespace is the string from `hel--cursor-display'.
-
-Each window keeps its own overlay in its `hel--main-cursor-overlay' parameter."
+Redisplay calls this function before it redraws WINDOWS, or t for all
+windows, so the box follows point after every command, including the
+commands outside Hel.  The selected window draws the box over the head
+character of the selection.  Another window on the buffer draws it at its
+own point, with the face `hel-other-window-cursor'.  On a newline or at
+the end of the buffer the box is a cell of one space.  Outside Normal
+state there is no box."
   (dolist (window (if (consp windows) windows (window-list-1 nil t t)))
     (when (window-live-p window)
       (let ((overlay (window-parameter window 'hel--main-cursor-overlay))
             (selected? (eq window (selected-window))))
         (with-current-buffer (window-buffer window)
           (if (or hel--cursor-hidden? (not hel-normal-state))
-              (when overlay
-                (delete-overlay overlay))
+              (-some-> overlay (delete-overlay))
             ;; else
             (-let* ((selection (if selected?
                                    (hel-selection)
                                  (hel--selection-from (window-point window) nil nil)))
-                    ((begin . end) (hel--cursor-bounds selection))
-                    (face (if selected?
-                              (nth 2 (hel--cursor-look t))
-                            'hel-other-window-cursor)))
+                    ((begin . end) (hel--cursor-bounds selection)))
               (unless overlay
-                (setq overlay (make-overlay begin end))
-                (overlay-put overlay 'type 'main-cursor)
-                (overlay-put overlay 'window window)
+                (setq overlay (-doto (make-overlay begin end)
+                                (overlay-put 'type 'main-cursor)
+                                (overlay-put 'window window)))
                 (set-window-parameter window 'hel--main-cursor-overlay overlay))
               ;; In the selected window the box lies above the region of Emacs,
               ;; which has (nil . 100), and the bracket that `show-paren-mode'
@@ -1282,33 +1313,37 @@ Each window keeps its own overlay in its `hel--main-cursor-overlay' parameter."
                            (eql (overlay-start overlay) begin)
                            (eql (overlay-end overlay) end))
                 (move-overlay overlay begin end (current-buffer)))
-              (if (= begin end)
-                  (progn
-                    (overlay-put overlay 'face nil)
-                    (overlay-put overlay 'display nil)
-                    (overlay-put overlay 'after-string
-                                 (propertize " " 'face face 'cursor t)))
-                (overlay-put overlay 'face face)
-                (overlay-put overlay 'display (hel--cursor-display begin face))
-                (overlay-put overlay 'after-string nil)))))))))
+              (let ((face (if selected?
+                              (nth 2 (hel--cursor-look t))
+                            'hel-other-window-cursor)))
+                (if (= begin end)
+                    (-doto overlay
+                      (overlay-put 'face nil)
+                      (overlay-put 'display nil)
+                      (overlay-put 'after-string
+                                   (propertize " " 'face face 'cursor t)))
+                  (-doto overlay
+                    (overlay-put 'face face)
+                    (overlay-put 'display (hel--cursor-display begin face))
+                    (overlay-put 'after-string nil)))))))))))
 
 (defun hel--delete-dead-main-cursor-overlays ()
-  "Delete the boxes of deleted windows in the buffers that the frame shows.
-A deleted window leaves the overlay of its box in its buffer, where no
-window shows it.  Emacs runs this function when a window of the frame is
-added or deleted, so the buffer of a deleted window is usually still
-shown."
-  (dolist (buffer (-distinct (-map #'window-buffer (window-list))))
+  "Delete the boxes that deleted windows leave in their buffers.
+Emacs runs this function when a window of the frame is added or deleted."
+  (dolist (buffer (->> (window-list)
+                       (-map #'window-buffer)
+                       (-uniq)))
     (with-current-buffer buffer
       (save-restriction
         (widen)
-        (dolist (overlay (overlays-in (point-min) (point-max)))
-          (when (and (eq (overlay-get overlay 'type) 'main-cursor)
-                     (not (window-live-p (overlay-get overlay 'window))))
-            (delete-overlay overlay)))))))
+        (->> (overlays-in (point-min) (point-max))
+             (-filter (lambda (ov)
+                        (and (eq (overlay-get ov 'type) 'main-cursor)
+                             (not (window-live-p (overlay-get ov 'window))))))
+             (mapc #'delete-overlay))))))
 
 (defun hel--delete-main-cursor-overlays ()
-  "Delete the overlays of the cursor highlight in every window."
+  "Delete the box of the main cursor in every window."
   (walk-windows (lambda (window)
                   (-some-> (window-parameter window 'hel--main-cursor-overlay)
                     (delete-overlay)))

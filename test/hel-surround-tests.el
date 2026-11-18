@@ -194,7 +194,7 @@ finds the pair."
   (skip-unless (and (treesit-language-available-p 'python)
                     (<= 31 emacs-major-version)))
   (hel-test-with #'python-ts-mode "a = \"\"\"bar\"\"\"\n"
-    (skip-unless (hel-treesit-text-objects-p)))
+    (skip-unless (hel-treesit-text-objects-p (point))))
   (hel-surround-tests--check
    '((python-ts-mode "a = |\"\"\"bar\"\"\"\n" hel-mark-inner-double-quoted "bar")
      (python-ts-mode "a = \"\"\"bar\"\"\"|\n" hel-mark-inner-double-quoted "bar")
@@ -224,14 +224,14 @@ strings to insert, strings to remove, and a function that finds a pair."
         (should (equal (hel-surround--delimiters ?\() '(("(<" . ">)"))))
         ;; A newline in the old strings stands for the padding linewise.
         (should (equal (hel-surround--delimiters ?z) '(("<<" . ">>") . linewise)))
-        (let ((producer (hel-pair-producer ?x)))
+        (let ((producer (hel-pair-producer ?x (point))))
           (should (hel-delimiter-pair-producer-p producer))
           (should (equal (hel-pair-at producer (point))
                          (hel-pair-create 3 5 8 10))))
-        (should (hel-function-pair-producer-p (hel-pair-producer ?y)))
-        (should (equal (hel-pair-at (hel-pair-producer ?y) (point))
+        (should (hel-function-pair-producer-p (hel-pair-producer ?y (point))))
+        (should (equal (hel-pair-at (hel-pair-producer ?y (point)) (point))
                        (hel-pair-create 3 5 8 10)))
         ;; A character without an entry uses the new tables.
-        (should (hel-syntax-pair-producer-p (hel-pair-producer ?\[)))))))
+        (should (hel-syntax-pair-producer-p (hel-pair-producer ?\[ (point))))))))
 
 ;;; hel-surround-tests.el ends here

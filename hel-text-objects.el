@@ -32,9 +32,11 @@
 ;;
 ;; Every command runs an algorithm over one kind of thing such as `word',
 ;; `function' or `comment'. The property `hel-thing-sources' of a thing holds
-;; a list of /sources/. A source is a function of no arguments that returns
-;; a /producer/ at the cursor, or nil when it does not apply there. The first
-;; source that returns a producer wins.
+;; a list of /sources/. A source is a function of a position that returns
+;; a /producer/ for a search from that position, or nil when it does not
+;; apply there. The first source that returns a producer wins. Each command
+;; passes the position that it searches from, so the source is chosen where
+;; the search runs.
 ;;
 ;; Every operation of the protocol takes the thing and the producer, and
 ;; dispatches on the argument that its answer depends on:
@@ -535,7 +537,8 @@ goes to the edge where they were added.
 KIND is:
 - `:inner' for what `mi' selects;
 - `:around' for what `ma' selects."
-  (if-let* ((producer (hel-thing-producer thing)))
+  (if-let* ((head (hel-trimmed-selection-head))
+            (producer (hel-thing-producer thing head)))
       (progn
         (hel--sync-selection-history)
         (-let* ((dir (hel-sign count))
@@ -546,8 +549,7 @@ KIND is:
                 ((first . last)
                  (if extend?
                      (hel--extend-things thing producer run-first run-last count)
-                   (when-let* ((cursor (hel-cursor-position))
-                               (instance (hel-thing-owning thing producer cursor)))
+                   (when-let* ((instance (hel-thing-owning thing producer head)))
                      (hel--extend-things thing producer instance nil (- count dir))))))
           (when-let* ((first)
                       (range (pcase kind
@@ -580,19 +582,19 @@ motion, the motion goes on from its other edge and leaves it out, so
 `w' on the space before a word selects that word.
 
 With EXTEND, start at point and extend the selection instead of
-replacing it.  A selection of one character keeps its character, see
-`hel--selection-anchor', so the motion starts past it.  Go on to the
-next edge when the motion would stop on the anchor of the selection,
-where the selection would be empty.  When no thing exists in the
-direction, the selection stays as it is."
-  (if-let* ((producer (hel-thing-producer thing)))
+replacing it.  A selection of one character keeps its character, so
+the motion starts past it.  Go on to the next edge when the motion would
+stop on the anchor of the selection, where the selection would be
+empty.  When no thing exists in the direction, the selection stays as
+it is."
+  (if-let* ((producer (hel-thing-producer thing (hel-selection-head))))
       (cl-flet ((reach (pos count)
                   ;; The range in the order of the motion: (START . END).
                   (-when-let ((begin . end) (hel-thing-reach thing producer pos
                                                              count edge skip-gap?))
-                    (if (< count 0) (cons end begin) (cons begin end)))))
+                    (if (< 0 count) (cons begin end) (cons end begin)))))
         (let ((anchor (and extend
-                           (hel--selection-anchor (hel-sign count)))))
+                           (hel-selection-anchor (hel-selection) (hel-sign count)))))
           (-when-let* (((start . end)
                         (if extend
                             (reach (-let [((begin . end)) (hel-selection)]
@@ -600,24 +602,24 @@ direction, the selection stays as it is."
                                            ((< 0 count) end)
                                            (t begin)))
                                    count)
-                          ;; NEAR and FAR are the edges of the head
-                          ;; character behind and ahead of the motion.
-                          (let* ((begin (hel--head-char (hel-selection)))
-                                 (end (min (1+ begin) (point-max)))
+                          ;; NEAR and FAR are the edges of the head character
+                          ;; behind and ahead of the motion.
+                          (let* ((begin (hel-selection-head (hel-selection)))
+                                 (end  (min (1+ begin) (point-max)))
                                  (near (if (< 0 count) begin end))
-                                 (far (if (< 0 count) end begin))
+                                 (far  (if (< 0 count) end begin))
                                  (step (reach near (hel-sign count))))
                             (cond ((= (point) (if (< count 0)
                                                   (point-min)
                                                 (point-max)))
-                                   ;; As in Helix, nothing lies ahead of
-                                   ;; a cursor at the edge of the buffer.
+                                   ;; Nothing lies ahead of a cursor at the edge
+                                   ;; of the buffer.
                                    nil)
                                   ((and step (/= near far) (eql (cdr step) far))
-                                   ;; At the edge of the buffer the motion
-                                   ;; from FAR gives an empty range.  Then
-                                   ;; a bare cursor selects its character,
-                                   ;; and a selection stays.
+                                   ;; At the edge of the buffer the motion from
+                                   ;; FAR gives an empty range. Then a bare
+                                   ;; cursor selects its character, and
+                                   ;; a selection stays.
                                    (-let [(start . end) (reach far count)]
                                      (cond ((and start (/= start end))
                                             (cons start end))
@@ -635,11 +637,14 @@ direction, the selection stays as it is."
 
 ;;; Producers
 
-(defun hel-thing-producer (thing)
-  "Return the producer of THING at the cursor, or nil.
+(defun hel-thing-producer (thing pos)
+  "Return the producer of THING for a search from POS, or nil.
 The producer comes from the first source in the property `hel-thing-sources'
-of THING that returns one."
-  (-some #'funcall (get thing 'hel-thing-sources)))
+of THING that returns one for POS. POS is the position that the search
+starts from, so the source decides at the same place as the search: in
+a buffer with embedded languages, in the same language."
+  (-some (lambda (source) (funcall source pos))
+         (get thing 'hel-thing-sources)))
 
 (defun hel--no-thing-producer-message (thing)
   "Report that no source of THING applies at the cursor."
@@ -654,23 +659,21 @@ of THING that returns one."
 A query captures a thing under the name of the thing, such as `function'.
 The parent of a thing is the parent node of its match.")
 
-(defun hel-treesit-source ()
-  "Return the producer of text objects based on tree-sitter queries, or nil."
-  (if (hel-treesit-text-objects-p)
+(defun hel-treesit-source (pos)
+  "Return the producer of the tree-sitter text objects at POS, or nil."
+  (if (hel-treesit-text-objects-p pos)
       (hel-treesit-query-producer--create)))
 
-(defun hel-treesit-text-objects-p ()
-  "Return non-nil if the tree-sitter text objects work at the cursor."
-  (let ((cursor-pos (if (and (use-region-p)
-                             (< (mark) (point)))
-                        (1- (point))
-                      (point))))
-    (and (hel-treesit-active-p)
-         ;; We need the `treesit-query-capture' GROUPED argument which was
-         ;; added in Emacs 31.
-         (<= 31 emacs-major-version)
-         (hel-treesit--query (treesit-language-at cursor-pos))
-         t)))
+(defun hel-treesit-text-objects-p (pos)
+  "Return non-nil if the tree-sitter text objects work at POS.
+They work when the buffer has a parser, Emacs is version 31 or later,
+and a text object query exists for the language at POS."
+  (and (hel-treesit-active-p)
+       ;; We need the `treesit-query-capture' GROUPED argument which was
+       ;; added in Emacs 31.
+       (<= 31 emacs-major-version)
+       (hel-treesit--query (treesit-language-at pos))
+       t))
 
 (cl-defmethod hel-thing-at (thing (_producer hel-treesit-query-producer) pos)
   "Capture the things in the whitespace around POS.
@@ -927,8 +930,11 @@ A language without a query file or without valid patterns maps to nil.")
 
 (defun hel-treesit--query (language)
   "Return the compiled text object query of LANGUAGE, or nil.
-`hel-treesit--queries' keeps the result of each language. A query file that
-cannot be split into patterns gives no query, and a message names the language."
+`hel-treesit--queries' keeps the result of each language. A pattern that
+the installed grammar cannot compile is left out, so a node type that the
+grammar lacks costs one pattern and not the whole query. A query file that
+cannot be split into patterns gives no query, and a message names the
+language."
   (pcase (gethash language hel-treesit--queries 'unknown)
     ('unknown
      (let ((query (condition-case err
@@ -965,9 +971,10 @@ as `hel-word-motion' does."))
 
 (defun hel-motion-source (motion)
   "Return a source of the things that MOTION moves over.
-A source is a function that returns a producer."
+A source is a function of a position that returns a producer. This one
+returns the same producer at every position."
   (let ((producer (hel-motion-producer--create :function motion)))
-    (lambda () producer)))
+    (lambda (_pos) producer)))
 
 (cl-defmethod hel-thing-at (thing (producer hel-motion-producer) pos)
   "To find the start of the thing, the motion of PRODUCER goes to its end
@@ -1079,9 +1086,10 @@ their own.")
 (defun hel-word-motion-source (motion)
   "Return a source of the words that MOTION moves over.
 MOTION stops at the fence between words, see `hel-word-motion-producer'.
-A source is a function that returns a producer."
+A source is a function of a position that returns a producer. This one
+returns the same producer at every position."
   (let ((producer (hel-word-motion-producer--create :function motion)))
-    (lambda () producer)))
+    (lambda (_pos) producer)))
 
 (put 'word 'hel-thing-no-jump t)
 (put 'word 'hel-thing-sources (list (hel-word-motion-source #'hel-word-motion)))
@@ -1488,9 +1496,13 @@ find the pieces, and the code they share joins the pieces into comments.")
 
 (cl-defstruct (hel-syntax-comment-producer
                (:include hel-comment-producer)
-               (:constructor hel-syntax-comment-source)
+               (:constructor hel-syntax-comment-producer--create)
                (:copier nil))
   "The producer of the comments that the syntax table finds.")
+
+(defun hel-syntax-comment-source (_pos)
+  "Return the producer of the comments that the syntax table finds."
+  (hel-syntax-comment-producer--create))
 
 (cl-defstruct (hel-treesit-comment-producer
                (:include hel-comment-producer)
@@ -1498,9 +1510,10 @@ find the pieces, and the code they share joins the pieces into comments.")
                (:copier nil))
   "The producer of the comments that a tree-sitter query finds.")
 
-(defun hel-treesit-comment-source ()
-  "Return the producer of the comments that the tree-sitter query finds, or nil."
-  (when (hel-treesit-text-objects-p)
+(defun hel-treesit-comment-source (pos)
+  "Return the producer of the comments that the tree-sitter query finds.
+Return nil when the tree-sitter text objects do not work at POS."
+  (when (hel-treesit-text-objects-p pos)
     (hel-treesit-comment-producer--create)))
 
 (cl-defgeneric hel--comment-piece-under (producer pos)
@@ -1521,7 +1534,7 @@ POS can be inside the comment or on its edge, and also on the blanks
 around it or on the line end after it. The bounds are what `mic' selects:
 the whole lines of the comment with the line end of the last one, or only
 the comment when it follows code."
-  (when-let* ((producer (hel-thing-producer 'comment))
+  (when-let* ((producer (hel-thing-producer 'comment pos))
               (range (hel--comment-run-at producer pos)))
     (hel-thing-apply-rules 'comment range)))
 
@@ -1750,7 +1763,7 @@ level of the parentheses separates two arguments, and a comma in nested
 brackets, in a string or in a comment does not. The parent of an
 argument is the start of its parentheses.")
 
-(defun hel-syntax-argument-source ()
+(defun hel-syntax-argument-source (_pos)
   "Return the producer of the arguments that the syntax table finds, or nil.
 In Lisp, whitespace and not a comma separates the elements of a list, so
 in a buffer derived from `lisp-data-mode' this source returns nil."

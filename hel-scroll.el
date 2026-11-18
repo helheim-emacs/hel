@@ -44,9 +44,8 @@
 (defun hel-smooth-scroll (delta duration extend)
   "Smoothly scroll the view by DELTA pixels over DURATION seconds.
 When point has to move, the selection goes with it if EXTEND is
-non-nil.
-When there are multiple cursors in the buffer the scroll is capped
-to one screen so the main cursor stay in sync with secondary ones."
+non-nil.  With secondary cursors, the scroll stops before point has to
+move, because the secondary cursors cannot move with it."
   (unless hel--in-animate-scroll
     (let* ((y-at-point (or (cdr (posn-x-y (posn-at-point)))
                            0)) ; because sometimes `posn-at-point' returns nil
@@ -229,9 +228,8 @@ If COUNT is not specified the function scrolls down `hel-scroll-count'
 lines, which is the last used COUNT. If the scroll count is zero
 the command scrolls half the screen.
 
-If multiple cursors are active, scroll is restricted only within
-current screen to prevent desynchronization between main cursor
-and secondary ones."
+With secondary cursors, the scroll stops before point has to move,
+because the secondary cursors cannot move with it."
   :multiple-cursors nil
   (interactive (list current-prefix-arg hel-extend-selection))
   (setq count (if (natnump count)
@@ -253,9 +251,8 @@ If COUNT is not specified the function scrolls up `hel-scroll-count'
 lines, which is the last used COUNT. If the scroll count is zero
 the command scrolls half the screen.
 
-If multiple cursors are active, scroll is restricted only within
-current screen to prevent desynchronization between main cursor
-and secondary ones."
+With secondary cursors, the scroll stops before point has to move,
+because the secondary cursors cannot move with it."
   :multiple-cursors nil
   (interactive (list current-prefix-arg hel-extend-selection))
   (setq count (if (natnump count)

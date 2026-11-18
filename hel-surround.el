@@ -75,9 +75,9 @@ Two pairs with the same four positions are the same pair."
 (defun hel-pair-padded (pair)
   "Return PAIR with the whitespace inside it added to its delimiters.
 The opening delimiter takes the whitespace after it, and the closing one
-the whitespace before it. When only whitespace lies between them, both
-delimiters end at the end of the opening one, which then holds nothing of
-the whitespace."
+the whitespace before it. When only whitespace lies between them, the
+opening delimiter stays as it is, and the closing one takes all the
+whitespace."
   (-let (((begin . end) (or (hel-trim-whitespace-from-range
                              (hel-pair-inner-bounds pair))
                             (cons (hel-pair-open-end pair)
@@ -93,11 +93,11 @@ the whitespace."
 ;;; The pair producer
 
 (cl-defgeneric hel-pair-at (producer pos)
-  "Return the innermost pair that PRODUCER finds at POS, or nil.
+  "Return the pair that the cursor at POS is on, or nil.
 The cursor is on the character at POS. A pair that starts at POS wins,
 then a pair that ends at POS, then the innermost pair around POS. So in
 \"(foo)|(bar)\" the result is \"(bar)\", and in \"(a (b)| c)\" it is \"(b)\".
-The result R always satisfies open-begin(R) <= POS <= close-end(R).
+The result always holds POS, its delimiters included.
 
 When both delimiters are the same text and nothing tells an opening one
 from a closing one, as for the stars of *bold*, a delimiter can belong to
@@ -126,9 +126,9 @@ By default, this is all the text between the delimiters.")
 
 (defun hel--search-delimiter (string dir bound regexp?)
   "Search for STRING in direction DIR, and return the far end of the match.
-The match does not pass BOUND, so when point is already past BOUND,
-return nil. When REGEXP? is non-nil, STRING is a regexp, and the match
-data describe the match."
+Move point to that end. The match does not pass BOUND, so when point is
+already past BOUND, return nil. When REGEXP? is non-nil, STRING is
+a regexp, and the match data describe the match."
   (unless (and bound (< (* dir (- bound (point))) 0))
     (if regexp?
         (re-search-forward string bound t dir)
@@ -279,9 +279,10 @@ does."
   (close nil :documentation "The closing bracket, a character."))
 
 (defun hel-syntax-pair-source (open close)
-  "Return a source of the brackets OPEN and CLOSE, two characters."
+  "Return a source of the brackets OPEN and CLOSE, two characters.
+A source is a function of a position that returns a producer."
   (let ((producer (hel-syntax-pair-producer-create open close)))
-    (lambda () producer)))
+    (lambda (_pos) producer)))
 
 (defun hel--pair-syntax-table (open close)
   "Return a syntax table in which OPEN and CLOSE are a pair of brackets."
@@ -299,7 +300,8 @@ does."
     (hel-pair-create begin (1+ begin) (1- end) end)))
 
 (defun hel--syntax-pair-around (producer pos)
-  "Return the innermost pair of PRODUCER around POS in the code, or nil."
+  "Return the innermost pair of PRODUCER around POS, or nil.
+The syntax table finds the pair."
   (let ((open (hel-syntax-pair-producer-open producer)))
     (save-excursion
       (goto-char pos)
@@ -361,9 +363,10 @@ places."
   (mark nil :documentation "The quote mark, a character."))
 
 (defun hel-string-pair-source (mark)
-  "Return a source of the text between two quote marks MARK."
+  "Return a source of the text between two quote marks MARK.
+A source is a function of a position that returns a producer."
   (let ((producer (hel-string-pair-producer-create mark)))
-    (lambda () producer)))
+    (lambda (_pos) producer)))
 
 (defun hel--string-at (pos)
   "Return the bounds of the string of the major mode at POS, or nil.
@@ -457,17 +460,17 @@ counts for MARK when its opening delimiter holds MARK."
 (defun hel-treesit-string-pair-source (mark)
   "Return a source of the strings of quote mark MARK that a query finds.
 The source applies only where the query finds such a string at the
-cursor. Elsewhere, as in a comment, the next source of the key applies."
+position. Elsewhere, as in a comment, the next source of the key applies."
   (let ((producer (hel-treesit-string-pair-producer-create mark)))
-    (lambda ()
-      (when (and (hel-treesit-text-objects-p)
-                 (-some->> (hel-cursor-position)
-                   (hel-pair-at producer)))
+    (lambda (pos)
+      (when (and (hel-treesit-text-objects-p pos)
+                 (hel-pair-at producer pos))
         producer))))
 
 (defun hel--treesit-string-pair (node mark)
   "Return the pair of the string NODE, or nil when MARK does not open it.
-A string node without two children takes one character as each delimiter."
+Each delimiter is the child of NODE at that edge of NODE. When no child
+lies at the edge, the delimiter is one character."
   (let* ((begin (treesit-node-start node))
          (end   (treesit-node-end node))
          (count (treesit-node-child-count node))
@@ -519,10 +522,11 @@ that the search stays in, or nil for the whole buffer."))
 
 (defun hel-delimiter-pair-source (left right &rest slots)
   "Return a source of the text between the strings LEFT and RIGHT.
+A source is a function of a position that returns a producer.
 SLOTS are the other slots of `hel-delimiter-pair-producer', as keywords."
   (let ((producer (apply #'hel-delimiter-pair-producer-create
                          :left left :right right slots)))
-    (lambda () producer)))
+    (lambda (_pos) producer)))
 
 (defun hel--delimiter-pair-limits (producer pos)
   "Return the bounds that the search of PRODUCER from POS stays in."
@@ -558,7 +562,7 @@ When the name is empty, it finds the nearest pair of tags of any name.
 A self-closing tag such as <br/> does not open a pair."
   (name nil :documentation "The name of the tags, a string."))
 
-(defun hel-tag-pair-source ()
+(defun hel-tag-pair-source (_pos)
   "Read a tag name and return the producer of the tags of that name.
 An empty name stands for the tags of any name."
   (hel-tag-pair-producer-create (string-trim (read-string "Find tag: "))))
@@ -612,9 +616,10 @@ or nil."))
 
 (defun hel-function-pair-source (function)
   "Return a source of the pairs that FUNCTION finds.
+A source is a function of a position that returns a producer.
 FUNCTION is the slot of `hel-function-pair-producer'."
   (let ((producer (hel-function-pair-producer-create function)))
-    (lambda () producer)))
+    (lambda (_pos) producer)))
 
 (cl-defmethod hel-pair-at ((producer hel-function-pair-producer) pos)
   (save-excursion
@@ -633,9 +638,11 @@ in part. The brackets of the syntax table meet this rule."
   (producers nil :documentation "The list of the producers to ask."))
 
 (defun hel-any-pair-source (&rest sources)
-  "Return a source of the closest pair that the producers of SOURCES find."
-  (lambda ()
-    (hel-any-pair-producer-create (-keep #'funcall sources))))
+  "Return a source of the closest pair that the producers of SOURCES find.
+A source is a function of a position that returns a producer."
+  (lambda (pos)
+    (hel-any-pair-producer-create
+     (-keep (lambda (source) (funcall source pos)) sources))))
 
 (defun hel--pair-by-edge-rule (pos pairs)
   "Return the pair of PAIRS that the cursor at POS is on, or nil.
@@ -689,10 +696,10 @@ ends at POS, then the smallest pair, as `hel-pair-at' says."
         (?t  hel-tag-pair-source)
         (?m  ,(hel-any-pair-source paren bracket curly))))
   "The sources of the pairs, for each key character.
-Each element is (CHAR SOURCE...). A source is a function of no arguments
-that returns a pair producer at the cursor, or nil when it does not apply
-there. The first producer wins. A character without an element pairs with
-itself, as the stars in *bold*.
+Each element is (CHAR SOURCE...). A source is a function of a position
+that returns a pair producer for a search from that position, or nil
+when it does not apply there. The first producer wins. A character
+without an element pairs with itself, as the stars in *bold*.
 
 The variable is buffer-local, so a major mode can change it in its hook.")
 
@@ -723,7 +730,7 @@ text:
 
 The variable is buffer-local, so a major mode can change it in its hook.")
 
-(defvar hel--obsoolet-surround-alist-warned nil
+(defvar hel--obsolete-surround-alist-warned nil
   "Non-nil after the first warning about `hel-surround-alist'.")
 
 (defun hel--surround-alist-entry (char key)
@@ -732,8 +739,8 @@ KEY is `:insert' or `:remove'. Warn once that the variable is obsolete."
   (with-suppressed-warnings ((obsolete hel-surround-alist))
     (when-let* ((spec (alist-get char hel-surround-alist))
                 ((plist-member spec key)))
-      (unless hel--obsoolet-surround-alist-warned
-        (setq hel--obsoolet-surround-alist-warned t)
+      (unless hel--obsolete-surround-alist-warned
+        (setq hel--obsolete-surround-alist-warned t)
         (display-warning 'hel "`hel-surround-alist' is obsolete: use \
 `hel-pair-sources' and `hel-surround-delimiters'"))
       (pcase key
@@ -747,13 +754,14 @@ KEY is `:insert' or `:remove'. Warn once that the variable is obsolete."
                      :regexp (plist-get spec :regexp)
                      :balanced (plist-get spec :balanced)))))))))
 
-(defun hel-pair-producer (char)
-  "Return the producer of the pairs of the key CHAR at the cursor, or nil.
+(defun hel-pair-producer (char pos)
+  "Return the producer of the pairs of the key CHAR at POS, or nil.
 The producer comes from the first source of CHAR in `hel-pair-sources'
-that returns one. A character without sources pairs with itself."
+that returns one for POS. POS is the position that the search for the
+pair starts from. A character without sources pairs with itself."
   (or (hel--surround-alist-entry char :remove)
       (if-let* ((cell (assq char hel-pair-sources)))
-          (-some #'funcall (cdr cell))
+          (-some (lambda (source) (funcall source pos)) (cdr cell))
         (hel-delimiter-pair-producer-create :left (string char)
                                             :right (string char)))))
 
@@ -915,7 +923,8 @@ holds the selection and is larger, so a repeated `mi(' grows outward.
 When no pair holds the selection, as for quotes, which do not nest, take
 the pair at the cursor: so `ma\"' then `mi\"' selects the inside of the
 same string."
-  (if-let* ((producer (hel-pair-producer char)))
+  (if-let* ((head (hel-trimmed-selection-head))
+            (producer (hel-pair-producer char head)))
       (progn
         (hel--sync-selection-history)
         (cl-flet ((side-bounds (pair)
@@ -932,8 +941,7 @@ same string."
                                       when (hel--range-strictly-inside-p
                                             selection (side-bounds pair))
                                       return pair))
-                           (-some->> (hel-cursor-position)
-                             (hel-pair-at producer)))))
+                           (hel-pair-at producer head))))
             (when pair
               (cl-loop repeat (1- count)
                        for parent = (hel-pair-parent producer pair)

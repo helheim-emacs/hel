@@ -69,8 +69,8 @@ Execute in order:
 ;; h
 (hel-define-command hel-backward-char (count &optional extend)
   "Move the cursor character backward COUNT characters.
-When extending the selection is on, the selection keeps its other end,
-see `hel-move-onto-char'."
+When extending the selection is on, the selection keeps the character at
+its other end."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list (prefix-numeric-value current-prefix-arg)
@@ -80,10 +80,10 @@ see `hel-move-onto-char'."
 ;; l
 (hel-define-command hel-forward-char (count &optional extend)
   "Move the cursor character forward COUNT characters.
-Move backward if COUNT is negative. When extending the selection is on,
-the selection keeps its other end, see `hel-move-onto-char'.  Without
-extending, a step past the last character leaves the empty selection at
-the end of the buffer."
+Move backward if COUNT is negative.  When extending the selection is on,
+the selection keeps the character at its other end.  Without extending,
+a step past the last character leaves the empty selection at the end of
+the buffer."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list (prefix-numeric-value current-prefix-arg)
@@ -91,7 +91,7 @@ the end of the buffer."
   (let ((dir (hel-sign count)))
     (dotimes (_ (abs count))
       (-let* (((selection &as (begin . end)) (hel-selection))
-              (char (+ (hel--head-char selection) dir)))
+              (char (+ (hel-selection-head selection) dir)))
         (cond ((< char (point-min))
                (signal 'beginning-of-buffer nil))
               ((< char (point-max))
@@ -103,12 +103,11 @@ the end of the buffer."
 
 ;; j
 (hel-define-command hel-next-line (count &optional extend)
-  "Move to the next COUNT line. Move upward if COUNT is negative.
-An active selection first collapses onto its head character, see
-`hel-collapse-selection'.  When extending the selection is on, extend
-the selection from its anchor, see `hel--selection-anchor'.  If both
-linewise selection (`x' key) and extending selection (`v' key) are
-active — works like `hel-expand-line-selection'."
+  "Move the cursor COUNT lines down, or up when COUNT is negative.
+An active selection first collapses onto its head character.  When
+extending the selection is on, the selection keeps its other end and
+extends to the new line.  A selection of whole lines, as `x' makes it,
+then grows by whole lines."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list (prefix-numeric-value current-prefix-arg)
@@ -116,7 +115,8 @@ active — works like `hel-expand-line-selection'."
   (if (and extend (hel-linewise-selection-p))
       (hel-expand-line-selection count)
     (let ((anchor (and extend
-                       (hel--selection-anchor (hel-sign count)))))
+                       (hel-selection-anchor (hel-selection)
+                                              (hel-sign count)))))
       (unless extend
         (if (use-region-p)
             (hel-collapse-selection)
@@ -300,7 +300,7 @@ selection instead, and keep its anchor character."
   :multiple-cursors t
   :merge-selections hel-extend-selection
   (interactive (list hel-extend-selection))
-  (-when-let (char (hel--matching-bracket (hel--head-char (hel-selection))))
+  (-when-let (char (hel--matching-bracket (hel-selection-head (hel-selection))))
     (hel-move-onto-char char extend))
   (hel-reveal-point-when-on-top))
 
@@ -918,7 +918,7 @@ stop the search."
   :multiple-cursors t
   (interactive)
   (cond ((region-active-p)
-         (hel-set-cursor (hel--head-char (hel-selection))))
+         (hel-set-cursor (hel-selection-head (hel-selection))))
         (hel-search--session
          (hel-search-stop))))
 
@@ -1132,7 +1132,7 @@ You may restore them with %s (`hel-restore-cursors')."
 
 ;; M-,
 (hel-define-command hel-remove-main-cursor ()
-  "Delete main cursor and activate the next secondary one."
+  "Delete the main cursor and make the next secondary cursor the main one."
   :multiple-cursors nil
   (interactive)
   (when hel-multiple-cursors-mode
@@ -1273,8 +1273,7 @@ Return the text that was there."
 
 ;; M-<right-mouse>
 (hel-define-command hel-toggle-cursor-on-click (event)
-  "Add a cursor where you click, or remove a secondary cursor that is
-already there."
+  "Add a secondary cursor where you click, or remove the one that is there."
   :multiple-cursors nil
   (interactive "e")
   (mouse-minibuffer-check event)
@@ -2014,7 +2013,7 @@ enclosing tags."
   :multiple-cursors t
   (interactive)
   (when-let* ((char (read-char "Delete pair: " t))
-              (producer (hel-pair-producer char))
+              (producer (hel-pair-producer char (point)))
               (pair (hel-pair-at producer (point))))
     (let* ((pair (hel-surround-widen pair (hel-surround--padding char)))
            (lines? (hel--pair-on-own-lines-p pair))
@@ -2040,7 +2039,7 @@ the nearest enclosing tags."
   :multiple-cursors t
   (interactive)
   (when-let* ((char (read-char "Replace pair: " t))
-              (producer (hel-pair-producer char))
+              (producer (hel-pair-producer char (point)))
               (pair (hel-pair-at producer (point))))
     (let ((delimiters (if (eq char ?t)
                           (hel-surround-read-tag "With tag: ")

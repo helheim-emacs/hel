@@ -319,7 +319,7 @@ selection, and before an opening one, because Emacs shows a closing
 bracket before point and an opening one after it."
   (save-excursion
     (when hel-normal-state
-      (let ((head (hel--head-char (hel-selection))))
+      (let ((head (hel-selection-head (hel-selection))))
         (pcase (syntax-class (syntax-after head))
           (4 (goto-char head))
           (5 (goto-char (1+ head))))))

@@ -1600,7 +1600,14 @@ cursor character, so extending goes on."
   ("x\n|a\nb\nc\ny" "CC)" "x\n|a\n¦b\n¦c\ny")
   ("x\n|a\nb\nc\ny" "CC))" "x\n¦a\n|b\n¦c\ny")
   ("x\n|a\nb\nc\ny" "CC)))" "x\n¦a\n¦b\n|c\ny")
-  ("x\n|a\nb\nc\ny" "CC2)" "x\n¦a\n|b\n¦c\ny"))
+  ("x\n|a\nb\nc\ny" "CC2)" "x\n¦a\n|b\n¦c\ny")
+  ;; A forward selection has its point after its last character.
+  ("^foo bar baz|" "s\\w+ RET )" "¬foo¦ ^bar| ¬baz¦")
+  ("^foo bar baz|" "s\\w+ RET ))" "¬foo¦ ¬bar¦ ^baz|")
+  ("^foo bar baz|" "s\\w+ RET )))" "^foo| ¬bar¦ ¬baz¦")
+  ("^foo bar baz|" "s\\w+ RET (" "¬foo¦ ¬bar¦ ^baz|")
+  ("^foo bar baz|" "s\\w+ RET ((" "¬foo¦ ^bar| ¬baz¦")
+  ("^foo bar baz|" "s\\w+ RET (((" "^foo| ¬bar¦ ¬baz¦"))
 
 (ert-deftest hel-behaviour-cursors-restore ()
   "`gv' restores the cursors that `,' removed."
