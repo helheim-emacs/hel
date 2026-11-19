@@ -824,23 +824,23 @@ cursor character, so extending goes on."
 (hel-test-table edit-cut
   ("^foo| bar" "d" "| bar" :kill "foo")
   ("|foo^ bar" "d" "| bar" :kill "foo")
-  ;; Without a selection `d' works like Backspace within the line: it kills
-  ;; the cursor character and steps back onto the character before it.
-  ("foo| bar" "d" "fo|obar" :kill " ")
-  ("foo| bar" "hd" "f|o bar" :kill "o")
-  ;; At the start of the line the cursor stays in place.
-  ("|foo" "d" "|oo" :kill "f")
-  ("a\n|bc" "d" "a\n|c" :kill "b")
-  ;; A run of `d' kills the characters in the order of the text.
-  ("ab|cd" "dd" "|ad" :kill "bc")
-  ("x\nab|c\n" "dddd" "x\n|\n" :kill "abc")
-  ;; The newline under the cursor stays, so the lines never join.
-  ("foo|\nbar" "d" "foo|\nbar" :yank "kept" :kill "kept")
-  ("foo\n|\nbar" "d" "foo\n|\nbar" :yank "kept" :kill "kept")
+  ;; The cursor goes onto the character before the deleted text.
+  ("x ^foo| bar" "d" "x|  bar" :kill "foo")
+  ("a\nb|ar\nc\n" "xd" "a|\nc\n" :kill "bar\n")
+  ;; One character, such as a bare cursor, stays out of the kill ring, and
+  ;; `d' works like Backspace.
+  ("foo| bar" "d" "fo|obar" :yank "kept" :kill "kept")
+  ("foo| bar" "hd" "f|o bar" :yank "kept" :kill "kept")
+  ("^f|oo" "d" "|oo" :yank "kept" :kill "kept")
+  ("ab|cd" "dd" "|ad" :yank "kept" :kill "kept")
+  ;; At the beginning of the buffer the cursor goes onto the first character.
+  ("|foo" "d" "|oo" :yank "kept" :kill "kept")
+  ;; A newline under the cursor joins the lines.
+  ("foo|\nbar" "d" "fo|obar" :yank "kept" :kill "kept")
   ;; At the end of the buffer there is nothing to kill.
   ("foo|" "d" "foo|" :yank "kept" :kill "kept")
   ;; An empty region made by `C-SPC' is no selection.
-  ("fo|o bar" "C-SPC d" "f|o bar" :kill "o")
+  ("fo|o bar" "C-SPC d" "f|o bar" :yank "kept" :kill "kept")
   ;; Linewise.
   ("fo|o\nbar\n" "xd" "|bar\n" :kill "foo\n")
   ("|a\nb\nc\n" "xxd" "|c\n" :kill "a\nb\n"))
@@ -848,16 +848,14 @@ cursor character, so extending goes on."
 (hel-test-table edit-delete
   ("^foo| bar" "D" "| bar" :yank "kept" :kill "kept")
   ("|foo^ bar" "D" "| bar" :yank "kept" :kill "kept")
-  ;; Without a selection `D' works like Delete within the line: it deletes
-  ;; the cursor character, and the cursor stays in place.
+  ;; The cursor goes onto the character before the deleted text.
+  ("x ^foo| bar" "D" "x|  bar" :yank "kept" :kill "kept")
+  ;; On one character, such as a bare cursor, `D' works like Delete: the
+  ;; cursor goes onto the character after it.
   ("foo| bar" "D" "foo|bar" :yank "kept" :kill "kept")
   ("foo| bar" "hD" "fo| bar" :yank "kept" :kill "kept")
-  ;; When the line end reaches the cursor, it steps back onto the last
-  ;; character, so a run of `D' eats the line from the right.
-  ("ab|c\nd" "D" "a|b\nd")
-  ("a|bc\nd" "DDDD" "|\nd")
-  ;; The newline under the cursor stays, so the lines never join.
-  ("foo|\nbar" "D" "foo|\nbar")
+  ("^f|oo" "D" "|oo" :yank "kept" :kill "kept")
+  ("foo|\nbar" "D" "foo|bar")
   ("foo|" "D" "foo|")
   ("fo|o bar" "C-SPC D" "fo| bar")
   ;; `DEL' does nothing in Normal state, because `d' deletes.
@@ -1657,11 +1655,11 @@ cursor character, so extending goes on."
 
 (hel-test-table cursors-edit
   ("|foo\nbar" "CD" "¦oo\n|ar")
-  ("^fo|o\nbar" "Cd" "¦o\n|r")
+  ("^fo|o\nbar" "Cd" "¦o|\nr")
   ("fo|o\nbar" "Cd" "f¦o\nb|a")
   ("fo|o\nbar" "Chd" "¦fo\n|br")
   ("fo|o\nbar" "ChrX" "f¦Xo\nb|Xr")
-  ("^fo|o\nbar" "CD" "¦o\n|r")
+  ("^fo|o\nbar" "CD" "¦o|\nr")
   ("^fo|o\nbar" "Cc" "¦o\n|r" :state insert)
   ("|foo\nbar" "Cix<escape>" "x¦foo\nx|bar")
   ("|foo\nbar" "Cax<escape>" "f¦xoo\nb|xar")
@@ -1727,11 +1725,11 @@ cursor character, so extending goes on."
 
 (ert-deftest hel-behaviour-cursors-undo-is-one-step ()
   "One undo reverts the change of all cursors and brings back their selections."
-  (hel-test-with 'text-mode "^foo foo|"
-    (hel-test-expect "sfoo RET" "^foo| ¬foo¦")
-    (hel-test-expect "d" "| ¦")
-    (hel-test-expect "u" "^foo| ¬foo¦")
-    (hel-test-expect "U" "| ¦")))
+  (hel-test-with 'text-mode "^afoo bfoo|"
+    (hel-test-expect "sfoo RET" "a^foo| b¬foo¦")
+    (hel-test-expect "d" "|a ¦b")
+    (hel-test-expect "u" "a^foo| b¬foo¦")
+    (hel-test-expect "U" "|a ¦b")))
 
 (ert-deftest hel-behaviour-cursors-undo-restores-cursor-chars ()
   "Undo brings back the cursor character of each cursor."

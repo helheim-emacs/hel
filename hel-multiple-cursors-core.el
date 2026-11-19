@@ -264,8 +264,8 @@ The state is point, the mark and the variables of
 
 (cl-defun hel--set-secondary-selection (cursor (begin . end) dir active)
   "Give the secondary CURSOR a new selection and draw it.
-With ACTIVE, the cursor selects the text from BEGIN to END in the
-direction DIR, 1 or -1.  Without ACTIVE, it is a bare cursor at BEGIN."
+With ACTIVE, it is a selection between BEGIN and END in the direction
+DIR: 1 or -1. Without ACTIVE, it is a bare cursor at BEGIN."
   (-let [(point . mark) (if (and active (< 0 dir))
                             (cons end begin)
                           (cons begin end))]
@@ -477,15 +477,14 @@ need it.  CURSORS has the form that `hel-selections' returns."
           (hel-set-cursor (car range))))))
   (hel-auto-multiple-cursors-mode))
 
-(defun hel-select-ranges (regions direction)
-  "Select each of REGIONS with a cursor of its own.
-The current cursor selects the first of REGIONS, and a new secondary
-cursor selects each of the others.  The cursors that exist already stay
-as they are.  REGIONS is a list of (BEGIN . END) pairs, and DIRECTION is
-1 or -1."
-  (dolist (region (cdr regions))
-    (hel-create-secondary-cursor region direction t))
-  (hel-select (car regions) direction))
+(defun hel-select-ranges (ranges direction)
+  "Create selection for all the RANGES with a cursor of its own.
+The cursor selects the first of RANGES, and secondary cursors select each of the
+others. RANGES is a list of (BEGIN . END) pairs, and DIRECTION, 1 forward or -1
+backward, is the direction of every selection."
+  (dolist (range (cdr ranges))
+    (hel-create-secondary-cursor range direction t))
+  (hel-select (car ranges) direction))
 
 ;;; Executing commands for main and secondary cursors
 

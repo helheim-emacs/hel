@@ -1164,7 +1164,18 @@ point over the body of one word."
       (if backward-to-end?
           ;; As in Helix, the newlines before POS are not a step.
           (skip-chars-backward "\r\n")
-        (hel--word-skip-fence (if (< count 0) -1 1)))
+        (let ((dir (if (< count 0) -1 1)))
+          (when (and (/= 0 (hel--word-skip-fence dir))
+                     (eq edge (if (< dir 0) :begin :end)))
+            ;; `e' and `b' take the blanks before the word into the step,
+            ;; and the blanks after a bracket fence are those blanks.
+            ;; A separator keeps the blanks on both sides: they pad
+            ;; a table cell.
+            (let ((after-fence (point)))
+              (hel-skip-blanks (- dir))
+              (when (memq (if (< dir 0) (following-char) (preceding-char))
+                          (hel-word-rules-separators hel-word-rules))
+                (goto-char after-fence))))))
       (let ((start (point)))
         (cond (backward-to-end?
                (hel-motion-loop (dir count)

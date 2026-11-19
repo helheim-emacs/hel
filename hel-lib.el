@@ -532,13 +532,35 @@ Indentation and trailing whitespace do not count."
 ;;; Selection
 
 (defun hel-region-direction ()
-  "Return the direction of region: -1 if point precedes mark, 1 otherwise."
-  (if (< (point) (mark-marker)) -1 1))
+  "Return the direction of the region, the way from mark to point.
+The direction is 1 forward or -1 backward. An empty region counts as
+backward."
+  (if (<= (point) (mark-marker)) -1 1))
 
 (defun hel-linewise-selection-p (&optional direction)
-  "Return t if active region spawns full logical lines.
-DIRECTION: 1 or -1. If provided — check if region spawns at least one full
-logical line on desired end of the region."
+  "Return t if the active region spans full logical lines.
+Without DIRECTION, both bounds of the region must be at the beginning of
+a line, because the the newline character is a part of a line. This is
+a \"full\" linewise selection:
+
+   |first line
+    second line
+   |
+
+With DIRECTION, 1 forward or -1 backward, the end of the region
+in that direction must be at the beginning of a line, and the other end
+must be not on the same line.
+
+\"forward\" linewise selection:
+
+    first | line
+    second line
+   |
+
+\"backward\" linewise selection:
+
+   |first line
+    second | line"
   (and (use-region-p)
        (save-excursion
          (let ((begin (region-beginning))
@@ -647,13 +669,22 @@ character faces the way the head moved."
                           (t dir))))
     (hel-set-cursor char)))
 
-(defun hel--selection-from (point mark active)
-  "Return the selection of a cursor with POINT, MARK and ACTIVE.
-The value is (RANGE DIRECTION), as `hel-selection' returns it.  ACTIVE
-is non-nil when the region of the cursor is active.  Without an active
-region the selection is the character after POINT.  POINT and MARK are
-numbers; MARK may be nil."
-  (cond ((and active (/= point mark))
+(defun hel--selection-from (point mark region-active?)
+  "Return the Hel selection for POINT, MARK and REGION-ACTIVE?.
+Emacs selects the text from MARK to POINT. Hel keeps the same text as
+\(RANGE DIRECTION): RANGE is a (BEGIN . END) pair, and DIRECTION is
+the way from MARK to POINT: 1 forward, -1 backward.
+
+Without an active region, or with an empty one, the selection is the
+cursor character, the one after POINT, selected backward:
+
+  ((POINT . POINT+1) -1)
+
+At the end of the buffer this selection is empty.
+
+POINT and MARK are buffer positions. MARK may be nil when
+REGION-ACTIVE? is nil."
+  (cond ((and region-active? (/= point mark))
          (if (< point mark)
              (list (cons point mark) -1)
            (list (cons mark point) 1)))
@@ -664,18 +695,20 @@ numbers; MARK may be nil."
 
 (defun hel-selection ()
   "Return the selection as (RANGE DIRECTION).
-The selection is the active region or cursor character.
-RANGE is a (BEGIN . END) pair, and DIRECTION is 1 when point is at END
-and -1 when it is at BEGIN. `hel-select' takes the returned list as
-its arguments. RANGE is empty only at the end of the buffer."
+The selection is the active region, or the cursor character when the
+region is inactive or empty. RANGE is a (BEGIN . END) pair, and DIRECTION
+is the way from mark to point: 1 forward, -1 backward. The cursor
+character is selected backward. `hel-select' takes arguments exactly in
+the form that `hel-selection' returns. RANGE is empty only at the end of
+the buffer."
   (hel--selection-from (point) (mark t) (region-active-p)))
 
 (defun hel-selection-bounds ()
-  "Return the bounds of the selection, a (BEGIN . END) pair."
+  "Return the bounds of the selection: a (BEGIN . END) pair."
   (-first-item (hel-selection)))
 
 (defun hel-selection-direction ()
-  "Return 1 when point is at the end of the selection, -1 at its beginning."
+  "Return the direction of the selection: 1 forward, -1 backward."
   (-second-item (hel-selection)))
 
 (cl-defun hel-selection-head (&optional (selection (hel-selection)))
@@ -700,8 +733,8 @@ SELECTION is ((BEGIN . END) DIRECTION), as `hel-selection' returns it."
           (t end))))
 
 (defun hel-ensure-region-direction (direction)
-  "Exchange point and mark if the region direction mismatches DIRECTION.
-DIRECTION should be 1 or -1."
+  "Exchange point and mark if the region does not run in DIRECTION.
+DIRECTION is 1 forward or -1 backward."
   (when (/= direction (hel-region-direction))
     (hel--exchange-point-and-mark)))
 

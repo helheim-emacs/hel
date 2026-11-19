@@ -212,6 +212,26 @@ It takes the indentation as a step."
                  ;; At the start of the buffer the selection stays.
                  '("|foo.bar(baz) ^qux" "|foo.bar(baz) ^qux"))))
 
+(ert-deftest hel-word-motion-blanks-after-fence ()
+  "`e' and `b' take the blanks between a fence and the word, `w' does not."
+  (dolist (case '((hel-forward-word-end "-1) Without an" "1"
+                                        ("-1)^ Without| an" "-1) Without^ an|"))
+                  (hel-forward-WORD-end "-1) Without an" "1"
+                                        ("-1)^ Without| an" "-1) Without^ an|"))
+                  (hel-backward-word-start "foo (bar" "bar"
+                                           ("|foo ^(bar"))
+                  (hel-backward-WORD-start "foo (bar" "bar"
+                                           ("|foo ^(bar"))
+                  (hel-forward-word-start "-1) Without an" "1"
+                                          ("-1) ^Without |an"))))
+    (-let [(command text start expected) case]
+      (hel-test-with #'emacs-lisp-mode (hel-test-mark text start)
+        (should (equal (mapcar (lambda (_)
+                                 (funcall command 1 nil)
+                                 (hel-test-render))
+                               expected)
+                       expected))))))
+
 (ert-deftest hel-word-motion-blanks-at-buffer-edge ()
   "Blanks at the edge of the buffer are a step of their own, as in Helix."
   (should (equal (hel-word-motion-tests--run

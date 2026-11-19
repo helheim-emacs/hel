@@ -69,7 +69,8 @@
   "Return the children of NODE, in buffer order.")
 
 (cl-defgeneric hel-node-sibling (producer node dir)
-  "Return the sibling of NODE in direction DIR, 1 or -1, or nil.")
+  "Return the sibling of NODE in direction DIR, or nil.
+DIR is 1 for forward or -1 for backward.")
 
 (cl-defgeneric hel-node-enclosing (producer pos)
   "Return the smallest node with POS inside it, not on its boundary, or nil.")
