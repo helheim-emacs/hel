@@ -913,6 +913,27 @@ cursor and when it moves one."
     (should (equal kill-ring '("main")))
     (should (= 1 (length (hel-all-secondary-cursors))))))
 
+;;; Saving the selection around an edit
+
+(ert-deftest hel-selection-save-follows-replaced-char ()
+  "A bare cursor whose character BODY replaces covers the new text."
+  (dolist (input '("a|bc" "a^b|c" "a|b^c"))
+    (hel-test-with 'text-mode input
+      (hel-save-selection
+        (delete-region 2 3)
+        (goto-char 2)
+        (insert "xyz"))
+      (should (equal (list input (hel-selection))
+                     (list input '((2 . 5) 1)))))))
+
+(ert-deftest hel-selection-save-keeps-empty-line-selection ()
+  "The line selection of an empty line stays a line selection."
+  (hel-test-with 'text-mode "a\n|\nb"
+    (hel-test-press! "x")
+    (should (hel-linewise-selection-p))
+    (hel-save-selection nil)
+    (should (hel-linewise-selection-p))))
+
 ;;; Emacs commands that read the text before point
 
 (ert-deftest hel-preceding-sexp-ends-at-the-selection ()

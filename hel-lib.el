@@ -69,29 +69,31 @@ flickering."
          (redisplay)))))
 
 (defmacro hel-save-selection (&rest body)
-  "Evaluate BODY with preserving original selection.
-The difference from `save-mark-and-excursion' is that both point and mark are
-saved as markers and correctly handle case when text was inserted before
-the selection."
+  "Evaluate BODY, then restore the selection.
+Unlike `save-mark-and-excursion', the selection follows its text.  Text
+that BODY inserts at either end of the selection stays outside it, and
+when BODY replaces the text of the selection, the selection covers the
+new text.  A bare cursor is saved the same way, as the selection of its
+cursor character, so a command gives one result whether or not the
+region over that character is active."
   (declare (indent 0) (debug t))
-  (cl-with-gensyms (pnt begin end dir)
-    `(if (use-region-p)
-         (let ((deactivate-mark nil)
-               (,begin (copy-marker (region-beginning) t))
-               (,end (copy-marker (region-end)))
-               (,dir (hel-region-direction)))
-           (unwind-protect
-               (save-excursion ,@body)
-             (hel-select (cons ,begin ,end) ,dir)
-             (set-marker ,begin nil)
-             (set-marker ,end nil)))
-       ;; else
-       (let ((,pnt (copy-marker (point) t)))
-         (unwind-protect
-             (save-excursion ,@body)
-           (if mark-active (deactivate-mark))
-           (goto-char ,pnt)
-           (set-marker ,pnt nil))))))
+  (cl-with-gensyms (begin end dir active range)
+    `(-let* ((((,begin . ,end) ,dir) (hel-selection))
+             (,begin (copy-marker ,begin t))
+             (,end (copy-marker ,end))
+             ;; Only the line selection of an empty line needs this, see
+             ;; `hel-linewise-selection-p'.
+             (,active (region-active-p)))
+       (unwind-protect
+           (let ((deactivate-mark nil))
+             (save-excursion ,@body))
+         (let ((,range (hel-range ,begin ,end)))
+           (cond ((not (hel-bare-cursor-p (list ,range)))
+                  (hel-select ,range (or ,dir 1)))
+                 (,active (hel-select ,range nil))
+                 (t (hel-set-cursor (car ,range)))))
+         (set-marker ,begin nil)
+         (set-marker ,end nil)))))
 
 (defmacro hel-restore-selection-on-error (&rest body)
   "Restore initial selection if error occured during BODY evaluation."
@@ -793,19 +795,19 @@ is none."
            (cons (1- begin) begin)))))
 
 (defun hel-expand-selection-to-full-lines (&optional direction)
-  "Extend the selection so that it consists of complete lines.
-When region is active: expand selection to line boundaries to encompass full
-line(s). With no region, select current line."
+  "Extend the selection to the whole lines that it covers.
+The selection grows from the beginning of the line of its first character
+to the end of the line of its last character, so a bare cursor selects its
+line, and a selection that ends with a newline does not take the next line.
+Return t, or nil when the selection already consists of whole lines and
+stays as it is.  DIRECTION is the direction of the new selection, 1 forward
+or -1 backward; by default the selection keeps its direction, and a bare
+cursor, which has none, becomes forward."
   (unless (hel-linewise-selection-p)
-    (if (use-region-p)
-        (let ((begin (region-beginning))
-              (end (region-end))
-              (dir (or direction (hel-region-direction))))
-          (hel-select (cons (car (hel-visible-line-bounds begin))
-                            (cdr (hel-visible-line-bounds end)))
-                      dir))
-      ;; else no region
-      (hel-select (hel-visible-line-bounds) (or direction 1)))
+    (-let [((begin . end) dir) (hel-selection)]
+      (hel-select (cons (car (hel-visible-line-bounds begin))
+                        (cdr (hel-visible-line-bounds (max begin (1- end)))))
+                  (or direction dir 1)))
     (hel--fix-newline-at-end-of-buffer)
     t))
 
@@ -955,24 +957,33 @@ lines and not a bare cursor.  YANK-FUNCTION is a function like `yank'."
 ;;; Changes
 
 (defun hel-indent (indent-function count)
-  "Indent active region COUNT times. With no selection indent current line.
-INDENT-FUNCTION should be a `indent-rigidly-left' like function that takes
-BEGIN, END position and done the indentation."
-  (cond ((hel-linewise-selection-p)
-         (let ((deactivate-mark nil))
-           (dotimes (_ count)
-             (funcall indent-function (region-beginning) (region-end))))
-         (hel-extend-selection -1))
-        ((use-region-p)
-         (hel-save-selection
-           (hel-expand-selection-to-full-lines)
-           (dotimes (_ count)
-             (funcall indent-function (region-beginning) (region-end))))
-         (hel-extend-selection -1))
-        (t
-         (-let [(begin . end) (hel-visible-line-bounds)]
-           (dotimes (_ count)
-             (funcall indent-function begin end))))))
+  "Indent the lines of the selection COUNT times with INDENT-FUNCTION.
+A bare cursor indents its line.  INDENT-FUNCTION takes the beginning and
+the end of the text to indent, as `indent-rigidly-left' does."
+  (cl-flet ((indent-selection ()
+              (dotimes (_ count)
+                (-let [(begin . end) (hel-selection-bounds)]
+                  (funcall indent-function begin end)))))
+    (cond ((hel-linewise-selection-p)
+           (let ((deactivate-mark nil))
+             (indent-selection))
+           (hel-extend-selection -1))
+          ((hel-bare-cursor-p)
+           ;; The beginning of the line stays in place while its
+           ;; indentation changes, so each step finds the line from it.
+           (let ((line-begin (-> (hel-selection-bounds)
+                                 (car)
+                                 (hel-visible-line-bounds)
+                                 (car))))
+             (hel-save-selection
+               (dotimes (_ count)
+                 (-let [(begin . end) (hel-visible-line-bounds line-begin)]
+                   (funcall indent-function begin end))))))
+          (t
+           (hel-save-selection
+             (hel-expand-selection-to-full-lines)
+             (indent-selection))
+           (hel-extend-selection -1)))))
 
 (defun hel--fix-newline-at-end-of-buffer ()
   "If selection ends at the end of buffer, and buffer doesn't ends with newline

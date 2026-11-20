@@ -998,7 +998,8 @@ cursor character, so extending goes on."
 
 (hel-test-table edit-join
   ("fo|o\n  bar\nbaz" "J" "fo|o bar\nbaz")
-  ("foo|\nbar" "J" "foo |bar")
+  ;; The cursor stays on the space that replaces the newline.
+  ("foo|\nbar" "J" "foo| bar")
   ;; A selection joins all of its lines.
   ("^a\nb\nc\n|d" "J" "^a b c\n|d")
   ("^a\nb\nc|\nd" "J" "^a b c|\nd")
@@ -1469,7 +1470,7 @@ cursor character, so extending goes on."
   ("^foo| bar" "ms)" "(^foo|) bar")
   ;; A bare cursor wraps its cursor character, also a blank one.
   ("a| b" "ms)" "a(| )b")
-  ("a^ |b" "ms)" "a(^ |)b")
+  ("a^ |b" "ms)" "a(| ^)b")
   ("^foo| bar" "ms[" "[ ^foo| ] bar")
   ("^foo| bar" "ms]" "[^foo|] bar")
   ("^foo| bar" "ms{" "{ ^foo| } bar")
@@ -1764,7 +1765,7 @@ a bare cursor disappears."
   ("^fo|o\nbar" "Cms)" "(¬fo¦)o\n(^ba|)r")
   ("^fo|o\nbar" "CmsX" "X¬fo¦Xo\nX^ba|Xr")
   ("(a|)\n(b)" "Cmd(" "a¦\nb|")
-  ("(a|)\n(b)" "Cmr(]" "[a]¦\n[b]|")
+  ("(a|)\n(b)" "Cmr(]" "[a¦]\n[b|]")
   ("^foo bar| baz" "s\\w+ RET mi\"" "^foo| ¬bar¦ baz"))
 
 (hel-test-table cursors-motion
@@ -2477,9 +2478,21 @@ BEFORE is a function that runs before the keys."
 (hel-behaviour-law replace-char "fo#o bar" "r z")
 (hel-behaviour-law case "fo#o bar" "~")
 (hel-behaviour-law join "fo#o\nbar" "J")
+(hel-behaviour-law join-on-newline "foo#\nbar" "J")
+(hel-behaviour-law indent-on-newline "foo#\nbar" ">")
+(hel-behaviour-law dedent-on-newline "  foo#\nbar" "<")
+(hel-behaviour-law dedent-twice "  f#oo\nbar" "2<")
 (hel-behaviour-law open-below "fo#o\nbar" "o<escape>")
 (hel-behaviour-law undo "fo#o bar" "d u")
 (hel-behaviour-law copy-cursor "f#oo\nbar" "C")
+
+;; The line of a selection ends at the line of its last character, so
+;; a newline at the end of a selection does not take the next line in.
+(hel-test-table lines-of-selection
+  ("f^oo\n|bar" "x" "|foo\n^bar")
+  ("  f^oo\n|bar" ">" "   f^oo\n|bar")
+  ("  f^oo\n|bar" "J" "  f^oo| bar")
+  ("  foo|\nbar" "2<" "foo|\nbar"))
 
 (ert-deftest hel-behaviour-law-semicolon-stops-search ()
   "`;' on one character stops the search; on a longer one it collapses."

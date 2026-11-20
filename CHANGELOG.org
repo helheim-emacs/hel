@@ -162,6 +162,12 @@
     of bare cursors. =M--= merges the selections of all cursors, bare ones
     included, and ignores the mark that a bare cursor kept from an old
     region. =&= aligns the cursor characters.
+  - The lines of a selection end at the line of its last character, so =x=,
+    =>=, =<= and =J= on a selection that ends with a newline, or on a bare
+    cursor on a newline, no longer take the next line in.
+  - =J=, =>=, =<=, =ms= and =mr= keep the selection on its text: =J= on
+    a newline leaves the cursor on the space that replaces it, and =mr= on
+    a delimiter leaves the cursor on the new delimiter.
 
 - =mm= starts from the character under the cursor and moves the cursor onto
   the matching bracket, as in Helix. Inside a pair it goes to the closing

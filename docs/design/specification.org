@@ -138,6 +138,16 @@ moving.
   character in, as in Helix. So =t= skips the character right after the
   cursor, and a repeated =t= moves on. When the character is not found,
   the selection stays.
+- The lines of a selection run from the line of its first character to
+  the line of its last character. So a selection that ends with a newline
+  does not take the next line in, and a bare cursor on a newline has the
+  line that this newline ends. =x=, =>=, =<= and =J= follow this rule.
+- A command that edits around the selection, such as =J=, =>=, =<=, =ms=
+  and =mr=, keeps the selection on its text. Text inserted at either end
+  stays outside the selection, and when the command replaces the text of
+  the selection, the selection covers the new text. So =J= on a newline
+  leaves the cursor on the space that replaces it, and =mr= on
+  a delimiter leaves the cursor on the new delimiter.
 - =p= on a bare cursor pastes after the cursor character and =P=
   before it. Like =a=, =p= keeps to the line: on a newline the text goes
   before the newline. =n= and =N= search from the edge of the selection,

@@ -821,13 +821,12 @@ is."
   :multiple-cursors t
   (interactive "*")
   (hel-save-selection
-    (let* ((deactivate-mark nil)
-           (region? (use-region-p))
-           (count (let ((n (if region?
-                               (count-lines (region-beginning) (region-end))
-                             1)))
-                    (if (> n 1) (1- n) n))))
-      (when region? (goto-char (region-beginning)))
+    (-let* ((deactivate-mark nil)
+            ((begin . end) (hel-selection-bounds))
+            ;; The selected lines join into one line.  A selection within
+            ;; one line joins it with the next line.
+            (count (max 1 (1- (count-lines begin end)))))
+      (goto-char begin)
       ;; All these `let' bindings moves point.
       (let ((in-comment? (progn (move-beginning-of-line nil)
                                 (skip-chars-forward " \t")
