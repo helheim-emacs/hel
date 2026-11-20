@@ -1285,8 +1285,7 @@ Return the text that was there."
                 ((numberp pos)))
       (if-let* ((cursor (hel-secondary-cursor-at pos)))
           (hel-delete-secondary-cursor cursor)
-        (hel-create-secondary-cursor (cons pos (min (1+ pos) (point-max)))
-                                     -1 nil)))))
+        (hel-create-secondary-cursor (hel-char-range pos) -1 nil)))))
 
 ;;;; Digit arguments
 

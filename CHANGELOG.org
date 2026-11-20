@@ -1,6 +1,9 @@
 * [Unreleased]
 ** Added
 
+- ~hel-char-range~ returns the range of the character at a position: one
+  character long, and empty at the end of the buffer.
+
 - ~hel-bare-cursor-p~ tells whether a selection covers at most its cursor
   character. Commands ask it, and not ~use-region-p~, because a bare cursor
   and an active region over the same one character look the same to the

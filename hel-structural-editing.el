@@ -120,7 +120,7 @@ By default, the steps are the node that covers the selection and each
 node above it, without the root."
   (let ((node (hel-node-on producer (pcase-exhaustive range-or-pos
                                       ((and (pred numberp) pos)
-                                       (hel-range pos (min (1+ pos) (point-max))))
+                                       (hel-char-range pos))
                                       ((pred -cons-pair-p)
                                        range-or-pos))))
         ranges)

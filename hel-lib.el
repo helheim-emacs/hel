@@ -184,6 +184,11 @@ that `match-beginning', `match-end' and `match-data' access."
   "Return the length of RANGE: a (BEGIN . END) pair."
   (- (cdr range) (car range)))
 
+(defun hel-char-range (pos)
+  "Return the range of the character at POS.
+At the end of the buffer there is no character, and the range is empty."
+  (cons pos (min (1+ pos) (point-max))))
+
 (defun hel-destructive-filter (predicate list &optional pointer)
   "Destructively remove elements in LIST that satisfy PREDICATE
 between start and POINTER.
@@ -701,9 +706,7 @@ REGION-ACTIVE? is nil."
         ((and region-active? (/= point mark))
          (list (hel-range point mark) nil))
         (t
-         (list (cons point
-                     (min (1+ point) (point-max)))
-               nil))))
+         (list (hel-char-range point) nil))))
 
 (defun hel-selection ()
   "Return the selection as (RANGE DIRECTION).

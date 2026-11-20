@@ -295,8 +295,7 @@ direction.  So does the empty selection at the end of the buffer."
              (should-not (region-active-p))
              (should (= (point) pos))
              (should (equal (hel-selection)
-                            (list (cons pos (min (1+ pos) (point-max)))
-                                  nil))))))
+                            (list (hel-char-range pos) nil))))))
 
 ;;; The selection of each window
 
