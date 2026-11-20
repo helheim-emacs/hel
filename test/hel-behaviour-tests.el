@@ -1962,6 +1962,30 @@ a bare cursor disappears."
                 (kill-buffer buffer)))))
       (delete-directory dir t))))
 
+(hel-define-command hel-behaviour--append-x-to-e-lines ()
+  "Insert x at the end of the line when the line starts with e.
+The command edits without writing the selection, as an Emacs command does."
+  :multiple-cursors t
+  (interactive)
+  (save-excursion
+    (beginning-of-line)
+    (when (eq (char-after) ?e)
+      (end-of-line)
+      (insert "x"))))
+
+(ert-deftest hel-behaviour-cursors-deactivate-together ()
+  "An edit that deactivates the mark makes every cursor bare.
+This holds also when the command edits at a secondary cursor only."
+  (dolist (text '("ebc\nebc\n" "abc\nebc\n"))
+    (hel-test-with 'text-mode text
+      (hel-select (cons 1 3) 1)
+      (hel-test-add-secondary-cursor 7 5)
+      (hel-test-press! ":hel-behaviour--append-x-to-e-lines RET")
+      (should (equal (list text (-map (-lambda ((_id . selection))
+                                        (hel-bare-cursor-p selection))
+                                      (hel-selections)))
+                     (list text '(t t)))))))
+
 (ert-deftest hel-behaviour-cursors-insert-undo-is-one-step ()
   "One undo reverts a word typed with all cursors."
   (hel-test-with 'text-mode "|foo\nbar"

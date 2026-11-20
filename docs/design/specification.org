@@ -243,6 +243,13 @@ moving.
   functions over two structs would only dispatch. The secondary cursors replay
   a command in buffer order, which keeps the cost of ~syntax-ppss~ linear in
   the number of cursors.
+- When any run of a command sets ~deactivate-mark~, as an edit does, every
+  cursor ends with an inactive mark, not only the main one, which the
+  command loop of Emacs deactivates. So all cursors end in one form, also
+  when the command edits at some of them only. The next command needs
+  that: =x= selects the line at a bare cursor but adds the next line at
+  a line selection, so after a mix of the two one =x= would give the cursors
+  different selections.
 - The commands over all cursors read the selection of each cursor, so
   a bare cursor takes part with its cursor character. =M-)= and =M-(=
   rotate the cursor characters of bare cursors as they rotate longer

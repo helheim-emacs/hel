@@ -543,7 +543,18 @@ For a command without the property, ask the user and remember the answer."
                ;; buffer from its start.
                (dolist (cursor (hel-all-secondary-cursors :sort))
                  (hel-with-secondary-cursor cursor
-                   (hel--call-interactively command)))))))))
+                   (hel--call-interactively command)))
+               ;; After the command, the command loop deactivates the mark
+               ;; of the main cursor when any run of the command has set
+               ;; `deactivate-mark', as an edit does. The secondary cursors
+               ;; must follow, so that all cursors end in one form. Only
+               ;; a cursor with an active mark has anything to deactivate,
+               ;; and in Insert state no cursor has one.
+               (when deactivate-mark
+                 (dolist (cursor (hel-all-secondary-cursors))
+                   (when (overlay-get cursor 'mark-active)
+                     (hel-with-secondary-cursor cursor
+                       (deactivate-mark)))))))))))
 
 (defun hel--call-interactively (command)
   "Run COMMAND, simulating the parts of the command loop that makes sense for
