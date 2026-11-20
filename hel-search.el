@@ -580,29 +580,28 @@ Auto-detect word boundaries at the beginning and end of the search pattern."
     (hel-with-each-cursor
       ;; A pattern of one character is rarely wanted, and it would replace
       ;; the last search.  `y' and `/' search for one character.
-      (when (< 1 (hel-range-length (hel-selection-bounds)))
-        (let* ((beg (region-beginning))
-               (end (region-end))
-               (open-word-boundary
-                (cond ((= beg (pos-bol))
-                       (->> (buffer-substring-no-properties beg (1+ beg))
-                            (string-match-p "[[:word:]]")))
-                      (t
-                       (->> (buffer-substring-no-properties (1- beg) (1+ beg))
-                            (string-match-p "[^[:word:]][[:word:]]")))))
-               (close-word-boundary
-                (cond ((= end (pos-eol))
-                       (->> (buffer-substring-no-properties (1- end) end)
-                            (string-match-p "[[:word:]]")))
-                      (t
-                       (->> (buffer-substring-no-properties (1- end) (1+ end))
-                            (string-match-p "[[:word:]][^[:word:]]")))))
-               (string (->> (buffer-substring-no-properties (point) (mark))
-                            (funcall quote-fn))))
-          (push (concat (if open-word-boundary "\\b")
-                        string
-                        (if close-word-boundary "\\b"))
-                patterns))))
+      (-let [(selection &as (begin . end)) (hel-selection)]
+        (unless (hel-bare-cursor-p selection)
+          (let* ((open-word-boundary
+                  (cond ((= begin (pos-bol))
+                         (->> (buffer-substring-no-properties begin (1+ begin))
+                              (string-match-p "[[:word:]]")))
+                        (t
+                         (->> (buffer-substring-no-properties (1- begin) (1+ begin))
+                              (string-match-p "[^[:word:]][[:word:]]")))))
+                 (close-word-boundary
+                  (cond ((= end (pos-eol))
+                         (->> (buffer-substring-no-properties (1- end) end)
+                              (string-match-p "[[:word:]]")))
+                        (t
+                         (->> (buffer-substring-no-properties (1- end) (1+ end))
+                              (string-match-p "[[:word:]][^[:word:]]")))))
+                 (string (->> (buffer-substring-no-properties begin end)
+                              (funcall quote-fn))))
+            (push (concat (if open-word-boundary "\\b")
+                          string
+                          (if close-word-boundary "\\b"))
+                  patterns)))))
     (setq patterns (nreverse (-uniq patterns)))
     (when patterns
       (let ((regexp (->> patterns
@@ -621,10 +620,11 @@ Do not auto-detect word boundaries in the search pattern."
          (patterns (let (patterns)
                      (hel-with-each-cursor
                        ;; See `hel-construct-search-pattern' for one character.
-                       (when (< 1 (hel-range-length (hel-selection-bounds)))
-                         (push (->> (buffer-substring-no-properties (point) (mark))
-                                    (funcall quote-fn))
-                               patterns)))
+                       (-let [(selection &as (begin . end)) (hel-selection)]
+                         (unless (hel-bare-cursor-p selection)
+                           (push (->> (buffer-substring-no-properties begin end)
+                                      (funcall quote-fn))
+                                 patterns))))
                      (nreverse patterns))))
     (when patterns
       (let ((regexp (->> patterns

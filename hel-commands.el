@@ -604,9 +604,8 @@ so does a bare cursor on an empty line."
   (interactive "*")
   (hel-with-each-cursor
     (-let [(begin . end) (hel-selection-bounds)]
-      (cond ((and (use-region-p)
-                  (or (hel-linewise-selection-p)
-                      (< 1 (- end begin))))
+      (cond ((or (hel-linewise-selection-p)
+                 (not (hel-bare-cursor-p)))
              (let ((logical-lines? (hel-linewise-selection-p))
                    (visual-lines? (hel-visual-lines-p)))
                (kill-region nil nil t)
@@ -812,9 +811,9 @@ is."
           (yank))
         (hel-select (hel-range (mark t) (point)) dir)
         (hel-extend-selection -1)
-        (when (and (derived-mode-p 'prog-mode)
-                   (use-region-p))
-          (indent-region (region-beginning) (region-end)))))))
+        (when (derived-mode-p 'prog-mode)
+          (-let [(begin . end) (hel-selection-bounds)]
+            (indent-region begin end)))))))
 
 ;; J
 (hel-define-command hel-join-line ()
@@ -940,8 +939,9 @@ A bare cursor has nothing to collapse, so there also stop the search."
                       (mark))))
         (set-mark start)
         (goto-char end)))
-    (when (= 1 (count-lines (region-beginning) (region-end) t))
-      (hel-ensure-region-direction -1))
+    (-let [(begin . end) (hel-selection-bounds)]
+      (when (= 1 (count-lines begin end t))
+        (hel-ensure-region-direction -1)))
     (setq disable-point-adjustment t)))
 
 ;; X
@@ -968,8 +968,8 @@ A bare cursor has nothing to collapse, so there also stop the search."
   (interactive)
   (hel-with-each-cursor
     (hel-extend-selection -1)
-    (when (use-region-p)
-      (let ((end (region-end)))
+    (unless (hel-bare-cursor-p)
+      (let ((end (cdr (hel-selection-bounds))))
         (hel-ensure-region-direction 1)
         (goto-char (mark-marker))
         (catch 'done
@@ -2187,16 +2187,15 @@ cursor does nothing: a buffer narrowed to one character is useless."
   :multiple-cursors t
   (interactive)
   (unless (hel-bare-cursor-p)
-    (let ((orig-buffer (current-buffer))
-          (name (or buffer-file-name
-                    list-buffers-directory))
-          (beg (region-beginning))
-          (end (region-end)))
+    (-let ((orig-buffer (current-buffer))
+           (name (or buffer-file-name
+                     list-buffers-directory))
+           ((begin . end) (hel-selection-bounds)))
       (deactivate-mark)
       (hel-clone-indirect-buffer-same-window)
       (setq list-buffers-directory name
             hel--narrowed-base-buffer orig-buffer)
-      (narrow-to-region beg end))))
+      (narrow-to-region begin end))))
 
 ;; zw
 (hel-define-command hel-widen-indirectly-narrowed (&optional arg)

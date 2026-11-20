@@ -924,9 +924,9 @@ lines and not a bare cursor.  YANK-FUNCTION is a function like `yank'."
       (funcall yank-function))
     (hel-select (hel-range (mark t) (point)) region-dir)
     (hel-extend-selection -1)
-    (when (and (derived-mode-p 'prog-mode)
-               (use-region-p))
-      (indent-region (region-beginning) (region-end)))))
+    (when (derived-mode-p 'prog-mode)
+      (-let [(begin . end) (hel-selection-bounds)]
+        (indent-region begin end)))))
 
 (defun hel--yank-transform (str)
   (if (and (not (string-empty-p str))
