@@ -102,6 +102,9 @@
   to an end of the selection with ~hel-selection-bounds~. Both accessors
   take a selection value, the current selection by default.
 
+- ~hel-execute-command-for-all-cursors~ is private:
+  ~hel--execute-command-for-all-cursors~.
+
 - =o= opens the new line after the line of the last character of the
   selection, as =] SPC= adds blank lines there. A selection that ends with
   a newline does not take the next line in.

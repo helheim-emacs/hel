@@ -285,7 +285,8 @@ The cursor character is the first character of NEEDLE."
   "Run COMMAND with COUNT for every cursor, as the command loop would."
   (let ((current-prefix-arg count)
         (this-command command))
-    (hel-execute-command-for-all-cursors command))
+    (hel--execute-command-for-all-cursors command))
+  (when deactivate-mark (deactivate-mark))
   (setq last-command command))
 
 (defun hel-test-steps (command n &optional count)

@@ -508,7 +508,7 @@ BODY does not run for the cursors that it creates."
              (hel-with-secondary-cursor cursor
                ,@body)))))))
 
-(defun hel-execute-command-for-all-cursors (command)
+(defun hel--execute-command-for-all-cursors (command)
   "Call COMMAND interactively for each cursor, the main one first.
 Then merge the cursors whose selections overlap, when the `merge-selections'
 property of COMMAND asks for it."
@@ -561,15 +561,7 @@ For a command without the property, ask the user and remember the answer."
 secondary cursor."
   (unless (eq command 'ignore)
     (let ((this-command command))
-      (call-interactively command)))
-  ;; (setq this-command command)
-  ;; ;; (ignore-errors)
-  ;; (run-hooks 'pre-command-hook)
-  ;; (unless (eq this-command 'ignore)
-  ;;   (call-interactively command))
-  ;; (run-hooks 'post-command-hook)
-  ;; (when deactivate-mark (deactivate-mark))
-  )
+      (call-interactively command))))
 
 (defmacro hel-with-main-cursor-as-secondary (&rest body)
   "Evaluate BODY with the main cursor turned into a secondary cursor.

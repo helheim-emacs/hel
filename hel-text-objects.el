@@ -574,11 +574,12 @@ selection takes it in.  When the head character alone is a step of the
 motion, the motion goes on from its other edge and leaves it out, so
 `w' on the space before a word selects that word.
 
-With EXTEND, start at point and extend the selection instead of
-replacing it.  A selection of one character keeps its character, so
-the motion starts past it.  Go on to the next edge when the motion would
-stop on the anchor of the selection, where the selection would be
-empty.  When no thing exists in the direction, the selection stays as
+With EXTEND, extend the selection instead of replacing it: its anchor
+stays, and the motion starts from its other end. A selection of one
+character has its anchor behind the motion, so it keeps its character
+and the motion starts past it. Go on to the next edge when the motion
+would stop on the anchor of the selection, where the selection would be
+empty. When no thing exists in the direction, the selection stays as
 it is."
   (if-let* ((selection (hel-selection))
             (producer (hel-thing-producer thing (hel-selection-head selection))))
@@ -592,9 +593,7 @@ it is."
           (-when-let* (((start . end)
                         (if extend
                             (reach (-let [((begin . end)) selection]
-                                     (cond ((/= 1 (- end begin)) (point))
-                                           ((< 0 count) end)
-                                           (t begin)))
+                                     (if (= anchor begin) end begin))
                                    count)
                           ;; NEAR and FAR are the edges of the head character
                           ;; behind and ahead of the motion.

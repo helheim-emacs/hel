@@ -2606,7 +2606,7 @@ can reach."
                    ("a\nb\n|\n^c\nd\ne\n" "a\nb\n^\n|c\nd\ne\n")))
     (dolist (keys '("p" "P" "R" "x" "X" "ms(" "c<escape>" "o<escape>"
                     "O<escape>" "d" "y" "] SPC" "[ SPC" ">" "<" "J" "v j"
-                    "v k" "u" "2x" "2X" "x X"))
+                    "v k" "v w" "v b" "v e" "u" "2x" "2X" "x X"))
       (-let [(backward forward)
              (-map (lambda (input)
                      (hel-test-with 'text-mode input
