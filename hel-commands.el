@@ -486,12 +486,9 @@ to the chosen one."
   "Switch to Insert state at the beginning of the selection."
   :multiple-cursors nil
   (interactive "*")
+  (setq hel--selections-before-insert (hel-selections))
   (hel-with-each-cursor
-    (-let [(begin . end) (hel-selection-bounds)]
-      ;; A region keeps its other end.
-      (when (use-region-p)
-        (set-marker (mark-marker) end))
-      (goto-char begin)))
+    (goto-char (car (hel-selection-bounds))))
   (hel-insert-state 1))
 
 ;; a
@@ -501,12 +498,9 @@ When the selection ends with a newline, point goes before it, so the
 typing stays on the last line of the selection."
   :multiple-cursors nil
   (interactive "*")
+  (setq hel--selections-before-insert (hel-selections))
   (hel-with-each-cursor
     (-let [(begin . end) (hel-selection-bounds)]
-      ;; The mark keeps the start of the selection, which the typed text
-      ;; joins: a region keeps its other end, and leaving Insert state
-      ;; reads it for the cursor character.
-      (set-marker (mark-marker) begin)
       (goto-char end)
       (when (and (< begin end) (eq ?\n (char-before)))
         (backward-char))))
@@ -529,6 +523,7 @@ typing stays on the last line of the selection."
 (defun hel--insert-or-append-on-line (direction)
   "Switch to insert state at beginning or end of current line
 depending on DIRECTION."
+  (setq hel--selections-before-insert (hel-selections))
   ;; Remain only one cursor on each line.
   (when hel-multiple-cursors-mode
     (hel-with-main-cursor-as-secondary
@@ -546,8 +541,7 @@ depending on DIRECTION."
   (hel-with-each-cursor
     (if (< direction 0)
         (hel-first-non-blank)
-      (goto-char (hel-line-end)))
-    (set-marker (mark-marker) (point)))
+      (goto-char (hel-line-end))))
   (hel-insert-state 1))
 
 ;; o
@@ -560,8 +554,7 @@ depending on DIRECTION."
     (if (hel-linewise-selection-p)
         (backward-char)
       (move-end-of-line nil))
-    (newline-and-indent)
-    (set-marker (mark-marker) (point)))
+    (newline-and-indent))
   (hel-insert-state 1))
 
 ;; O
@@ -574,8 +567,7 @@ depending on DIRECTION."
     (move-beginning-of-line nil)
     (newline)
     (forward-line -1)
-    (indent-according-to-mode)
-    (set-marker (mark-marker) (point)))
+    (indent-according-to-mode))
   (hel-insert-state 1))
 
 ;; ] SPC

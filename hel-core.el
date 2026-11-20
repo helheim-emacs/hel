@@ -477,28 +477,32 @@ MODE and STATE should be symbols."
   :cursor '(hel-insert-state-main-cursor
             hel-insert-state-secondary-cursor)
   :input-method t
+  ;; The text typed in Insert state becomes the selection.  The mark of
+  ;; each cursor keeps the place where the typing started.
   (if hel-insert-state
       (progn
         (setq hel-undo--previous-command-kind 'other
-              hel--selection-was-active-on-insert
-              (and hel-reactivate-selection-after-insert-state
-                   (region-active-p))
-              hel--insert-appends (eq this-command 'hel-append))
+              hel--insert-tick (buffer-chars-modified-tick))
         (hel-with-each-cursor
-          (deactivate-mark)))
+          (deactivate-mark)
+          (set-marker (mark-marker) (point))))
     ;; else
     (hel-push-point)
-    (if hel--selection-was-active-on-insert
-        (hel-with-each-cursor
-          (activate-mark))
+    (if (and (eql hel--insert-tick (buffer-chars-modified-tick))
+             hel--selections-before-insert)
+        ;; Nothing was typed, and the command did not change the buffer:
+        ;; the selections stay as they were.
+        (hel-set-selections hel--selections-before-insert)
+      ;; The selection is the way that point went from the start of the
+      ;; typing, as for a motion.
       (hel-with-each-cursor
-        ;; `hel-append' left the start of the selection in the mark, so
-        ;; the text after it is the selection with the typed text.  Its
-        ;; last character becomes the cursor character.
-        (hel-set-cursor (if (and hel--insert-appends
-                                 (< (mark t) (point)))
-                            (1- (point))
-                          (point)))))))
+        (let* ((start (mark t))
+               (range (hel-range start (point))))
+          (if (hel-bare-cursor-p (list range))
+              (hel-set-cursor (car range))
+            (hel-select range (if (< start (point)) 1 -1))))))
+    (setq hel--selections-before-insert nil
+          hel--insert-tick nil)))
 
 (hel-define-state emacs
   "Emacs state."

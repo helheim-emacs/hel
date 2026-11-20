@@ -174,55 +174,55 @@ CHARS is the value that `hel-test-cursor-chars' must return."
 (ert-deftest hel-behaviour-cursor-char-steady-motion ()
   "`h' and `l' move the cursor character by one, and point stays before it."
   (hel-test-with 'text-mode "|abcde"
-    (hel-test-expect-chars "l" "a|bcde" '(("b" -1)))
-    (hel-test-expect-chars "l" "ab|cde" '(("c" -1))))
+    (hel-test-expect-chars "l" "a|bcde" '(("b" nil)))
+    (hel-test-expect-chars "l" "ab|cde" '(("c" nil))))
   (hel-test-with 'text-mode "abc|de"
-    (hel-test-expect-chars "h" "ab|cde" '(("c" -1)))
-    (hel-test-expect-chars "h" "a|bcde" '(("b" -1)))
-    (hel-test-expect-chars "h" "|abcde" '(("a" -1)))))
+    (hel-test-expect-chars "h" "ab|cde" '(("c" nil)))
+    (hel-test-expect-chars "h" "a|bcde" '(("b" nil)))
+    (hel-test-expect-chars "h" "|abcde" '(("a" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-reversal ()
   "On a reversal the cursor character and point move together."
   (hel-test-with 'text-mode "|abcde"
-    (hel-test-expect-chars "ll" "ab|cde" '(("c" -1)))
-    (hel-test-expect-chars "h" "a|bcde" '(("b" -1)))
-    (hel-test-expect-chars "l" "ab|cde" '(("c" -1)))))
+    (hel-test-expect-chars "ll" "ab|cde" '(("c" nil)))
+    (hel-test-expect-chars "h" "a|bcde" '(("b" nil)))
+    (hel-test-expect-chars "l" "ab|cde" '(("c" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-count ()
   "A count moves the cursor character COUNT characters."
   (hel-test-with 'text-mode "abc|def"
-    (hel-test-expect-chars "3h" "|abcdef" '(("a" -1))))
+    (hel-test-expect-chars "3h" "|abcdef" '(("a" nil))))
   (hel-test-with 'text-mode "abc|def"
-    (hel-test-expect-chars "h" "ab|cdef" '(("c" -1)))
-    (hel-test-expect-chars "3l" "abcde|f" '(("f" -1)))))
+    (hel-test-expect-chars "h" "ab|cdef" '(("c" nil)))
+    (hel-test-expect-chars "3l" "abcde|f" '(("f" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-line-boundary ()
   "A cursor character on a newline has point before it, on its line."
   (hel-test-with 'text-mode "xyz\n|abc"
-    (hel-test-expect-chars "h" "xyz|\nabc" '(("\n" -1)))
-    (hel-test-expect-chars "h" "xy|z\nabc" '(("z" -1)))
-    (hel-test-expect-chars "l" "xyz|\nabc" '(("\n" -1)))
-    (hel-test-expect-chars "l" "xyz\n|abc" '(("a" -1)))))
+    (hel-test-expect-chars "h" "xyz|\nabc" '(("\n" nil)))
+    (hel-test-expect-chars "h" "xy|z\nabc" '(("z" nil)))
+    (hel-test-expect-chars "l" "xyz|\nabc" '(("\n" nil)))
+    (hel-test-expect-chars "l" "xyz\n|abc" '(("a" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-buffer-ends ()
   "A step past the last character leaves point at the end of the buffer,
 where the cursor character is empty.  No step goes further."
   (hel-test-with 'text-mode "ab|c"
-    (hel-test-expect-chars "l" "abc|" '(("" -1)))
+    (hel-test-expect-chars "l" "abc|" '(("" nil)))
     (should (equal (hel-test-press "l") "End of buffer"))
-    (should (equal (hel-test-cursor-chars) '(("" -1))))
-    (hel-test-expect-chars "h" "ab|c" '(("c" -1))))
+    (should (equal (hel-test-cursor-chars) '(("" nil))))
+    (hel-test-expect-chars "h" "ab|c" '(("c" nil))))
   (hel-test-with 'text-mode "a|bc"
-    (hel-test-expect-chars "h" "|abc" '(("a" -1)))
+    (hel-test-expect-chars "h" "|abc" '(("a" nil)))
     (should (equal (hel-test-press "h") "Beginning of buffer"))
-    (should (equal (hel-test-cursor-chars) '(("a" -1))))))
+    (should (equal (hel-test-cursor-chars) '(("a" nil))))))
 
 (ert-deftest hel-behaviour-cursor-char-for-each-cursor ()
   "Each cursor moves its own cursor character."
   (hel-test-with 'text-mode "ab|cd\nefgh\nijkl"
-    (hel-test-expect-chars "Ch" "a¦bcd\ne|fgh\nijkl" '(("b" -1) ("f" -1)))
-    (hel-test-expect-chars "j" "abcd\ne¦fgh\ni|jkl" '(("f" -1) ("j" -1)))
-    (hel-test-expect-chars "l" "abcd\nef¦gh\nij|kl" '(("g" -1) ("k" -1)))))
+    (hel-test-expect-chars "Ch" "a¦bcd\ne|fgh\nijkl" '(("b" nil) ("f" nil)))
+    (hel-test-expect-chars "j" "abcd\ne¦fgh\ni|jkl" '(("f" nil) ("j" nil)))
+    (hel-test-expect-chars "l" "abcd\nef¦gh\nij|kl" '(("g" nil) ("k" nil)))))
 
 ;; Point stands before the cursor character, so a vertical motion keeps the
 ;; column of the character, and the character comes back to its column on
@@ -230,64 +230,64 @@ where the cursor character is empty.  No step goes further."
 
 (ert-deftest hel-behaviour-cursor-char-j-over-a-short-line ()
   (hel-test-with 'text-mode "ab|cd\nx\nefgh"
-    (hel-test-expect-chars "j" "abcd\nx|\nefgh" '(("\n" -1)))
-    (hel-test-expect-chars "j" "abcd\nx\nef|gh" '(("g" -1))))
+    (hel-test-expect-chars "j" "abcd\nx|\nefgh" '(("\n" nil)))
+    (hel-test-expect-chars "j" "abcd\nx\nef|gh" '(("g" nil))))
   (hel-test-with 'text-mode "abc|d\nx\nefgh"
-    (hel-test-expect-chars "j" "abcd\nx|\nefgh" '(("\n" -1)))
-    (hel-test-expect-chars "j" "abcd\nx\nefg|h" '(("h" -1)))))
+    (hel-test-expect-chars "j" "abcd\nx|\nefgh" '(("\n" nil)))
+    (hel-test-expect-chars "j" "abcd\nx\nefg|h" '(("h" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-k-over-a-short-line ()
   (hel-test-with 'text-mode "abcd\nx\nef|gh"
-    (hel-test-expect-chars "kk" "ab|cd\nx\nefgh" '(("c" -1))))
+    (hel-test-expect-chars "kk" "ab|cd\nx\nefgh" '(("c" nil))))
   (hel-test-with 'text-mode "abcd\nx\nefg|h"
-    (hel-test-expect-chars "hkk" "ab|cd\nx\nefgh" '(("c" -1)))))
+    (hel-test-expect-chars "hkk" "ab|cd\nx\nefgh" '(("c" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-j-over-an-empty-line ()
   "An empty line shows its newline, and the column passes over it."
   (hel-test-with 'text-mode "ab|cd\n\nefgh"
-    (hel-test-expect-chars "j" "abcd\n|\nefgh" '(("\n" -1)))
-    (hel-test-expect-chars "j" "abcd\n\nef|gh" '(("g" -1))))
+    (hel-test-expect-chars "j" "abcd\n|\nefgh" '(("\n" nil)))
+    (hel-test-expect-chars "j" "abcd\n\nef|gh" '(("g" nil))))
   (hel-test-with 'text-mode "abc|d\n\nefgh"
-    (hel-test-expect-chars "j" "abcd\n|\nefgh" '(("\n" -1)))
-    (hel-test-expect-chars "j" "abcd\n\nefg|h" '(("h" -1)))))
+    (hel-test-expect-chars "j" "abcd\n|\nefgh" '(("\n" nil)))
+    (hel-test-expect-chars "j" "abcd\n\nefg|h" '(("h" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-k-over-an-empty-line ()
   (hel-test-with 'text-mode "abcd\n\nef|gh"
-    (hel-test-expect-chars "kk" "ab|cd\n\nefgh" '(("c" -1))))
+    (hel-test-expect-chars "kk" "ab|cd\n\nefgh" '(("c" nil))))
   (hel-test-with 'text-mode "abcd\n\nefg|h"
-    (hel-test-expect-chars "hk" "abcd\n|\nefgh" '(("\n" -1)))
-    (hel-test-expect-chars "k" "ab|cd\n\nefgh" '(("c" -1)))))
+    (hel-test-expect-chars "hk" "abcd\n|\nefgh" '(("\n" nil)))
+    (hel-test-expect-chars "k" "ab|cd\n\nefgh" '(("c" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-j-collapses-a-selection ()
   "A vertical motion first collapses a selection onto its head character."
   (hel-test-with 'text-mode "^ab|cd\nefgh"
-    (hel-test-expect-chars "j" "abcd\ne|fgh" '(("f" -1))))
+    (hel-test-expect-chars "j" "abcd\ne|fgh" '(("f" nil))))
   (hel-test-with 'text-mode "a|bc^d\nefgh"
-    (hel-test-expect-chars "j" "abcd\ne|fgh" '(("f" -1)))))
+    (hel-test-expect-chars "j" "abcd\ne|fgh" '(("f" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-collapse ()
   "`;' leaves the cursor character on the character at the head of the
 selection."
   (hel-test-with 'text-mode "^foo| bar"
-    (hel-test-expect-chars ";" "fo|o bar" '(("o" -1))))
+    (hel-test-expect-chars ";" "fo|o bar" '(("o" nil))))
   (hel-test-with 'text-mode "|foo^ bar"
-    (hel-test-expect-chars ";" "|foo bar" '(("f" -1)))))
+    (hel-test-expect-chars ";" "|foo bar" '(("f" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-match-bracket ()
   "`mm' moves the cursor character to the matching bracket.  From
 inside a pair it goes to the closing bracket."
   (hel-test-with 'text-mode "|(count)"
-    (hel-test-expect-chars "mm" "(count|)" '((")" -1)))
-    (hel-test-expect-chars "mm" "|(count)" '(("(" -1))))
+    (hel-test-expect-chars "mm" "(count|)" '((")" nil)))
+    (hel-test-expect-chars "mm" "|(count)" '(("(" nil))))
   (hel-test-with 'text-mode "(co|unt)"
-    (hel-test-expect-chars "mm" "(count|)" '((")" -1))))
+    (hel-test-expect-chars "mm" "(count|)" '((")" nil))))
   (hel-test-with 'text-mode "(a (b) |c)"
-    (hel-test-expect-chars "mm" "(a (b) c|)" '((")" -1))))
+    (hel-test-expect-chars "mm" "(a (b) c|)" '((")" nil))))
   (hel-test-with 'text-mode "|foo"
-    (hel-test-expect-chars "mm" "|foo" '(("f" -1))))
+    (hel-test-expect-chars "mm" "|foo" '(("f" nil))))
   ;; An active region starts from its head character.
   (hel-test-with 'text-mode "^foo (bar)|"
-    (hel-test-expect-chars "mm" "foo |(bar)" '(("(" -1)))))
+    (hel-test-expect-chars "mm" "foo |(bar)" '(("(" nil)))))
 
 (ert-deftest hel-behaviour-extend-match-bracket ()
   "When extending, `mm' moves the head character and keeps the anchor."
@@ -297,31 +297,31 @@ inside a pair it goes to the closing bracket."
     (hel-test-expect "vmm" "|(count)^")))
 
 (ert-deftest hel-behaviour-cursor-char-after-insert ()
-  "Insert state never moves the selection.  After `a' the typed text
-joins the cursor character, which becomes the last character typed;
-after every other command the cursor character stays after the typed
-text."
+  "The typed text becomes the selection, forward, so the cursor character
+is the last character typed.  One typed character is a bare cursor on it."
   (hel-test-with 'text-mode "fo|o"
-    (hel-test-expect-chars "ix<escape>" "fox|o" '(("o" -1))))
+    (hel-test-expect-chars "ix<escape>" "fo|xo" '(("x" nil))))
   (hel-test-with 'text-mode "fo|o bar"
-    (hel-test-expect-chars "ax<escape>" "foo|x bar" '(("x" -1))))
+    (hel-test-expect-chars "ax<escape>" "foo|x bar" '(("x" nil))))
   (hel-test-with 'text-mode "|foo\nbar"
-    (hel-test-expect-chars "Ax<escape>" "foox|\nbar" '(("\n" -1))))
+    (hel-test-expect-chars "Ax<escape>" "foo|x\nbar" '(("x" nil))))
   (hel-test-with 'text-mode "fo|o\nbar"
-    (hel-test-expect-chars "ox<escape>" "foo\nx|\nbar" '(("\n" -1))))
+    (hel-test-expect-chars "ox<escape>" "foo\n|x\nbar" '(("x" nil))))
   (hel-test-with 'text-mode "foo|"
-    (hel-test-expect-chars "ax<escape>" "foo|x" '(("x" -1))))
+    (hel-test-expect-chars "ax<escape>" "foo|x" '(("x" nil))))
   (hel-test-with 'text-mode "foo|\nbar"
-    (hel-test-expect-chars "ax<escape>" "foo|x\nbar" '(("x" -1))))
+    (hel-test-expect-chars "ax<escape>" "foo|x\nbar" '(("x" nil))))
   (hel-test-with 'text-mode "fo|o\nbar"
-    (hel-test-expect "vlax<escape>" "fo^ox|\nbar"))
+    (hel-test-expect "vlax<escape>" "foo|x\nbar"))
+  (hel-test-with 'text-mode "fo|o"
+    (hel-test-expect-chars "ixyz<escape>" "fo^xyz|o" '(("xyz" 1))))
   (hel-test-with 'text-mode "foo\n|bar"
-    (hel-test-expect-chars "i<escape>" "foo\n|bar" '(("b" -1)))))
+    (hel-test-expect-chars "i<escape>" "foo\n|bar" '(("b" nil)))))
 
 (ert-deftest hel-behaviour-cursor-char-after-insert-continues ()
-  "Pressing the same key again continues the typing at the same place."
+  "A repeated `i' types before the text typed last, and `a' after it."
   (hel-test-with 'text-mode "|abc"
-    (hel-test-expect "ix<escape>iy<escape>" "xy|abc"))
+    (hel-test-expect "ix<escape>iy<escape>" "|yxabc"))
   (hel-test-with 'text-mode "|abc"
     (hel-test-expect "ax<escape>ay<escape>" "ax|ybc")))
 
@@ -342,9 +342,9 @@ text."
 
 (ert-deftest hel-behaviour-cursor-char-after-insert-for-each-cursor ()
   (hel-test-with 'text-mode "fo|o\nbar"
-    (hel-test-expect-chars "Cix<escape>" "fox¦o\nbax|r" '(("o" -1) ("r" -1))))
+    (hel-test-expect-chars "Cix<escape>" "fo¦xo\nba|xr" '(("x" nil) ("x" nil))))
   (hel-test-with 'text-mode "fo|o\nbar"
-    (hel-test-expect-chars "Cax<escape>" "foo¦x\nbar|x" '(("x" -1) ("x" -1)))))
+    (hel-test-expect-chars "Cax<escape>" "foo¦x\nbar|x" '(("x" nil) ("x" nil)))))
 
 ;; The structural commands and the text objects start from the selection, so
 ;; at a bare point they start from the cursor character.  In each row the
@@ -381,18 +381,17 @@ text."
 cursor leaves the cursor bare, on the cursor character where it started."
   (hel-test-with 'emacs-lisp-mode "(x (foo| bar))"
     (hel-test-expect-chars "hM-oM-o" "(x |(foo bar)^)" '(("(foo bar)" -1)))
-    (hel-test-expect-chars "M-iM-i" "(x (fo|o bar))" '(("o" -1)))
+    (hel-test-expect-chars "M-iM-i" "(x (fo|o bar))" '(("o" nil)))
     (should-not (region-active-p)))
   (hel-test-with 'emacs-lisp-mode "(x (foo| bar))"
-    (hel-test-expect-chars "M-oM-i" "(x (foo| bar))" '((" " -1)))
+    (hel-test-expect-chars "M-oM-i" "(x (foo| bar))" '((" " nil)))
     (should-not (region-active-p))))
 
 (ert-deftest hel-behaviour-cursor-char-shrink-to-one-character-region ()
-  "A chain of M-o that starts at a region of one character returns to that
-region: the history records that the region was active."
+  "A chain of M-o that starts at a region of one character returns to a
+bare cursor on that character: the two are the same selection."
   (hel-test-with 'emacs-lisp-mode "(x (f^o|o bar))"
-    (hel-test-expect "M-oM-i" "(x (f^o|o bar))")
-    (should (region-active-p))))
+    (hel-test-expect-chars "M-oM-i" "(x (f|oo bar))" '(("o" nil)))))
 
 ;;; Motions: words
 
@@ -494,14 +493,24 @@ region: the history records that the region was active."
   ;; The search crosses lines.
   ("|foo\nbar" "f r" "^foo\nbar|")
   ("foo\nbar|" "F f" "|foo\nbar^")
-  ;; A new motion starts a new selection, from point.
-  ("^foo| bar" "f a" "foo^ ba|r")
+  ;; A new motion starts a new selection from the head character, and the
+  ;; search starts after it.
+  ("^foo| bar" "f a" "fo^o ba|r")
+  ("|foo^ bar" "f a" "^foo ba|r")
+  ("|aoo^ bar" "f a" "^aoo ba|r")
+  ("|foo^ bar" "f f" "|foo^ bar")
   ;; From a bare cursor the search starts after the cursor character, and
   ;; the selection takes it in, as in Helix.  So `t' does not stop before
   ;; the character right after the cursor.
   ("|aab" "f a" "^aa|b")
   ("aa|b" "F a" "a|ab^")
   ("|a*b" "t *" "|a*b")
+  ;; A selection of one character works as a bare cursor, in both
+  ;; directions.
+  ("^a|ab" "f a" "^aa|b")
+  ("|a^ab" "f a" "^aa|b")
+  ("aa^b|" "F a" "a|ab^")
+  ("aa|b^" "F a" "a|ab^")
   ;; No target: nothing is selected.
   ("|foo" "f z" "|foo")
   ("foo|" "F z" "foo|")
@@ -514,7 +523,7 @@ region: the history records that the region was active."
   ("|foo\nbar" "f RET" "^foo\n|bar")
   ;; `n' and `N' repeat the motion while the hints are active, and the
   ;; selection keeps its start.
-  ("|a b a b a" "f a f a" "a b a^ b a|")
+  ("|a b a b a" "f a f a" "a b ^a b a|")
   ("|xa b a b a" "f a n" "^xa b a| b a")
   ("|xa b a b a" "f a n n" "^xa b a b a|")
   ("|xa b a b a" "f a n N" "^xa| b a b a")
@@ -768,6 +777,9 @@ cursor character, so extending goes on."
   ("^foo| bar" ";" "fo|o bar")
   ("|foo^ bar" ";" "|foo bar")
   ("foo| bar" ";" "foo| bar")
+  ;; A region of one character is a bare cursor already.
+  ("f^o|o bar" ";" "f|oo bar")
+  ("f|o^o bar" ";" "f|oo bar")
   ;; With `v' the selection collapses and motions still extend.
   ("|foo bar baz" "vw;" "foo| bar baz")
   ("|foo bar baz" "vw;w" "foo^ bar |baz"))
@@ -777,6 +789,10 @@ cursor character, so extending goes on."
   ("|foo^ bar" "M-;" "^foo| bar")
   ("^foo| bar" "C-;" "|foo^ bar")
   ("^foo| bar" "g;" "|foo^ bar")
+  ;; A bare cursor has no other end, also as a region of one character.
+  ("fo|o bar" "M-;" "fo|o bar")
+  ("f^o|o bar" "M-;" "f^o|o bar")
+  ("f|o^o bar" "M-;" "f|o^o bar")
   ;; The side of the cursor decides which end of the selection `v' moves.
   ("^foo bar| baz" "M-;vl" "f|oo bar^ baz"))
 
@@ -817,7 +833,9 @@ cursor character, so extending goes on."
   ("^  foo  |bar" "_" "  ^foo|  bar")
   ("|  foo  ^bar" "_" "  |foo^  bar")
   ("^\n foo \n|x" "_" "\n ^foo| \nx")
-  ("foo| bar" "_" "foo| bar"))
+  ("foo| bar" "_" "foo| bar")
+  ;; A blank under a bare cursor stays, also as a region of one character.
+  ("foo^ |bar" "_" "foo^ |bar"))
 
 ;;; Editing: cut, delete, change
 
@@ -867,9 +885,21 @@ cursor character, so extending goes on."
   ("|foo^ bar" "c" "| bar" :state insert :kill "foo")
   ;; The typed text becomes the selection on leaving Insert state.
   ("^foo| bar" "cbaz<escape>" "^baz| bar")
-  ;; Without a selection `c' deletes the character before point.
-  ("foo| bar" "c" "fo| bar" :state insert)
-  ("|foo" "c" "|foo" :state insert)
+  ;; One character, such as a bare cursor, is deleted and stays out of the
+  ;; kill ring.
+  ("foo| bar" "c" "foo|bar" :state insert :yank "kept" :kill "kept")
+  ("|foo" "c" "|oo" :state insert :yank "kept" :kill "kept")
+  ("^f|oo" "c" "|oo" :state insert :yank "kept" :kill "kept")
+  ;; One typed character is a bare cursor on it.
+  ("fo|o" "cx<escape>" "fo|x")
+  ("f^o|o" "cx<escape>" "f|xo")
+  ("f|o^o" "cx<escape>" "f|xo")
+  ;; With nothing typed, the cursor stays where the text was deleted.
+  ("fo|o" "c<escape>" "fo|")
+  ;; A newline under the cursor joins the lines.
+  ("foo|\nbar" "c" "foo|bar" :state insert :yank "kept" :kill "kept")
+  ;; At the end of the buffer there is nothing to delete.
+  ("foo|" "c" "foo|" :state insert :yank "kept" :kill "kept")
   ;; A linewise selection leaves an empty line.
   ("fo|o\nbar\n" "xc" "|\nbar\n" :state insert :kill "foo\n")
   ;; On an empty line `c' inserts the indentation.
@@ -883,8 +913,11 @@ cursor character, so extending goes on."
 (hel-test-table edit-copy
   ("^foo| bar" "y" "^foo| bar" :kill "foo")
   ("|foo^ bar" "y" "|foo^ bar" :kill "foo")
-  ;; No selection: nothing is copied.
-  ("foo| bar" "y" "foo| bar" :yank "kept" :kill "kept")
+  ;; One character, such as a bare cursor, is copied.
+  ("foo| bar" "y" "foo| bar" :kill " ")
+  ("^f|oo" "y" "^f|oo" :kill "f")
+  ;; At the end of the buffer there is nothing to copy.
+  ("foo|" "y" "foo|" :yank "kept" :kill "kept")
   ("fo|o\nbar\n" "xy" "|foo\n^bar\n" :kill "foo\n")
   ;; `y' stops extending.
   ("|foo bar" "vlly" "^foo| bar" :kill "foo")
@@ -903,6 +936,10 @@ cursor character, so extending goes on."
   ;; The selection direction is kept.
   ("|foo^ bar" "p" "foo|xx^ bar" :yank "xx")
   ("|foo^ bar" "P" "|xx^foo bar" :yank "xx")
+  ;; A region of one character pastes as a bare cursor does.
+  ("f|o^o" "p" "fo^xx|o" :yank "xx")
+  ("foo|\nbar" "p" "foo^xx|\nbar" :yank "xx")
+  ("foo^\n|bar" "p" "foo^xx|\nbar" :yank "xx")
   ;; A text with a newline loses it on a selection that is not linewise.
   ("^foo| bar" "p" "foo^xx| bar" :yank "xx\n")
   ;; A linewise selection pastes on separate lines.
@@ -954,6 +991,7 @@ cursor character, so extending goes on."
   ("foo| bar" "R" "foo^xx|bar" :yank "xx")
   ("foo| bar" "hR" "fo^xx| bar" :yank "xx")
   ("fo|o bar" "C-SPC R" "fo^xx| bar" :yank "xx")
+  ("f|o^o bar" "R" "f^xx|o bar" :yank "xx")
   ("foo|" "R" "foo|" :yank "xx"))
 
 ;;; Editing: lines
@@ -976,7 +1014,7 @@ cursor character, so extending goes on."
   ("foo\nb|ar" "O" "foo\n|\nbar" :state insert)
   ("foo|" "o" "foo\n|" :state insert)
   ("|foo" "O" "|\nfoo" :state insert)
-  ("fo|o\nbar" "ox<escape>" "foo\nx|\nbar")
+  ("fo|o\nbar" "ox<escape>" "foo\n|x\nbar")
   ;; A selection: the new line goes outside of its end.
   ("^a\nb|\nc" "o" "a\nb\n|\nc" :state insert)
   ("^a\nb|\nc" "O" "|\na\nb\nc" :state insert)
@@ -1093,18 +1131,33 @@ cursor character, so extending goes on."
   ;; `i' goes to the start of the selection, `a' to its end.
   ("^foo| bar" "i" "|foo bar" :state insert)
   ("|foo^ bar" "a" "foo| bar" :state insert)
-  ;; The selection comes back on leaving Insert state, with the typed text
-  ;; on the side of the cursor.
-  ("^foo| bar" "ix<escape>" "x|foo^ bar")
-  ("^foo| bar" "ax<escape>" "^foox| bar")
-  ("|foo^ bar" "ax<escape>" "^foox| bar")
+  ;; The typed text becomes the selection, forward, in place of the old
+  ;; one.  One typed character is a bare cursor on it.
+  ("^foo| bar" "ix<escape>" "|xfoo bar")
+  ("^foo| bar" "ixy<escape>" "^xy|foo bar")
+  ("^foo| bar" "ax<escape>" "foo|x bar")
+  ("|foo^ bar" "ax<escape>" "foo|x bar")
+  ("f|oo bar" "ix<escape>" "f|xoo bar")
+  ("f^o|o bar" "ix<escape>" "f|xoo bar")
+  ("f|oo bar" "ax<escape>" "fo|xo bar")
+  ("f|o^o bar" "ax<escape>" "fo|xo bar")
   ;; `I' and `A' go to the ends of the line.
   ("  fo|o bar\nbaz" "I" "  |foo bar\nbaz" :state insert)
   ("  fo|o bar\nbaz" "A" "  foo bar|\nbaz" :state insert)
   ("  ^foo| bar\nbaz" "I" "  |foo bar\nbaz" :state insert)
   ("  ^foo| bar\nbaz" "A" "  foo bar|\nbaz" :state insert)
   ("fo|o" "Ix<escape>" "xfoo" :text-only t)
-  ("fo|o" "Ax<escape>" "foox|")
+  ("fo|o" "Ax<escape>" "foo|x")
+  ;; With nothing typed, the selection stays as it was.
+  ("^foo| bar" "i<escape>" "^foo| bar")
+  ("|foo^ bar" "a<escape>" "|foo^ bar")
+  ("fo|o" "a<escape>" "fo|o")
+  ("fo|o" "A<escape>" "fo|o")
+  ;; The selection is the way that point went from the start of the
+  ;; typing, in either direction.
+  ("fo|o" "ix<left><left><escape>" "f|oxo")
+  ("fo|o" "ix<left><left><left><escape>" "|fo^xo")
+  ("f|oo" "ix<right><right><escape>" "f^xoo|")
   ;; Keys insert their own text in Insert state.
   ("|" "ihjkl SPC wbe" "hjkl wbe|" :state insert)
   ("fo|o" "iRET" "fo\n|o" :state insert)
@@ -1358,9 +1411,12 @@ cursor character, so extending goes on."
   ("(a (b (c|) d) e)" "3ma(" "^(a (b (c) d) e)|")
   ("(a (b (c|) d) e)" "9mi(" "(^a (b (c) d) e|)")
   ;; M-i returns to the selection before.
-  ("(a (b (c|) d) e)" "mi(mi(M-i" "(a (b (^c|) d) e)")
+  ("(a (b (c|) d) e)" "mi(mi(M-i" "(a (b (|c) d) e)")
   ;; With a selection, the pair around the selection.
   ("(foo ^bar|)" "mi(" "(^foo bar|)")
+  ;; On `(' the pair that it opens, also from a region of one character.
+  ("(|(a))" "mi(" "((^a|))")
+  ("(^(|a))" "mi(" "((^a|))")
   ;; The closest brackets of any shape.
   ("(a [b {c|} d] e)" "mim" "(a [b {^c|} d] e)")
   ("(a [b {c|} d] e)" "mb" "(a [b {^c|} d] e)")
@@ -1411,6 +1467,9 @@ cursor character, so extending goes on."
   ;; Left brackets add spaces, right brackets do not.
   ("^foo| bar" "ms(" "( ^foo| ) bar")
   ("^foo| bar" "ms)" "(^foo|) bar")
+  ;; A bare cursor wraps its cursor character, also a blank one.
+  ("a| b" "ms)" "a(| )b")
+  ("a^ |b" "ms)" "a(^ |)b")
   ("^foo| bar" "ms[" "[ ^foo| ] bar")
   ("^foo| bar" "ms]" "[^foo|] bar")
   ("^foo| bar" "ms{" "{ ^foo| } bar")
@@ -1560,6 +1619,7 @@ cursor character, so extending goes on."
   ("^foo|" "sRET" "^foo|")
   ;; Without a selection `s' does nothing and does not prompt.
   ("foo|" "s" "foo|")
+  ("f^o|o" "s" "f^o|o")
   ;; `S' selects the text between the matches.
   ("^a,b,c|" "S, RET" "^a|,¬b¦,¬c¦")
   ("^a, b, c|" "S,\\s* RET" "^a|, ¬b¦, ¬c¦")
@@ -1640,7 +1700,8 @@ cursor character, so extending goes on."
 
 (hel-test-table cursors-merge
   ("^a,b,c|" "s\\w RET M--" "^a,b,c|")
-  ("|a\nb\nc" "CC M--" "^a\nb\n|c")
+  ;; The merged selection takes in the cursor character of the last cursor.
+  ("|a\nb\nc" "CC M--" "^a\nb\nc|")
   ;; The selections merge when their lines meet.
   ("|a\nb\nc\n" "Cxx" "^a\nb\nc\n|"))
 
@@ -1649,7 +1710,31 @@ cursor character, so extending goes on."
   ("^a b c|" "s\\w RET M-(" "^b| ¬c¦ ¬a¦")
   ("^aa b ccc|" "s\\w+ RET M-)" "^ccc| ¬aa¦ ¬b¦")
   ("^a b c|" "s\\w RET 2M-)" "^b| ¬c¦ ¬a¦")
-  ("^a b c|" "s\\w RET M-)M-(" "^a| ¬b¦ ¬c¦"))
+  ("^a b c|" "s\\w RET M-)M-(" "^a| ¬b¦ ¬c¦")
+  ;; Bare cursors rotate their cursor characters.
+  ("|ab\ncd" "CM-)" "¦c¬b\n|a^d"))
+
+(ert-deftest hel-behaviour-cursors-align-head-characters ()
+  "`&' lines up the head characters: a forward region of one character
+lines up as a bare cursor on that character does."
+  (hel-test-with 'text-mode "a^b|\nccd"
+    (hel-test-add-secondary-cursor 6)       ; "d"
+    (hel-test-expect "&" "a ^b|\ncc¦d")))
+
+(ert-deftest hel-behaviour-cursors-merge-ignores-a-stale-mark ()
+  "`M--' merges the selections, not the inactive mark of a bare cursor."
+  (hel-test-with 'text-mode "|ab\ncd"
+    (let ((mark-active nil))
+      (hel-test-add-secondary-cursor 2 6))  ; "b", with the mark after "d"
+    (hel-test-expect "M--" "^ab|\ncd")))
+
+(ert-deftest hel-behaviour-cursors-select-skips-bare-cursors ()
+  "`s' searches only inside the selections that are not bare cursors, and
+a bare cursor disappears."
+  (hel-test-with 'text-mode "a|b\ncd"
+    (let ((mark-active t))
+      (hel-test-add-secondary-cursor 6 4))  ; region "cd"
+    (hel-test-expect "s[bd] RET" "ab\nc^d|")))
 
 ;;; Multiple cursors: every command runs for all cursors
 
@@ -1661,13 +1746,14 @@ cursor character, so extending goes on."
   ("fo|o\nbar" "ChrX" "f¦Xo\nb|Xr")
   ("^fo|o\nbar" "CD" "¦o|\nr")
   ("^fo|o\nbar" "Cc" "¦o\n|r" :state insert)
-  ("|foo\nbar" "Cix<escape>" "x¦foo\nx|bar")
+  ("|foo\nbar" "Cix<escape>" "¦xfoo\n|xbar")
   ("|foo\nbar" "Cax<escape>" "f¦xoo\nb|xar")
-  ("^fo|o\nbar" "Cax<escape>" "¬fox¦o\n^bax|r")
-  ("^fo|o\nbar" "Cix<escape>" "x¦fo¬o\nx|ba^r")
-  ("f|oo\nbar" "Cox<escape>" "foo\nx¦\nbar\nx|")
-  ("f|oo\nbar" "COx<escape>" "x¦\nfoo\nx|\nbar")
-  ("f|oo\nbar" "CAx<escape>" "foox¦\nbarx|")
+  ("^fo|o\nbar" "Cax<escape>" "fo¦xo\nba|xr")
+  ("^fo|o\nbar" "Cix<escape>" "¦xfoo\n|xbar")
+  ("^fo|o\nbar" "Cixy<escape>" "¬xy¦foo\n^xy|bar")
+  ("f|oo\nbar" "Cox<escape>" "foo\n¦x\nbar\n|x")
+  ("f|oo\nbar" "COx<escape>" "¦x\nfoo\n|x\nbar")
+  ("f|oo\nbar" "CAx<escape>" "foo¦x\nbar|x")
   ("f|oo\nbar" "CIx<escape>" "xfoo\nxbar" :text-only t)
   ("^fo|o\nbar" "CrX" "¬XX¦o\n^XX|r")
   ("^fo|o\nbar" "C~" "¬FO¦o\n^BA|r")
@@ -1736,12 +1822,12 @@ cursor character, so extending goes on."
   (hel-test-with 'text-mode "ab|c\nabc"
     (hel-set-cursor 2)                      ; "b"
     (hel-test-add-secondary-cursor 6)       ; "b"
-    (should (equal (hel-test-cursor-chars) '(("b" -1) ("b" -1))))
+    (should (equal (hel-test-cursor-chars) '(("b" nil) ("b" nil))))
     (hel-test-press! "D")
-    (should (equal (hel-test-cursor-chars) '(("c" -1) ("c" -1))))
+    (should (equal (hel-test-cursor-chars) '(("c" nil) ("c" nil))))
     (hel-test-press! "u")
     (should (equal (buffer-string) "abc\nabc"))
-    (should (equal (hel-test-cursor-chars) '(("b" -1) ("b" -1))))))
+    (should (equal (hel-test-cursor-chars) '(("b" nil) ("b" nil))))))
 
 (ert-deftest hel-behaviour-cursors-emacs-state-has-none ()
   "Entering Emacs state removes the secondary cursors."
@@ -1789,7 +1875,7 @@ cursor character, so extending goes on."
 (ert-deftest hel-behaviour-cursors-insert-undo-is-one-step ()
   "One undo reverts a word typed with all cursors."
   (hel-test-with 'text-mode "|foo\nbar"
-    (hel-test-expect "Cix<escape>" "x¦foo\nx|bar")
+    (hel-test-expect "Cix<escape>" "¦xfoo\n|xbar")
     (hel-test-expect "u" "¦foo\n|bar")))
 
 (ert-deftest hel-behaviour-cursors-unknown-command-needs-a-choice ()
@@ -1873,9 +1959,11 @@ In this test the question is the guard of the test setup, which fails on it."
   ("^foo bar| baz bar foo" "s\\w+ RET*,n" "foo ^bar| baz bar foo")
   ("^foo bar| baz bar foo" "s\\w+ RET*,nn" "foo bar baz ^bar| foo")
   ("^foo bar| baz bar foo" "s\\w+ RET*,nnn" "foo bar baz bar ^foo|")
-  ;; Without a selection nothing happens.
+  ;; One character, such as a bare cursor, gives no pattern.
   ("fo|o" "*" "fo|o")
-  ("fo|o" "*n" "fo|o" :error "Register / is empty"))
+  ("fo|o" "*n" "fo|o" :error "Register / is empty")
+  ("f^o|o" "*n" "f^o|o" :error "Register / is empty")
+  ("f^o|o" "M-*n" "f^o|o" :error "Register / is empty"))
 
 (ert-deftest hel-behaviour-search-register ()
   "`*' and `/' fill the `/' register, so that `n' works in any buffer."
@@ -2158,6 +2246,7 @@ In this test the question is the guard of the test setup, which fails on it."
 
 (hel-test-table narrow
   ("foo| bar" "zn" "foo| bar")
+  ("f^o|o bar" "zn" "f^o|o bar")
   ("foo| bar" "zw" "foo| bar" :error "narrowed"))
 
 ;;; Emacs state
@@ -2284,5 +2373,138 @@ In this test the question is the guard of the test setup, which fails on it."
       (hel-test-press keys)
       (should (equal (hel-test-render) "fo|o"))
       (should (eq (hel-test-state) 'normal)))))
+
+;;; The law of the selection
+;;
+;; A bare cursor is a selection of one character, and the user cannot tell
+;; it from an active region over the same character.  So each key below
+;; must give one result on the three stored forms of one character: the
+;; same text, selections, state, kill ring and search.  The empty line is
+;; left out: there the active region still marks a line selection.
+
+(defun hel-behaviour--forms (template)
+  "Return the three stored forms of one character in TEMPLATE.
+TEMPLATE marks the cursor character with # before it."
+  (let* ((i (string-search "#" template))
+         (before (substring template 0 i))
+         (char (substring template (1+ i) (+ i 2)))
+         (after (substring template (+ i 2))))
+    (list (concat before "|" char after)
+          (concat before "^" char "|" after)
+          (concat before "|" char "^" after))))
+
+(defun hel-behaviour--observe (failure)
+  "Return what the user sees after the keys, and their FAILURE."
+  (list :text (buffer-string)
+        :selections (-map (-lambda ((_id range dir))
+                            (if (<= (- (cdr range) (car range)) 1)
+                                (list range)
+                              (list range dir)))
+                          (hel-selections))
+        :state (hel-test-state)
+        :kill (car kill-ring)
+        :search (and hel-search--session t)
+        :failure (car-safe failure)))
+
+(defun hel-behaviour--search (regexp)
+  "Search REGEXP with `/', then give the selection back its stored form."
+  (let ((point (point))
+        (mark (mark t))
+        (active (region-active-p)))
+    (hel-test-press! (concat "/" regexp " RET"))
+    (goto-char point)
+    (if active
+        (progn (set-mark mark) (activate-mark))
+      (deactivate-mark))))
+
+(defmacro hel-behaviour-law (name template keys &optional before)
+  "Define a test that KEYS give one result on the three forms of TEMPLATE.
+BEFORE is a function that runs before the keys."
+  `(ert-deftest ,(intern (format "hel-behaviour-law-%s" name)) ()
+     ,(format "%s on the three forms of one character in %S." keys template)
+     (-let [(bare forward backward)
+            (-map (lambda (input)
+                    (hel-test-with 'text-mode input
+                      (setq kill-ring (list "KILL")
+                            kill-ring-yank-pointer kill-ring)
+                      (when ,before (funcall ,before))
+                      (hel-behaviour--observe (hel-test-press ,keys))))
+                  (hel-behaviour--forms ,template))]
+       (should (equal forward bare))
+       (should (equal backward bare)))))
+
+(defun hel-behaviour--search-o ()
+  (hel-behaviour--search "o"))
+
+(hel-behaviour-law d "fo#o bar" "d")
+(hel-behaviour-law D "fo#o bar" "D")
+(hel-behaviour-law d-at-start "#foo" "d")
+(hel-behaviour-law c "fo#o bar" "c")
+(hel-behaviour-law c-typed "fo#o bar" "cx<escape>")
+(hel-behaviour-law i-typed "fo#o bar" "ix<escape>")
+(hel-behaviour-law i-nothing-typed "fo#o bar" "i<escape>")
+(hel-behaviour-law a-typed "fo#o bar" "ax<escape>")
+(hel-behaviour-law a-nothing-typed "fo#o bar" "a<escape>")
+(hel-behaviour-law y "fo#o bar" "y")
+(hel-behaviour-law star "fo#o bar foo" "*n")
+(hel-behaviour-law meta-star "fo#o bar foo" "M-*n")
+(hel-behaviour-law f "#foo boo" "f o")
+(hel-behaviour-law t "#foo boo" "t o")
+(hel-behaviour-law F "foo bo#o" "F f")
+(hel-behaviour-law T "foo bo#o" "T f")
+(hel-behaviour-law f-head "#aoo bar" "f a")
+(hel-behaviour-law semicolon "fo#o boo" ";" #'hel-behaviour--search-o)
+(hel-behaviour-law meta-semicolon "fo#o bar" "M-; v l")
+(hel-behaviour-law underscore "foo# bar" "_")
+(hel-behaviour-law surround "foo# bar" "ms)")
+(hel-behaviour-law mark-inner-pair "a #(foo) b" "mi(")
+(hel-behaviour-law mark-outer-pair "a #(foo) b" "ma(")
+(hel-behaviour-law rotate "f#oo\nbar" "C M-)")
+(hel-behaviour-law select-in "f#oo\nbar" "s")
+(hel-behaviour-law paste-on-newline "foo#\nbar" "p")
+(hel-behaviour-law paste-before "fo#o bar" "P")
+(hel-behaviour-law replace "fo#o bar" "R")
+(hel-behaviour-law merge "f#oo\nbar\nbaz" "C C M--")
+(hel-behaviour-law search-next "fo#o oo" "n" #'hel-behaviour--search-o)
+(hel-behaviour-law search-previous "foo o#o" "N" #'hel-behaviour--search-o)
+(hel-behaviour-law extend "fo#o bar" "v l l")
+(hel-behaviour-law extend-back "fo#o bar" "v h h")
+(hel-behaviour-law right "fo#o bar" "l")
+(hel-behaviour-law left "fo#o bar" "h")
+(hel-behaviour-law down "fo#o\nbar" "j")
+(hel-behaviour-law word "fo#o bar baz" "w")
+(hel-behaviour-law line "fo#o\nbar" "x")
+(hel-behaviour-law replace-char "fo#o bar" "r z")
+(hel-behaviour-law case "fo#o bar" "~")
+(hel-behaviour-law join "fo#o\nbar" "J")
+(hel-behaviour-law open-below "fo#o\nbar" "o<escape>")
+(hel-behaviour-law undo "fo#o bar" "d u")
+(hel-behaviour-law copy-cursor "f#oo\nbar" "C")
+
+(ert-deftest hel-behaviour-law-semicolon-stops-search ()
+  "`;' on one character stops the search; on a longer one it collapses."
+  (dolist (input '("fo|o boo" "fo^o| boo" "fo|o^ boo"))
+    (hel-test-with 'text-mode input
+      (hel-behaviour--search "o")
+      (hel-test-press! ";")
+      (should-not hel-search--session)))
+  (hel-test-with 'text-mode "^foo| boo"
+    (hel-behaviour--search "o")
+    (hel-test-press! ";")
+    (should hel-search--session)
+    (should (equal (hel-selection) '((3 . 4) nil)))))
+
+(ert-deftest hel-behaviour-law-default-direction ()
+  "One character gives the new selection the default direction: forward."
+  (dolist (input '("fo|o oo" "fo^o| oo" "fo|o^ oo"))
+    (hel-test-with 'text-mode input
+      (hel-behaviour--search "oo")
+      (hel-test-press! "n")
+      (should (equal (hel-selection) '((5 . 7) 1)))))
+  (dolist (input '("fo|o bar" "fo^o| bar" "fo|o^ bar"))
+    (hel-test-with 'text-mode input
+      (setq kill-ring (list "XY") kill-ring-yank-pointer kill-ring)
+      (hel-test-press! "R")
+      (should (equal (hel-selection) '((3 . 5) 1))))))
 
 ;;; hel-behaviour-tests.el ends here

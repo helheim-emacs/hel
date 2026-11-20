@@ -185,6 +185,14 @@ alternatives in Emacs.
   motions also create selections. In Helix they only move the cursor without
   creating a selection.
 
+- When you leave Insert state, the text that you typed becomes the selection,
+  and the cursor stands on its last character, where Vim leaves it after
+  =Esc=. One rule holds for every key that starts Insert state: =i=, =a=,
+  =c=, =o=, =O=, =I= and =A=. So you can act on the typed text at once: =d=
+  deletes it, =y= copies it. When you typed nothing, the selection stays as it
+  was. In Helix the typed text joins the selection only after =a=: after =i=
+  it lands before the selection, and the selection stays as it was.
+
 - Keys that are relevant only when multiple cursors are present will be active
   only in that case (e.g. =K=, =&=, =,= — full list is in ~hel-multiple-cursors-mode-map~
   keymap). This allows you to reuse, for example, =K= for documentation lookup or =,= for

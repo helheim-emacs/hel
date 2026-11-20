@@ -310,12 +310,6 @@ This variable must be set before Hel is loaded!"
   :type 'boolean
   :group 'hel)
 
-(defcustom hel-reactivate-selection-after-insert-state t
-  "When non-nil, the selection will be reactivated on exiting Insert state if it
-was active on entering it."
-  :type 'boolean
-  :group 'hel)
-
 (defcustom hel-whitelist-file (locate-user-emacs-file "hel-multiple-cursors")
   "File to save users preferences which commands to execute for one cursor
 and which for all."
@@ -496,15 +490,16 @@ selection and the second one extends it. RUN is a list (KEY FIRST LAST). KEY is
 a list of the object name and the kind of range, `:inner' or `:around'.
 FIRST and LAST are the first and the last selected objects.")
 
-(hel-defvar-permanent-local hel--selection-was-active-on-insert nil
-  "Whether a selection was active the last time Hel switched to Insert state.")
+(hel-defvar-permanent-local hel--selections-before-insert nil
+  "The selections of all cursors before the command that started Insert state.
+Leaving Insert state puts them back when nothing was typed.  Only the
+commands that start Insert state without changing the buffer set it, as
+`i' and `a' do; it has the form that `hel-selections' returns.")
 
-(hel-defvar-permanent-local hel--insert-appends nil
-  "Whether `hel-append' started Insert state.
-Insert state never moves the selection.  `hel-append' types inside it,
-so leaving Insert state moves point back onto the last character typed.
-Every other command types before it, so the cursor character stays the
-one after point.")
+(hel-defvar-permanent-local hel--insert-tick nil
+  "The value of `buffer-chars-modified-tick' when Insert state started.
+Leaving Insert state compares it with the tick to tell whether anything
+was typed.")
 
 (hel-defvar-permanent-local hel-scroll-count 0
   "Hold last used prefix for `hel-scroll-up' and `hel-scroll-down' commands.
