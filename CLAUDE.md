@@ -183,7 +183,11 @@ installed dash has no `-uniq-by`.
 **Selections:** a bare cursor is a selection of one character, the cursor
 character. Whether the mark is active is invisible to the user, so a
 command treats a bare cursor like any other selection, and never gives the
-"no region" case behaviour of its own.
+"no region" case behaviour of its own. Where a command does treat one
+character in its own way, it names the concept: it asks `hel-bare-cursor-p`,
+never `use-region-p` or the length of the range, such as
+`(< 1 (- end begin))`. To get the bounds as well, destructure the value:
+`(-let [(selection &as (begin . end)) (hel-selection)] ...)`.
 
 **All files use `lexical-binding: t`.**
 
