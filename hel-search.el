@@ -555,7 +555,7 @@ index in `hel-search-counter' depends on point.")
                       (match (hel-search-session-next-match-from-pos
                               hel-search--session pos dir)))
             (-let [(_ start end closed-overlays) match]
-              (when (and extend (use-region-p))
+              (when extend
                 (hel-create-secondary-cursor))
               (hel-select (cons start end) region-dir)
               (-each closed-overlays #'hel-open-overlay))))))))
@@ -647,12 +647,12 @@ cursor, do nothing.  Otherwise the matches replace all cursors."
          ;; The main cursor goes first, so that it takes the first
          ;; match inside its own selection.
          (regions (->> (-let [(main others)
-                              (-separate (-lambda ((id)) (eql id 0))
-                                         cursors)]
+                              (->> cursors
+                                   (-separate (-lambda ((id)) (eql id 0))))]
                          (append main others))
-                       (-remove (-lambda ((_id . selection))
-                                  (hel-bare-cursor-p selection)))
-                       (-map #'-second-item))))
+                       (-map #'cdr) ; Each element is (ID . SELECTION)
+                       (-remove #'hel-bare-cursor-p)
+                       (-map #'hel-selection-bounds))))
     (when regions
       (deactivate-mark)
       (-each (hel-all-secondary-cursors) #'hel--delete-secondary-cursor)
@@ -664,8 +664,8 @@ cursor, do nothing.  Otherwise the matches replace all cursors."
                 (-each (overlays-in start end) #'hel-open-overlay)))
             (hel-recenter-point-on-jump
               (hel-set-selections
-               (cons (list 0 (car regions) 1 t)
-                     (-map (lambda (region) (list nil region 1 t))
+               (cons (list 0 (car regions) 1)
+                     (-map (lambda (region) (list nil region 1))
                            (cdr regions))))))
         ;; Else restore original cursors.
         (hel-set-selections cursors))
@@ -842,14 +842,9 @@ If INVERT is non-nil — remove selections that match regexp."
               (-lambda ((cursor . flag))
                 (if (not flag)
                     (hel--delete-secondary-cursor cursor)
-                  (hel--draw-secondary-cursor cursor)
-                  (-> (overlay-get cursor 'secondary-region)
-                      (overlay-put 'face 'region)))))
+                  (hel--draw-secondary-cursor cursor))))
           ;; Else restore all cursors
-          (dolist (cursor cursors)
-            (hel--draw-secondary-cursor cursor)
-            (-> (overlay-get cursor 'secondary-region)
-                (overlay-put 'face 'region))))))))
+          (-each cursors #'hel--draw-secondary-cursor))))))
 
 ;;; Find char: f F t T
 
@@ -926,8 +921,9 @@ found, the selection stays as it is.  EXTEND is as in `hel-move-to-pos'."
                    (_ (regexp-quote (char-to-string char)))))
          overlays)
     (cl-flet*
-        ((next (&optional (dir direction))
-           (interactive)
+        ((step (dir)
+           ;; Move point to the next match in DIR, and return non-nil
+           ;; when there is one.
            (if exclusive?
                (cond ((<= 0 dir direction) ;; t n
                       (forward-char))
@@ -954,13 +950,28 @@ found, the selection stays as it is.  EXTEND is as in `hel-move-to-pos'."
              ;; Open fold at the landing position.
              (-each (overlays-at (point)) #'hel-open-overlay)
              t))
+         (repeat (dir)
+           ;; The selection runs from its start to the place where the
+           ;; last step landed: for a forward motion its start is the
+           ;; beginning and the landing is the end.  Both come from the
+           ;; selection value, so a bare cursor works as any selection.
+           (-let* (((begin . end) (hel-selection-bounds))
+                   (forward? (< 0 direction))
+                   (pos (save-excursion
+                          (goto-char (if forward? end begin))
+                          (and (step dir) (point)))))
+             (when pos
+               (hel-move-to-pos (if forward? begin end) pos nil))))
+         (next ()
+           (interactive)
+           (repeat direction))
          (previous ()
            (interactive)
-           (next (- direction)))
+           (repeat (- direction)))
          (on-exit ()
            (-each overlays #'delete-overlay)))
       ;; main
-      (when (next direction)
+      (when (step direction)
         (set-transient-map (define-keymap
                              "n" #'next
                              "N" #'previous)

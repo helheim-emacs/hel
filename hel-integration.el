@@ -354,11 +354,11 @@ bracket before point and an opening one after it."
 (declare-function comint-after-pmark-p "comint")
 
 (defun hel-comint--goto-process-mark ()
-  "Move point to the beginning of writable input start."
+  "Leave a bare cursor at the start of the input, the process mark."
   (-> (current-buffer)
       (get-buffer-process)
       (process-mark)
-      (goto-char)))
+      (hel-set-cursor)))
 
 ;; i
 (hel-define-command hel-comint-insert ()
@@ -367,7 +367,6 @@ bracket before point and an opening one after it."
   (interactive)
   (unless (comint-after-pmark-p)
     (hel-disable-multiple-cursors-mode)
-    (deactivate-mark)
     (hel-comint--goto-process-mark))
   (hel-insert))
 
@@ -378,7 +377,6 @@ bracket before point and an opening one after it."
   (interactive)
   (unless (comint-after-pmark-p)
     (hel-disable-multiple-cursors-mode)
-    (deactivate-mark)
     (hel-comint--goto-process-mark))
   (hel-append))
 
@@ -389,7 +387,6 @@ bracket before point and an opening one after it."
   (interactive)
   (unless (comint-after-pmark-p)
     (hel-disable-multiple-cursors-mode)
-    (deactivate-mark)
     (hel-comint--goto-process-mark))
   (hel-insert-line))
 
@@ -400,7 +397,6 @@ bracket before point and an opening one after it."
   (interactive)
   (unless (comint-after-pmark-p)
     (hel-disable-multiple-cursors-mode)
-    (deactivate-mark)
     (hel-comint--goto-process-mark))
   (hel-append-line))
 
@@ -413,7 +409,6 @@ If cursor is in read-only area, jump to prompt instead of deleting."
   (if (comint-after-pmark-p)
       (hel-change)
     (hel-disable-multiple-cursors-mode)
-    (deactivate-mark)
     (hel-comint--goto-process-mark)
     (hel-insert-state 1)))
 
@@ -510,7 +505,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
   (cond (hel-extend-selection
          (hel-extend-selection -1))
         ((not (hel-bare-cursor-p))
-         (deactivate-mark))
+         (hel-collapse-selection))
         (t
          (wdired-exit))))
 

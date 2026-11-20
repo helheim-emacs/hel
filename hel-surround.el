@@ -85,11 +85,6 @@ whitespace."
     (hel-pair-create (hel-pair-open-begin pair) begin
                      end (hel-pair-close-end pair))))
 
-(defun hel--range-strictly-inside-p (inner outer)
-  "Return non-nil if the range OUTER holds the range INNER and is larger."
-  (and (<= (car outer) (car inner) (cdr inner) (cdr outer))
-       (not (equal inner outer))))
-
 ;;; The pair producer
 
 (cl-defgeneric hel-pair-at (producer pos)
@@ -670,7 +665,7 @@ ends at POS, then the smallest pair, as `hel-pair-at' says."
                   (cl-loop for candidate = (hel-pair-at producer (car bounds))
                            then (hel-pair-parent producer candidate)
                            while candidate
-                           when (hel--range-strictly-inside-p
+                           when (hel-range-strictly-inside-p
                                  bounds (hel-pair-outer-bounds candidate))
                            return candidate)))
          (hel--smallest-pair))))
@@ -935,15 +930,15 @@ same string."
                         (hel-pair-text-bounds producer pair)
                       (hel-pair-outer-bounds pair))))
           (let* ((before (hel--selection-entry))
-                 (selection (and (or (not (hel-bare-cursor-p))
-                                     hel-selection-history)
-                                 (hel-trimmed-selection-bounds)))
-                 (pair (or (when selection
-                             (cl-loop for pair = (hel-pair-at producer (car selection))
+                 (bounds (and (or (not (hel-bare-cursor-p))
+                                  hel-selection-history)
+                              (hel-trimmed-selection-bounds)))
+                 (pair (or (when bounds
+                             (cl-loop for pair = (hel-pair-at producer (car bounds))
                                       then (hel-pair-parent producer pair)
                                       while pair
-                                      when (hel--range-strictly-inside-p
-                                            selection (side-bounds pair))
+                                      when (hel-range-strictly-inside-p
+                                            bounds (side-bounds pair))
                                       return pair))
                            (hel-pair-at producer head))))
             (when pair
@@ -953,11 +948,13 @@ same string."
                        do (setq pair parent)))
             (when-let* ((pair)
                         (range (side-bounds pair))
-                        ;; At a bare cursor, a one-character pair text is
-                        ;; still selected, so the history records it and
-                        ;; a repeated key grows outward from it.
-                        ((not (and (not (hel-bare-cursor-p before))
-                                   (equal range (car before))))))
+                        ;; Skip a pair that is selected already. At a bare
+                        ;; cursor, a one-character pair text is still selected,
+                        ;; so the history records it and a repeated key grows
+                        ;; outward from it.
+                        ((or (hel-bare-cursor-p (car before))
+                             (not (equal range
+                                         (hel-selection-bounds (car before)))))))
               (hel-push-point)
               (hel-select range)
               (hel--record-selection before)

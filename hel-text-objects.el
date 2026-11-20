@@ -491,16 +491,17 @@ POS when the thing has no header comment."
 (defun hel--sync-selection-history ()
   "Forget `hel-selection-history' if the selection has changed.
 If only the direction of the selection differs, remember the new direction."
-  (-let [(range dir) (hel--selection-entry)]
+  (let ((selection (hel-selection)))
     (if-let* ((newest (car hel-selection-history))
-              ((equal (-first-item newest) range)))
-        (setf (-second-item newest) dir)
+              ((equal (hel-selection-bounds (car newest))
+                      (hel-selection-bounds selection))))
+        (setcar newest selection)
       (setq hel-selection-history nil))))
 
 (defun hel--selection-entry (&optional run)
   "Return the selection as an entry of `hel-selection-history'.
 The entry holds the selection and RUN."
-  (append (hel-selection) (list run)))
+  (list (hel-selection) run))
 
 (defun hel--record-selection (before &optional run)
   "Remember the selection and RUN in `hel-selection-history'.
@@ -512,15 +513,6 @@ becomes its first entry. RUN has the form described in
     (push before hel-selection-history))
   (push (hel--selection-entry run)
         hel-selection-history))
-
-(defun hel--restore-selection (entry)
-  "Restore the selection of ENTRY of `hel-selection-history'.
-A selection of at most one character comes back as a bare cursor, with
-no active region, as at the start of a chain from a bare cursor."
-  (-let [(range dir) entry]
-    (if (hel-bare-cursor-p entry)
-        (hel-set-cursor (car range))
-      (hel-select range dir))))
 
 (defun hel-mark-text-object (thing kind count)
   "Select COUNT THINGs at the cursor, inner or around as KIND says.
@@ -542,7 +534,7 @@ KIND is:
         (-let* ((dir (hel-sign count))
                 (before (hel--selection-entry))
                 (key (list thing kind))
-                ((_ _ (run-key run-first run-last)) (car hel-selection-history))
+                ((_ (run-key run-first run-last)) (car hel-selection-history))
                 (extend? (equal key run-key))
                 ((first . last)
                  (if extend?
@@ -556,11 +548,13 @@ KIND is:
                                       (hel-thing-instance-end last)))
                                (:around
                                 (hel-thing-around thing producer first last))))
-                      ;; At a bare cursor, a one-character object is still
-                      ;; selected, so the history records it and a repeated
-                      ;; key goes on from it.
-                      ((not (and (not (hel-bare-cursor-p before))
-                                 (equal range (car before))))))
+                      ;; Skip an object that is selected already. At a bare
+                      ;; cursor, a one-character object is still selected, so
+                      ;; the history records it and a repeated key goes on
+                      ;; from it.
+                      ((or (hel-bare-cursor-p (car before))
+                           (not (equal range
+                                       (hel-selection-bounds (car before)))))))
             (hel-push-point)
             (hel-select range (if (or extend? (/= 1 (abs count)))
                                   dir
@@ -586,24 +580,25 @@ the motion starts past it.  Go on to the next edge when the motion would
 stop on the anchor of the selection, where the selection would be
 empty.  When no thing exists in the direction, the selection stays as
 it is."
-  (if-let* ((producer (hel-thing-producer thing (hel-selection-head))))
+  (if-let* ((selection (hel-selection))
+            (producer (hel-thing-producer thing (hel-selection-head selection))))
       (cl-flet ((reach (pos count)
                   ;; The range in the order of the motion: (START . END).
                   (-when-let ((begin . end) (hel-thing-reach thing producer pos
                                                              count edge skip-gap?))
                     (if (< 0 count) (cons begin end) (cons end begin)))))
         (let ((anchor (and extend
-                           (hel-selection-anchor (hel-selection) (hel-sign count)))))
+                           (hel-selection-anchor selection (hel-sign count)))))
           (-when-let* (((start . end)
                         (if extend
-                            (reach (-let [((begin . end)) (hel-selection)]
+                            (reach (-let [((begin . end)) selection]
                                      (cond ((/= 1 (- end begin)) (point))
                                            ((< 0 count) end)
                                            (t begin)))
                                    count)
                           ;; NEAR and FAR are the edges of the head character
                           ;; behind and ahead of the motion.
-                          (let* ((begin (hel-selection-head (hel-selection)))
+                          (let* ((begin (hel-selection-head selection))
                                  (end  (min (1+ begin) (point-max)))
                                  (near (if (< 0 count) begin end))
                                  (far  (if (< 0 count) end begin))
@@ -622,7 +617,7 @@ it is."
                                    (-let [(start . end) (reach far count)]
                                      (cond ((and start (/= start end))
                                             (cons start end))
-                                           ((not (use-region-p)) step))))
+                                           ((hel-bare-cursor-p selection) step))))
                                   ((= 1 (abs count)) step)
                                   (t (reach near count))))))
                        ((start . end) (if (eql end anchor)

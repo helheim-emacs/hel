@@ -668,15 +668,15 @@ The head character is the character of the selection at point, inside
 the selection."
   ;; a=1 b=2 c=4 d=5 e=7 f=8, and the end is 9.
   (hel-test-with #'fundamental-mode "|ab\ncd\nef"
-    (hel-create-secondary-cursor '(1 . 5) 1 t)    ; "ab\nc" forward: "c"
+    (hel-create-secondary-cursor '(1 . 5) 1)      ; "ab\nc" forward: "c"
     (should (equal (hel-test-drawn-secondary-cursors)
                    '((4 5 hel-normal-state-secondary-cursor nil))))
     (hel-disable-multiple-cursors-mode)
-    (hel-create-secondary-cursor '(7 . 9) -1 t)   ; "ef" backward: "e"
+    (hel-create-secondary-cursor '(7 . 9) -1)     ; "ef" backward: "e"
     (should (equal (hel-test-drawn-secondary-cursors)
                    '((7 8 hel-normal-state-secondary-cursor nil))))
     (hel-disable-multiple-cursors-mode)
-    (hel-create-secondary-cursor '(4 . 7) 1 t)    ; "cd\n" forward: a cell
+    (hel-create-secondary-cursor '(4 . 7) 1)      ; "cd\n" forward: a cell
     (should (equal (hel-test-drawn-secondary-cursors)
                    '((6 6 nil hel-normal-state-secondary-cursor))))))
 
@@ -755,61 +755,72 @@ display, and a box over the character after its point in a terminal."
 (ert-deftest hel-merge-cursors-overlapping-ranges ()
   "Overlapping ranges merge into one; ranges that only touch stay apart."
   ;; Nested.
-  (should (equal (hel--merge-cursors '((1 (1 . 10) 1 t) (2 (2 . 3) -1 t)))
-                 '((1 (1 . 10) 1 t))))
+  (should (equal (hel--merge-cursors '((1 (1 . 10) 1) (2 (2 . 3) nil)))
+                 '((1 (1 . 10) 1))))
   ;; Chained: the third range overlaps only the second.
-  (should (equal (hel--merge-cursors '((1 (1 . 3) 1 t)
-                                       (2 (2 . 5) 1 t)
-                                       (3 (4 . 6) -1 t)))
-                 '((1 (1 . 6) 1 t))))
+  (should (equal (hel--merge-cursors '((1 (1 . 3) 1)
+                                       (2 (2 . 5) 1)
+                                       (3 (4 . 6) -1)))
+                 '((1 (1 . 6) 1))))
   ;; Touching.
-  (let ((cursors '((1 (1 . 3) 1 t) (2 (3 . 5) 1 t))))
+  (let ((cursors '((1 (1 . 3) 1) (2 (3 . 5) 1))))
     (should (equal (hel--merge-cursors cursors) cursors)))
   ;; Equal: two cursors on the same cursor character.
-  (should (equal (hel--merge-cursors '((1 (2 . 3) 1 nil) (2 (2 . 3) -1 nil)))
-                 '((1 (2 . 3) nil nil))))
+  (should (equal (hel--merge-cursors '((1 (2 . 3) nil) (2 (2 . 3) nil)))
+                 '((1 (2 . 3) nil))))
   ;; Two cursors with point at 3, and their cursor characters on the two
   ;; sides of it, only touch.
-  (let ((cursors '((1 (2 . 3) 1 nil) (2 (3 . 4) -1 nil))))
+  (let ((cursors '((1 (2 . 3) nil) (2 (3 . 4) nil))))
     (should (equal (hel--merge-cursors cursors) cursors)))
   ;; Equal and empty, at the end of the buffer.
-  (should (equal (hel--merge-cursors '((1 (9 . 9) -1 nil) (2 (9 . 9) -1 nil)))
-                 '((1 (9 . 9) nil nil))))
+  (should (equal (hel--merge-cursors '((1 (9 . 9) nil) (2 (9 . 9) nil)))
+                 '((1 (9 . 9) nil))))
   ;; An empty range at the end of another range only touches it.
-  (let ((cursors '((1 (7 . 9) 1 t) (2 (9 . 9) -1 nil))))
+  (let ((cursors '((1 (7 . 9) 1) (2 (9 . 9) nil))))
     (should (equal (hel--merge-cursors cursors) cursors)))
-  ;; The region of the result is active when one of the group is.  A bare
-  ;; survivor has no direction, so the longer result is forward.
-  (should (equal (hel--merge-cursors '((1 (2 . 3) -1 nil) (2 (2 . 5) -1 t)))
-                 '((1 (2 . 5) 1 t))))
+  ;; A bare survivor has no direction, so the longer result is forward.
+  (should (equal (hel--merge-cursors '((1 (2 . 3) nil) (2 (2 . 5) -1)))
+                 '((1 (2 . 5) 1))))
   ;; Groups keep their order.
-  (should (equal (hel--merge-cursors '((1 (1 . 3) 1 t)
-                                       (2 (2 . 4) 1 t)
-                                       (3 (5 . 6) -1 nil)
-                                       (4 (7 . 9) 1 t)
-                                       (5 (8 . 9) 1 t)))
-                 '((1 (1 . 4) 1 t) (3 (5 . 6) -1 nil) (4 (7 . 9) 1 t))))
+  (should (equal (hel--merge-cursors '((1 (1 . 3) 1)
+                                       (2 (2 . 4) 1)
+                                       (3 (5 . 6) nil)
+                                       (4 (7 . 9) 1)
+                                       (5 (8 . 9) nil)))
+                 '((1 (1 . 4) 1) (3 (5 . 6) nil) (4 (7 . 9) 1))))
   (should (equal (hel--merge-cursors nil) nil)))
+
+(ert-deftest hel-merge-cursors-keeps-a-line-selection ()
+  "Section Ranges as values: a merge keeps LINE? only on one character.
+Two cursors on one empty line merge into its line selection when one of
+them is the line selection.  A merged selection longer than one character
+has no LINE?."
+  (should (equal (hel--merge-cursors '((1 (2 . 3) nil) (2 (2 . 3) nil t)))
+                 '((1 (2 . 3) nil t))))
+  (should (equal (hel--merge-cursors '((1 (2 . 3) nil t) (2 (2 . 3) nil)))
+                 '((1 (2 . 3) nil t))))
+  (should (equal (hel--merge-cursors '((1 (2 . 3) nil t) (2 (2 . 5) 1)))
+                 '((1 (2 . 5) 1)))))
 
 (ert-deftest hel-merge-cursors-main-survives ()
   "The main cursor survives in its group, with its direction."
-  (let ((after '((7 (8 . 9) 1 nil))))
+  (let ((after '((7 (8 . 9) nil))))
     ;; The main cursor first, inside and last in its group.
-    (should (equal (hel--merge-cursors `((0 (1 . 4) -1 t)
-                                         (5 (2 . 6) 1 t)
-                                         (6 (3 . 7) 1 nil)
+    (should (equal (hel--merge-cursors `((0 (1 . 4) -1)
+                                         (5 (2 . 6) 1)
+                                         (6 (3 . 7) 1)
                                          ,@after))
-                   `((0 (1 . 7) -1 t) ,@after)))
-    (should (equal (hel--merge-cursors `((5 (1 . 4) 1 t)
-                                         (0 (2 . 6) -1 t)
-                                         (6 (3 . 7) 1 t)
+                   `((0 (1 . 7) -1) ,@after)))
+    (should (equal (hel--merge-cursors `((5 (1 . 4) 1)
+                                         (0 (2 . 6) -1)
+                                         (6 (3 . 7) 1)
                                          ,@after))
-                   `((0 (1 . 7) -1 t) ,@after)))
-    (should (equal (hel--merge-cursors `((5 (1 . 4) 1 t)
-                                         (6 (2 . 6) 1 t)
-                                         (0 (3 . 7) -1 nil)
+                   `((0 (1 . 7) -1) ,@after)))
+    (should (equal (hel--merge-cursors `((5 (1 . 4) 1)
+                                         (6 (2 . 6) 1)
+                                         (0 (3 . 7) -1)
                                          ,@after))
-                   `((0 (1 . 7) -1 t) ,@after)))))
+                   `((0 (1 . 7) -1) ,@after)))))
 
 (defun hel-selection-tests--cursors-state ()
   "Return point, the mark and the activity of every cursor, by ID."
@@ -841,13 +852,13 @@ display, and a box over the character after its point in a terminal."
     (let ((values (hel-selections))
           (state (hel-selection-tests--cursors-state)))
       (should (equal (mapcar #'cdr values)
-                     '(((1 . 3) -1 t)
-                       ((4 . 5) nil nil)
-                       ((7 . 9) 1 t)
-                       ((10 . 11) nil nil)
-                       ((13 . 14) nil nil)
-                       ((14 . 15) nil nil)
-                       ((15 . 15) nil nil))))
+                     '(((1 . 3) -1)
+                       ((4 . 5) nil)
+                       ((7 . 9) 1)
+                       ((10 . 11) nil)
+                       ((13 . 14) nil)
+                       ((14 . 15) nil)
+                       ((15 . 15) nil))))
       (hel-set-selections values)
       (should (equal (hel-selection-tests--cursors-state) state))
       (should (equal (hel-selections) values)))))
@@ -858,11 +869,11 @@ The writer goes straight into the cursor, both when it creates the
 cursor and when it moves one."
   ;; a=1 b=2 c=4 d=5 e=7 f=8 g=10 h=11 i=13 j=14, and the end is 15.
   (hel-test-with #'fundamental-mode "|ab\ncd\nef\ngh\nij"
-    (let ((selections '(((4 . 5) nil nil)     ; "c"
-                        ((7 . 8) nil nil)     ; "e"
-                        ((7 . 9) 1 t)         ; region "ef" forward
-                        ((10 . 12) -1 t)      ; region "gh" backward
-                        ((15 . 15) nil nil)))) ; the end of the buffer
+    (let ((selections '(((4 . 5) nil)         ; "c"
+                        ((7 . 8) nil)         ; "e"
+                        ((7 . 9) 1)           ; region "ef" forward
+                        ((10 . 12) -1)        ; region "gh" backward
+                        ((15 . 15) nil))))    ; the end of the buffer
       (dolist (selection selections)
         (let ((cursor (apply #'hel-create-secondary-cursor selection)))
           (should (equal (cdr (hel--secondary-cursor-value cursor))
@@ -882,9 +893,9 @@ cursor and when it moves one."
            (kept-id (overlay-get kept 'id)))
       (overlay-put kept 'kill-ring '("kept"))
       (setq kill-ring '("main"))
-      (hel-set-selections `((0 (2 . 3) -1 nil)
-                                   (,kept-id (4 . 6) -1 t)
-                                   (nil (7 . 8) -1 nil)))
+      (hel-set-selections `((0 (2 . 3) nil)
+                            (,kept-id (4 . 6) -1)
+                            (nil (7 . 8) nil)))
       (should (equal (hel-test-render) "a|bc¦de¬f¦gh"))
       (should (equal (hel-test-cursor-chars)
                      '(("b" nil) ("de" -1) ("g" nil))))
@@ -895,8 +906,8 @@ cursor and when it moves one."
       (should (= 3 (hel-number-of-cursors)))
       ;; A value whose cursor was deleted since gets a cursor with its ID.
       (let ((id (overlay-get deleted 'id)))
-        (hel-set-selections `((0 (2 . 3) -1 nil)
-                                     (,id (5 . 6) -1 nil)))
+        (hel-set-selections `((0 (2 . 3) nil)
+                              (,id (5 . 6) nil)))
         (should (gethash id hel--cursors-table))
         (should (equal (hel-test-cursor-chars) '(("b" nil) ("e" nil))))))))
 
@@ -926,13 +937,238 @@ cursor and when it moves one."
       (should (equal (list input (hel-selection))
                      (list input '((2 . 5) 1)))))))
 
+;;; The line selection of an empty line
+;;
+;; In "a\n\nb\n" the positions are a=1, its newline 2, the empty line 3,
+;; b=4, its newline 5, and the end 6.
+
+(defconst hel-selection-tests--line-face '(:inherit region :extend t)
+  "The face spec that draws the line selection of an empty line.")
+
+(ert-deftest hel-selection-line-of-an-empty-line ()
+  "Section Ranges as values: an active region over an empty line is its line.
+The value then carries LINE? as a third element.  A bare cursor on the
+same line has no third element, so the two values differ."
+  (dolist (input '("a\n|\n^b\n" "a\n^\n|b\n"))
+    (hel-test-with 'text-mode input
+      (should (equal (list input (hel-selection))
+                     (list input '((3 . 4) nil t))))))
+  (hel-test-with 'text-mode "a\n|\nb\n"
+    (should (equal (hel-selection) '((3 . 4) nil)))))
+
+(ert-deftest hel-selection-one-character-elsewhere-is-bare ()
+  "Section Ranges as values: LINE? belongs only to one empty line.
+An active region of one character anywhere else reads as a bare cursor,
+also over the newline of a line that is not empty."
+  (dolist (input '("|a^\nb\n" "a^\n|b\n" "a|\n^b\n" "a^\n|\nb\n"))
+    (hel-test-with 'text-mode input
+      (-let [(range) (hel-selection)]
+        (should (equal (list input (hel-selection))
+                       (list input (list range nil))))))))
+
+(ert-deftest hel-selection-law-of-select-with-line ()
+  "Section Ranges as values: `hel-select' writes LINE? back.
+With LINE? a range of one empty line reads back as its line selection, and
+any other range of one character reads back as a bare cursor.  Without
+LINE? every range of one character is a bare cursor."
+  (hel-test-with 'text-mode "ab\n\ncd\n|"
+    (cl-loop for begin from (point-min) below (point-max)
+             for range = (cons begin (1+ begin))
+             for empty-line? = (memq begin '(4))
+             do (hel-select range nil t)
+                (should (equal (list range (hel-selection))
+                               (list range (if empty-line?
+                                               (list range nil t)
+                                             (list range nil)))))
+                (hel-select range nil)
+                (should (equal (list range (hel-selection))
+                               (list range (list range nil))))
+                (should (equal (hel-test-render)
+                               (hel-selection-tests--bare-render begin))))))
+
+(defun hel-selection-tests--bare-render (pos)
+  "Return the marked text of the buffer with a bare cursor at POS."
+  (concat (buffer-substring-no-properties (point-min) pos)
+          "|"
+          (buffer-substring-no-properties pos (point-max))))
+
+(ert-deftest hel-selection-line-is-checked-on-read ()
+  "Section Ranges as values: LINE? is a hint that the reader checks.
+A stored line selection whose line has gained text reads back as a bare
+cursor on the newline."
+  (hel-test-with 'text-mode "a\n|\n^b\n"
+    (let ((value (hel-selection)))
+      (should (equal value '((3 . 4) nil t)))
+      (goto-char 3)
+      (deactivate-mark)
+      (insert "zz")
+      ;; The newline of the line "zz" is at 5.
+      (apply #'hel-select (cons '(5 . 6) (cdr value)))
+      (should (equal (hel-selection) '((5 . 6) nil))))))
+
+(ert-deftest hel-bare-cursor-p-is-not-a-line-selection ()
+  "Section Ranges as values: the line selection of an empty line is not bare.
+It covers one character, as a bare cursor does, but the user sees
+a selected line."
+  (should (hel-bare-cursor-p '((3 . 4) nil)))
+  (should (hel-bare-cursor-p '((5 . 5) nil)))
+  (should-not (hel-bare-cursor-p '((3 . 4) nil t)))
+  (should-not (hel-bare-cursor-p '((3 . 5) 1)))
+  (hel-test-with 'text-mode "a\n|\n^b\n"
+    (should-not (hel-bare-cursor-p)))
+  (hel-test-with 'text-mode "a\n|\nb\n"
+    (should (hel-bare-cursor-p))))
+
+(ert-deftest hel-line-selection-p-cases ()
+  "Section Ranges as values: whole lines, and one empty line only with LINE?."
+  ;; a=1 b=2 newline 3, the empty line 4, c=5 d=6 newline 7, e=8 f=9
+  ;; newline 10, and the end is 11.
+  (hel-test-with 'text-mode "|ab\n\ncd\nef\n"
+    (pcase-dolist (`(,selection ,expected)
+                   '((((1 . 4) 1) t)          ; "ab\n"
+                     (((1 . 8) -1) t)         ; "ab\n\ncd\n"
+                     (((4 . 8) 1) t)          ; "\ncd\n"
+                     (((4 . 5) nil t) t)      ; the line selection
+                     (((4 . 5) nil) nil)      ; a bare cursor there
+                     (((2 . 4) 1) nil)        ; "b\n"
+                     (((1 . 7) 1) nil)        ; "ab\n\ncd"
+                     (((1 . 2) nil) nil)      ; "a"
+                     (((3 . 4) nil) nil)      ; the newline of "ab"
+                     (((11 . 11) nil) nil)))  ; the end of the buffer
+      (should (equal (list selection (and (hel-line-selection-p selection) t))
+                     (list selection expected))))
+    ;; Without an argument it reads the selection.
+    (hel-select '(1 . 4) 1)
+    (should (hel-line-selection-p))
+    (hel-select '(4 . 5) nil t)
+    (should (hel-line-selection-p))
+    (hel-select '(4 . 5) nil)
+    (should-not (hel-line-selection-p))))
+
+(ert-deftest hel-paste-line-p-cases ()
+  "Section Ranges as values: where pasted text goes on a line of its own.
+At the end side the selection must end with a line end; at the beginning
+side it must start a line and hold the end of that line.  On one
+character only LINE? decides."
+  ;; a=1 b=2 newline 3, the empty line 4, c=5 d=6 newline 7, and the end 8.
+  (hel-test-with 'text-mode "|ab\n\ncd\n"
+    (pcase-dolist (`(,selection ,after ,before)
+                   '((((2 . 4) 1) t nil)       ; "b\n"
+                     (((1 . 3) -1) nil nil)    ; "ab"
+                     (((1 . 6) -1) nil t)      ; "ab\n\nc"
+                     (((1 . 4) 1) t t)         ; "ab\n"
+                     (((4 . 5) nil t) t t)     ; the line selection
+                     (((4 . 5) nil) nil nil)   ; a bare cursor there
+                     (((3 . 4) nil) nil nil))) ; the newline of "ab"
+      (should (equal (list selection
+                           (and (hel--paste-line-p selection 1) t)
+                           (and (hel--paste-line-p selection -1) t))
+                     (list selection after before))))))
+
+(ert-deftest hel-selections-line-selection-round-trip ()
+  "Section Cursors: a cursor value is (ID . SELECTION), LINE? included.
+Writing the values that the reader returned changes nothing, also for
+a line selection of an empty line and for an active region of one
+character, which reads as a bare cursor."
+  ;; a=1 b=2 newline 3, the empty line 4, c=5 d=6, and the end 7.
+  (hel-test-with #'fundamental-mode "|ab\n\ncd"
+    (hel-selection-tests--secondary-cursor 4 5 t)     ; the empty line
+    (hel-selection-tests--secondary-cursor 6 5 t)     ; region "c"
+    (let ((values (hel-selections))
+          (state (hel-selection-tests--cursors-state)))
+      (should (equal (mapcar #'cdr values)
+                     '(((1 . 2) nil)
+                       ((4 . 5) nil t)
+                       ((5 . 6) nil))))
+      (should (eql 0 (car (car values))))
+      (hel-set-selections values)
+      (should (equal (hel-selection-tests--cursors-state) state))
+      (should (equal (hel-selections) values)))))
+
+(ert-deftest hel-set-selections-writes-a-line-selection ()
+  "Section Cursors: the writer gives each cursor its LINE?."
+  (hel-test-with #'fundamental-mode "|a\n\nb\n\nc"
+    ;; The empty lines are at 3 and 6.
+    (let ((cursor (hel-create-secondary-cursor '(6 . 7) nil)))
+      (hel-set-selections `((0 (3 . 4) nil t)
+                            (,(overlay-get cursor 'id) (6 . 7) nil t)))
+      (should (equal (mapcar #'cdr (hel-selections))
+                     '(((3 . 4) nil t) ((6 . 7) nil t))))
+      (hel-set-selections `((0 (3 . 4) nil)
+                            (,(overlay-get cursor 'id) (6 . 7) nil)))
+      (should (equal (mapcar #'cdr (hel-selections))
+                     '(((3 . 4) nil) ((6 . 7) nil))))
+      (should (equal (hel-test-render) "a\n|\nb\n¦\nc")))))
+
+(ert-deftest hel-secondary-cursor-line-selection-writer-and-reader ()
+  "Section Cursors: a secondary cursor keeps the line selection of its line."
+  (hel-test-with #'fundamental-mode "|a\n\nb"
+    (let ((cursor (hel-create-secondary-cursor '(3 . 4) nil t)))
+      (should (equal (cdr (hel--secondary-cursor-value cursor))
+                     '((3 . 4) nil t)))
+      (hel--set-secondary-selection cursor '(3 . 4) nil)
+      (should (equal (cdr (hel--secondary-cursor-value cursor))
+                     '((3 . 4) nil)))
+      (hel--set-secondary-selection cursor '(3 . 4) nil t)
+      (should (equal (cdr (hel--secondary-cursor-value cursor))
+                     '((3 . 4) nil t))))))
+
 (ert-deftest hel-selection-save-keeps-empty-line-selection ()
   "The line selection of an empty line stays a line selection."
   (hel-test-with 'text-mode "a\n|\nb"
     (hel-test-press! "x")
-    (should (hel-linewise-selection-p))
+    (should (hel-line-selection-p))
     (hel-save-selection nil)
-    (should (hel-linewise-selection-p))))
+    (should (hel-line-selection-p))
+    (should (equal (hel-selection) '((3 . 4) nil t)))))
+
+(ert-deftest hel-selection-save-keeps-a-bare-cursor-on-an-empty-line ()
+  "A bare cursor on an empty line stays a bare cursor."
+  (hel-test-with 'text-mode "a\n|\nb"
+    (hel-save-selection nil)
+    (should (equal (hel-selection) '((3 . 4) nil)))
+    (should (equal (hel-test-render) "a\n|\nb"))))
+
+(defun hel-selection-tests--line-overlays ()
+  "Return the overlays that draw the line selection of an empty line."
+  (-filter (lambda (overlay)
+             (equal (overlay-get overlay 'face) hel-selection-tests--line-face))
+           (overlays-in (point-min) (point-max))))
+
+(ert-deftest hel-line-selection-drawn-for-the-main-cursor ()
+  "Section Drawing: the line selection of an empty line paints its line.
+The face reaches the edge of the window whatever the theme says, only in
+the selected window, and it goes when the selection goes."
+  (hel-test-with 'text-mode "a\n|\n^b\n"
+    (hel-test-redisplay)
+    (let ((overlays (hel-selection-tests--line-overlays)))
+      (should (equal (mapcar (lambda (overlay)
+                               (list (overlay-start overlay)
+                                     (overlay-end overlay)))
+                             overlays)
+                     '((3 4))))
+      (should (eq (overlay-get (car overlays) 'window) (selected-window))))
+    (hel-set-cursor 3)
+    (hel-test-redisplay)
+    (should-not (hel-selection-tests--line-overlays))))
+
+(ert-deftest hel-line-selection-not-drawn-for-a-bare-cursor ()
+  "Section Drawing: a bare cursor on an empty line stays a box."
+  (hel-test-with 'text-mode "a\n|\nb\n"
+    (hel-test-redisplay)
+    (should-not (hel-selection-tests--line-overlays))))
+
+(ert-deftest hel-line-selection-drawn-for-a-secondary-cursor ()
+  "Section Drawing: a secondary cursor paints the line of its line selection."
+  (hel-test-with 'text-mode "|a\n\nb\n"
+    (let ((cursor (hel-create-secondary-cursor '(3 . 4) nil t)))
+      (should (equal (mapcar (lambda (overlay)
+                               (list (overlay-start overlay)
+                                     (overlay-end overlay)))
+                             (hel-selection-tests--line-overlays))
+                     '((3 4))))
+      (hel--set-secondary-selection cursor '(3 . 4) nil)
+      (should-not (hel-selection-tests--line-overlays)))))
 
 ;;; Emacs commands that read the text before point
 

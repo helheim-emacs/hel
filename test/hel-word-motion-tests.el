@@ -80,8 +80,8 @@ the cursor."
                   '(hel-forward-word-start hel-forward-word-start
                                            hel-forward-word-start hel-forward-word-start
                                            hel-forward-word-start))
-                 '("^foo|.bar(baz) qux" "foo^.|bar(baz) qux"
-                   "foo.^bar|(baz) qux" "foo.bar^(|baz) qux"
+                 '("^foo|.bar(baz) qux" "foo|.bar(baz) qux"
+                   "foo.^bar|(baz) qux" "foo.bar|(baz) qux"
                    "foo.bar(^baz|) qux"))))
 
 (ert-deftest hel-word-motion-w-line-ends ()
@@ -140,7 +140,7 @@ It skips an empty line."
                   "foo.bar(baz) qux" "foo"
                   '(hel-forward-word-end hel-forward-word-end
                                          hel-forward-word-end))
-                 '("^foo|.bar(baz) qux" "foo^.|bar(baz) qux"
+                 '("^foo|.bar(baz) qux" "foo|.bar(baz) qux"
                    "foo.^bar|(baz) qux"))))
 
 (ert-deftest hel-word-motion-e-line-ends ()
@@ -191,7 +191,7 @@ It skips an empty line."
                   '(hel-backward-word-start hel-backward-word-start
                                             hel-backward-word-start))
                  '("foo.bar(baz|) ^qux" "foo.bar(|baz^) qux"
-                   "foo.bar|(^baz) qux"))))
+                   "foo.bar|(baz) qux"))))
 
 (ert-deftest hel-word-motion-b-line-ends ()
   "`b' skips the line end and an empty line before it starts.

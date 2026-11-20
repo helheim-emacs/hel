@@ -481,13 +481,13 @@ The newest entry comes first and holds the current selection. The oldest
 entry holds the selection before the first of these commands.
 `hel-shrink-selection' returns to the previous entry.
 
-Each entry is a list (RANGE DIRECTION RUN). RANGE and DIRECTION have the
-form that `hel-selection' returns.
+Each entry is a list (SELECTION RUN). SELECTION has the form that
+`hel-selection' returns.
 
 RUN is non-nil when a repeated command selects several text objects in a row.
 For example, select two functions with `mif mif'. The first `mif' creates the
-selection and the second one extends it. RUN is a list (KEY FIRST LAST). KEY is
-a list of the object name and the kind of range, `:inner' or `:around'.
+selection and the second one extends it. RUN is a list (KEY FIRST LAST).
+KEY is a list of the object name and the kind of range, `:inner' or `:around'.
 FIRST and LAST are the first and the last selected objects.")
 
 (hel-defvar-permanent-local hel--selections-before-insert nil

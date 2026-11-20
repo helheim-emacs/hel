@@ -131,7 +131,7 @@
     (hel-expand-selection-backward 3)
     (should (equal (hel-test-selection) "(b (c d))"))
     (hel-shrink-selection 3)
-    (should (eq (hel-test-selection) nil))
+    (should (hel-bare-cursor-p))
     (should (= (point) 9))
     (should (equal (hel-test-cursor-chars) '((" " nil))))))
 
@@ -142,7 +142,7 @@ shrinks."
     (hel-shrink-selection -3)
     (should (equal (hel-test-selection) "(b (c d))"))
     (hel-expand-selection-backward -3)
-    (should (eq (hel-test-selection) nil))
+    (should (hel-bare-cursor-p))
     (should (= (point) 9))))
 
 (ert-deftest hel-expand-shrink-retraces-path ()
@@ -153,8 +153,10 @@ shrinks."
       (dotimes (_ 4)
         (hel-shrink-selection 1)
         (push (hel-test-selection) back))
+      ;; The last shrink returns to the bare cursor on "p".
       (should (equal (nreverse back)
-                     (append (cdr (reverse steps)) '(nil)))))))
+                     (append (cdr (reverse steps)) '("p"))))
+      (should (hel-bare-cursor-p)))))
 
 (ert-deftest hel-expand-shrink-without-history ()
   (hel-test-with #'text-mode (hel-test-mark "abc def" "abc")
@@ -232,7 +234,7 @@ shrinks."
               (hel-with-secondary-cursor secondary
                 (hel-expand-selection-backward 1)))
             (hel-shrink-selection 1)
-            (should (eq (hel-test-selection) nil))
+            (should (hel-bare-cursor-p))
             (should (equal (buffer-substring (point) (1+ (point))) "a")))
         (hel-remove-all-secondary-cursors)))))
 
@@ -309,10 +311,13 @@ node of the word."
 
 (defun hel-node-tests--bare (mode point-text command)
   "Run COMMAND once from a bare point in a MODE buffer, return the selection.
-POINT-TEXT is a marked text with point and no selection."
+POINT-TEXT is a marked text with point and no selection.  Return nil when
+COMMAND leaves the selection as it is."
   (hel-test-with mode point-text
-    (funcall command 1)
-    (hel-test-selection)))
+    (let ((before (hel-selection)))
+      (funcall command 1)
+      (unless (equal (hel-selection) before)
+        (hel-test-selection)))))
 
 (defconst hel-node-tests--bare-lisp
   '(("(defun name |(mode state))" nil "name" "(mode state)")
@@ -444,7 +449,7 @@ is selected first."
     (hel-shrink-selection 2)
     (should (equal (hel-test-selection) "(* x 2)"))
     (hel-shrink-selection 1)
-    (should (eq (hel-test-selection) nil))
+    (should (hel-bare-cursor-p))
     (should (equal (hel-test-cursor-chars) '(("x" nil))))))
 
 (ert-deftest hel-lisp-expand-backward-and-forward ()
@@ -604,21 +609,21 @@ Rule 7: shrink keeps the direction of the selection."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-node-tests--py "return ^g(abc, [1, 2])|")
     (hel-test-run #'hel-shrink-selection)
-    (should (equal (hel-test-render) (hel-node-tests--py "return ^g|(abc, [1, 2])")))))
+    (should (equal (hel-test-render) (hel-node-tests--py "return |g(abc, [1, 2])")))))
 
 (ert-deftest hel-shrink-first-named-child-backward ()
   "Rule 7: shrink keeps a backward selection backward."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-node-tests--py "return |g(abc, [1, 2])^")
     (hel-test-run #'hel-shrink-selection)
-    (should (equal (hel-test-render) (hel-node-tests--py "return |g^(abc, [1, 2])")))))
+    (should (equal (hel-test-render) (hel-node-tests--py "return |g(abc, [1, 2])")))))
 
 (ert-deftest hel-shrink-first-named-child-count ()
   "A count repeats shrink without a history (rules 3 and 8)."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-node-tests--py "^return g(abc, [1, 2])|")
     (hel-test-run #'hel-shrink-selection 2)
-    (should (equal (hel-test-render) (hel-node-tests--py "return ^g|(abc, [1, 2])")))))
+    (should (equal (hel-test-render) (hel-node-tests--py "return |g(abc, [1, 2])")))))
 
 ;;; Siblings with a parser
 
@@ -641,7 +646,7 @@ Rule 7: shrink keeps the direction of the selection."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "f(^a|, b, c, d)\n"
     (hel-test-run #'hel-select-next-sibling 3)
-    (should (equal (hel-test-render) "f(a, b, c, ^d|)\n"))))
+    (should (equal (hel-test-render) "f(a, b, c, |d)\n"))))
 
 (ert-deftest hel-next-sibling-negative-count ()
   "Rule 8: a negative count reverses the command, so `-1 M-n' acts as M-p."
@@ -649,7 +654,7 @@ Rule 7: shrink keeps the direction of the selection."
   (hel-test-with #'python-ts-mode "f(a, b, c, ^d|)\n"
     (hel-test-run #'hel-select-next-sibling -1)
     ;; "d" has no direction, so "c" takes the direction of the motion.
-    (should (equal (hel-test-render) "f(a, b, |c^, d)\n"))))
+    (should (equal (hel-test-render) "f(a, b, |c, d)\n"))))
 
 (ert-deftest hel-next-sibling-at-last-argument ()
   "M-n at the last argument leaves the selection as it is.
@@ -695,16 +700,19 @@ The selection `x ' starts from the identifier x, whose next sibling is 1."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "^x |= 1\n"
     (hel-test-run #'hel-select-next-sibling)
-    (should (equal (hel-test-render) "x = ^1|\n"))))
+    (should (equal (hel-test-render) "x = |1\n"))))
 
 ;;; Rule 10: bare point, with a parser
 
 (defun hel-node-tests--bare-steps (mode text)
-  "Return the selections that M-n, M-p and M-o give from TEXT in MODE."
+  "Return the selections that M-n, M-p and M-o give from TEXT in MODE.
+A command that leaves the selection as it is gives nil."
   (mapcar (lambda (command)
             (hel-test-with mode text
-              (hel-test-run command)
-              (hel-test-selection)))
+              (let ((before (hel-selection)))
+                (hel-test-run command)
+                (unless (equal (hel-selection) before)
+                  (hel-test-selection)))))
           (list #'hel-select-next-sibling
                 #'hel-select-previous-sibling
                 #'hel-expand-selection-backward)))
@@ -858,7 +866,7 @@ before the pair (The syntax producer)."
 
 (ert-deftest hel-v-all-siblings-stops-extending ()
   "After `v', M-a puts a cursor on each sibling and stops extending."
-  (hel-node-tests--with-v #'emacs-lisp-mode "(a ^b| c)\n"
+  (hel-node-tests--with-v #'emacs-lisp-mode "(a |b c)\n"
     (unwind-protect
         (progn
           (hel-test-run #'hel-select-all-siblings)
@@ -882,10 +890,10 @@ before the pair (The syntax producer)."
 last node, and at the last node it keeps that node and turns around."
   (hel-node-tests--with-v #'emacs-lisp-mode "(a ^b c| d)\n"
     (hel-test-run #'hel-select-previous-sibling)
-    (should (equal (hel-test-render) "(a ^b| c d)\n"))
+    (should (equal (hel-test-render) "(a |b c d)\n"))
     (hel-test-run #'hel-select-previous-sibling)
     (should (equal (hel-test-render) "(|a b^ c d)\n")))
-  (hel-node-tests--with-v #'emacs-lisp-mode "(a b |c^ d)\n"
+  (hel-node-tests--with-v #'emacs-lisp-mode "(a b |c d)\n"
     (hel-test-run #'hel-select-next-sibling)
     (should (equal (hel-test-render) "(a b ^c d|)\n"))))
 
@@ -893,7 +901,7 @@ last node, and at the last node it keeps that node and turns around."
   "Rule 7: after `v', M-n extends over the named siblings with a parser, and
 a node with a dot in it moves as one node."
   (hel-test-need 'python)
-  (hel-node-tests--with-v #'python-ts-mode "g(^a|, b.c, d)\n"
+  (hel-node-tests--with-v #'python-ts-mode "g(|a, b.c, d)\n"
     (hel-test-run #'hel-select-next-sibling)
     (should (equal (hel-test-render) "g(^a, b.c|, d)\n"))
     (hel-test-run #'hel-select-next-sibling)
@@ -973,17 +981,17 @@ the next function."
   "Rule 7: from a bare point, the new selection has the direction of the move."
   (hel-test-with #'emacs-lisp-mode "(a| b c)\n"
     (hel-test-run #'hel-select-next-sibling)
-    (should (equal (hel-test-render) "(a ^b| c)\n")))
+    (should (equal (hel-test-render) "(a |b c)\n")))
   (hel-test-with #'emacs-lisp-mode "(a b| c)\n"
     (hel-test-run #'hel-select-previous-sibling)
-    (should (equal (hel-test-render) "(a |b^ c)\n")))
+    (should (equal (hel-test-render) "(a |b c)\n")))
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "g(a,| b)\n"
     (hel-test-run #'hel-select-next-sibling)
-    (should (equal (hel-test-render) "g(a, ^b|)\n")))
+    (should (equal (hel-test-render) "g(a, |b)\n")))
   (hel-test-with #'python-ts-mode "g(a|, b)\n"
     (hel-test-run #'hel-select-previous-sibling)
-    (should (equal (hel-test-render) "g(|a^, b)\n"))))
+    (should (equal (hel-test-render) "g(|a, b)\n"))))
 
 (ert-deftest hel-shrink-bare-point ()
   "Rule 3: at a bare point, M-i selects the first child of the node after
@@ -996,7 +1004,7 @@ point, and does nothing when that node has no children."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "x = |[1, 2]\n"
     (hel-test-run #'hel-shrink-selection)
-    (should (equal (hel-test-render) "x = [^1|, 2]\n"))))
+    (should (equal (hel-test-render) "x = [|1, 2]\n"))))
 
 (ert-deftest hel-expand-directions ()
   "M-b expands with point at the start and M-e with point at the end, in

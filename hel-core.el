@@ -496,11 +496,9 @@ MODE and STATE should be symbols."
       ;; The selection is the way that point went from the start of the
       ;; typing, as for a motion.
       (hel-with-each-cursor
-        (let* ((start (mark t))
-               (range (hel-range start (point))))
-          (if (hel-bare-cursor-p (list range))
-              (hel-set-cursor (car range))
-            (hel-select range (if (< start (point)) 1 -1))))))
+        (let ((start (mark t)))
+          (hel-select (hel-range start (point))
+                      (if (< start (point)) 1 -1)))))
     (setq hel--selections-before-insert nil
           hel--insert-tick nil)))
 
@@ -535,10 +533,6 @@ enable otherwise, also when ARG is nil."
   (setq hel-extend-selection (if (eq arg 'toggle)
                                  (not hel-extend-selection)
                                (not (and (numberp arg) (< arg 1)))))
-  ;; Show at once the selection that the next motions extend.
-  (when (and hel-extend-selection
-             (not (use-region-p)))
-    (apply #'hel-select (hel-selection)))
   (unless hel-executing-command-for-secondary-cursor
     (hel-draw-cursor)))
 
@@ -1200,7 +1194,7 @@ CURSORS is a list of cursor values, as `hel-selections' returns it."
 
 (hel-advice-add 'toggle-input-method :around #'hel--refresh-input-method-a)
 
-;;; Cursor shape and color
+;;; Cursor
 
 (defvar-local hel--cursor-hidden? nil
   "Whether the major mode of the current buffer hides the cursor.")
@@ -1253,6 +1247,13 @@ The colour also shows whether motions extend the selection."
 
 ;;;; The overlay of the main cursor
 
+(defvar hel--main-line-overlay nil
+  "The overlay that paints the line selection of an empty line.
+Emacs draws the region of the main cursor, and its face stops at the
+newline, so this overlay paints the selected empty line to the edge of
+the window, in the selected window only. `hel--draw-main-cursor-overlay'
+moves it, and it deletes it when the main cursor has no such selection.")
+
 (defun hel--cursor-bounds (selection)
   "Return the bounds of the cursor of SELECTION, a (BEGIN . END) pair.
 The cursor covers the head character of SELECTION: the cursor character,
@@ -1288,14 +1289,21 @@ commands outside Hel.  The selected window draws the box over the head
 character of the selection.  Another window on the buffer draws it at its
 own point, with the face `hel-other-window-cursor'.  On a newline or at
 the end of the buffer the box is a cell of one space.  Outside Normal
-state there is no box."
+state there is no box.
+
+In the selected window, the line selection of an empty line gets the
+face of the region to the edge of the window, see
+`hel--main-line-overlay'."
   (dolist (window (if (consp windows) windows (window-list-1 nil t t)))
     (when (window-live-p window)
       (let ((overlay (window-parameter window 'hel--main-cursor-overlay))
             (selected? (eq window (selected-window))))
         (with-current-buffer (window-buffer window)
           (if (or hel--cursor-hidden? (not hel-normal-state))
-              (-some-> overlay (delete-overlay))
+              (progn
+                (-some-> overlay (delete-overlay))
+                (when selected?
+                  (-some-> hel--main-line-overlay (delete-overlay))))
             ;; else
             (-let* ((selection (if selected?
                                    (hel-selection)
@@ -1329,7 +1337,27 @@ state there is no box."
                   (-doto overlay
                     (overlay-put 'face face)
                     (overlay-put 'display (hel--cursor-display begin face))
-                    (overlay-put 'after-string nil)))))))))))
+                    (overlay-put 'after-string nil))))
+              ;; The line selection of an empty line looks like a selected
+              ;; line, and a bare cursor on the same line does not.
+              (when selected?
+                (-let* (((range &as line-begin . line-end) (hel-selection-bounds selection))
+                        (empty-line? (and (hel--empty-line-range-p range)
+                                          (not (hel-bare-cursor-p selection)))))
+                  (cond ((not empty-line?)
+                         (-some-> hel--main-line-overlay (delete-overlay)))
+                        (hel--main-line-overlay
+                         (move-overlay hel--main-line-overlay
+                                       line-begin line-end (current-buffer)))
+                        (t
+                         (setq hel--main-line-overlay
+                               (-doto (make-overlay line-begin line-end)
+                                 (overlay-put 'face '(:inherit region
+                                                      :extend t))
+                                 ;; The same as the region of Emacs.
+                                 (overlay-put 'priority 100)))))
+                  (when empty-line?
+                    (overlay-put hel--main-line-overlay 'window window)))))))))))
 
 (defun hel--delete-dead-main-cursor-overlays ()
   "Delete the boxes that deleted windows leave in their buffers.
@@ -1347,7 +1375,9 @@ Emacs runs this function when a window of the frame is added or deleted."
              (mapc #'delete-overlay))))))
 
 (defun hel--delete-main-cursor-overlays ()
-  "Delete the box of the main cursor in every window."
+  "Delete the box of the main cursor in every window.
+Delete also the paint of the line selection of an empty line."
+  (-some-> hel--main-line-overlay (delete-overlay))
   (walk-windows (lambda (window)
                   (-some-> (window-parameter window 'hel--main-cursor-overlay)
                     (delete-overlay)))

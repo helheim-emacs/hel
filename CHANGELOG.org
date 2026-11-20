@@ -79,6 +79,33 @@
   ~hel-mark-pair~ selects one.
 
 ** Changed
+- The line selection of an empty line, which =x= makes, has the face of
+  the region to the edge of the window, so it looks different from a bare
+  cursor on the same line. It is a part of the selection value:
+  ~hel-selection~ returns ~(RANGE nil t)~ for it, and ~hel-select~ takes
+  that third element, LINE?. So undo, =g v=, =M-i= and the commands that
+  keep the selection, such as =J=, =] SPC= and =ms=, keep the line
+  selection. ~hel-select~ makes a range of one character a bare cursor
+  unless LINE? is given.
+
+- The line selection of an empty line acts as the line that it shows, not
+  as a bare cursor: =d= and =c= put its newline in the kill ring, =D=
+  leaves the cursor before it, and =;= collapses it to a bare cursor.
+  ~hel-bare-cursor-p~ is nil for it.
+
+- ~hel-linewise-selection-p~ is removed. ~hel-line-selection-p~ tells
+  whether a selection is whole lines. It takes a selection value, the
+  current selection by default, and no direction.
+
+- ~hel-region-direction~ and ~hel-ensure-region-direction~ are removed.
+  Ask ~hel-selection-direction~ for the direction of the selection, and go
+  to an end of the selection with ~hel-selection-bounds~. Both accessors
+  take a selection value, the current selection by default.
+
+- =o= opens the new line after the line of the last character of the
+  selection, as =] SPC= adds blank lines there. A selection that ends with
+  a newline does not take the next line in.
+
 - Hel names its cursors /main/ and /secondary/. Every name with /fake/
   says /secondary/, and every name with /real/ says /main/: for example
   ~hel-all-fake-cursors~ is ~hel-all-secondary-cursors~,
@@ -115,7 +142,7 @@
 - A window that is not selected shows the box of its cursor at its own
   point, with the face ~hel-other-window-cursor~.
 
-- ~hel-create-secondary-cursor~ takes a selection: RANGE, DIR and ACTIVE,
+- ~hel-create-secondary-cursor~ takes a selection: RANGE, DIR and LINE?,
   as ~hel-select~ and the cursor values have them. Without arguments it
   copies the main cursor where it stands. ~hel-create-fake-cursor-from-point~
   is removed; call ~hel-create-secondary-cursor~ with no arguments. An
@@ -235,7 +262,7 @@
   and undo gives each cursor back its cursor character.
   ~hel-cursors-positions~ and ~hel-place-cursors~ are removed. Use
   ~hel-selections~ and ~hel-set-selections~, which read and
-  write every cursor as a value (ID RANGE DIRECTION ACTIVE).
+  write every cursor as a value (ID . SELECTION).
 
 - =mr= replaces only the delimiters and keeps the layout of the pair:
   =mr([= turns =(foo)= into =[foo]=, and brackets on lines of their own stay

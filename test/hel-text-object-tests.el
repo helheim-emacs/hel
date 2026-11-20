@@ -159,7 +159,7 @@ object, also when the outer function is decorated."
                  (lambda (&rest _) (cl-incf pushes))))
         (hel-mark-argument 1)
         (should (= pushes 0))
-        (should (eq (hel-test-selection) nil))
+        (should (hel-bare-cursor-p))
         (hel-test-goto "self, a")
         (hel-mark-around-argument 1)
         (should (= pushes 1))
@@ -371,7 +371,7 @@ tree-sitter query."
         (hel-test-with mode (hel-test-mark text start)
           (funcall command 1)
           (should (use-region-p))
-          (should (= dir (hel-region-direction))))))))
+          (should (= dir (hel-selection-direction))))))))
 
 (ert-deftest hel-text-object-from-cursor ()
   "`mi' and `ma' find the object at the cursor, not around the selection."
@@ -574,7 +574,7 @@ tree-sitter query."
     ;; The HTML query has no function object, so the markup keeps the
     ;; selection, and its comment object works.
     (hel-mark-function 1)
-    (should (eq (hel-test-selection) nil))
+    (should (hel-bare-cursor-p))
     (hel-test-goto "note")
     (should (eq 'html (treesit-language-at (point))))
     (hel-mark-around-comment 1)
@@ -742,7 +742,7 @@ header comment."
       (hel-test-goto "()")
       (forward-char)
       (hel-mark-argument 1)
-      (should (eq (hel-test-selection) nil)))))
+      (should (hel-bare-cursor-p)))))
 
 (ert-deftest hel-syntax-argument-search-in-growing-ranges ()
   "A search in small ranges finds the same arguments as one search over
@@ -789,7 +789,7 @@ selection."
     (let ((inhibit-message t))
       (hel-mark-argument 1)
       (hel-mark-around-class 1))
-    (should (eq (hel-test-selection) nil))))
+    (should (hel-bare-cursor-p))))
 
 ;;; Prose objects
 
@@ -941,7 +941,7 @@ end with the indentation after it is a step of its own."
                    "(defun ^f |(&rest (n 1))\n  (foo bar))\n"
                    "(defun f (^&rest |(n 1))\n  (foo bar))\n"
                    "(defun f (&rest (^n |1))\n  (foo bar))\n"
-                   "(defun f (&rest (n ^1|))\n  (foo bar))\n"
+                   "(defun f (&rest (n |1))\n  (foo bar))\n"
                    "(defun f (&rest (n 1))\n^  |(foo bar))\n"
                    "(defun f (&rest (n 1))\n  (^foo |bar))\n"
                    "(defun f (&rest (n 1))\n  (foo ^bar|))\n")))
@@ -950,7 +950,7 @@ end with the indentation after it is a step of its own."
                  '("(^defun| f (&rest (n 1))\n  (foo bar))\n"
                    "(defun^ f| (&rest (n 1))\n  (foo bar))\n"
                    "(defun f (^&rest| (n 1))\n  (foo bar))\n"
-                   "(defun f (&rest (^n| 1))\n  (foo bar))\n"
+                   "(defun f (&rest (|n 1))\n  (foo bar))\n"
                    "(defun f (&rest (n^ 1|))\n  (foo bar))\n"
                    "(defun f (&rest (n 1))\n^  |(foo bar))\n"
                    "(defun f (&rest (n 1))\n  (^foo| bar))\n"
@@ -971,9 +971,9 @@ characters, as W, E and B do."
                   #'emacs-lisp-mode "|(defun f (n)\n  (foo bar))\n" "w")
                  '("(^defun |f (n)\n  (foo bar))\n"
                    "(defun ^f |(n)\n  (foo bar))\n"
-                   "(defun f ^(|n)\n  (foo bar))\n"
-                   "(defun f (^n|)\n  (foo bar))\n"
-                   "(defun f (n^)|\n  (foo bar))\n"
+                   "(defun f |(n)\n  (foo bar))\n"
+                   "(defun f (|n)\n  (foo bar))\n"
+                   "(defun f (n|)\n  (foo bar))\n"
                    "(defun f (n)\n^  |(foo bar))\n"
                    "(defun f (n)\n  (^foo |bar))\n"
                    "(defun f (n)\n  (foo ^bar|))\n")))
@@ -982,8 +982,8 @@ characters, as W, E and B do."
                  '("(^defun| f (n)\n  (foo bar))\n"
                    "(defun^ f| (n)\n  (foo bar))\n"
                    "(defun f^ (|n)\n  (foo bar))\n"
-                   "(defun f (^n|)\n  (foo bar))\n"
-                   "(defun f (n^)|\n  (foo bar))\n"
+                   "(defun f (|n)\n  (foo bar))\n"
+                   "(defun f (n|)\n  (foo bar))\n"
                    "(defun f (n)\n^  |(foo bar))\n"
                    "(defun f (n)\n  (^foo| bar))\n"
                    "(defun f (n)\n  (foo^ bar|))\n")))
@@ -992,9 +992,9 @@ characters, as W, E and B do."
                  '("(defun f (n)\n  (foo |bar^))\n"
                    "(defun f (n)\n  (|foo ^bar))\n"
                    "(defun f (n)\n|  ^(foo bar))\n"
-                   "(defun f (n|)^\n  (foo bar))\n"
-                   "(defun f (|n^)\n  (foo bar))\n"
-                   "(defun f |(^n)\n  (foo bar))\n"
+                   "(defun f (n|)\n  (foo bar))\n"
+                   "(defun f (|n)\n  (foo bar))\n"
+                   "(defun f |(n)\n  (foo bar))\n"
                    "(defun |f ^(n)\n  (foo bar))\n"
                    "(|defun ^f (n)\n  (foo bar))\n"
                   ))))
@@ -1167,8 +1167,8 @@ only brackets is a WORD."
                    "if (^f(x) |> a[i]) {\n}\n"
                    "if (f(x) ^> |a[i]) {\n}\n"
                    "if (f(x) > ^a[i]|) {\n}\n"
-                   "if (f(x) > a[i]) ^{|\n}\n"
-                   "if (f(x) > a[i]) {\n^}|\n"))))
+                   "if (f(x) > a[i]) |{\n}\n"
+                   "if (f(x) > a[i]) {\n|}\n"))))
 
 (ert-deftest hel-WORD-motion-count-stops-before-fences ()
   "A count past the last WORD stops at its text, not after its brackets."
@@ -2527,7 +2527,7 @@ With NEEDLE2, also put MARKER2 before it.  NEEDLE2 must come after NEEDLE."
   "`}' with no next paragraph selects to the end of the buffer."
   (pcase-dolist (`(,input ,expected)
                  '(("aa\n\n|bb\n" "aa\n\n^bb\n|")
-                   ("aa\n\nb|b" "aa\n\nb^b|")
+                   ("aa\n\nb|b" "aa\n\nb|b")
                    ("|aa\n" "^aa\n|")
                    ("aa\n\nb|b\n\n" "aa\n\nb^b\n\n|")))
     (hel-test-with #'text-mode input
@@ -2901,7 +2901,7 @@ the object that the gap belongs to)."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(a|, b)\n"
     (hel-test-run #'hel-mark-argument)
-    (should (equal (hel-test-render) "f(^a|, b)\n"))))
+    (should (equal (hel-test-render) "f(|a, b)\n"))))
 
 (ert-deftest hel-mia-on-comma-after-b ()
   "On the comma after b in f(a, b, c), mia selects b (when two
@@ -2909,7 +2909,7 @@ around ranges contain the cursor, the object before it wins)."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(a, b|, c)\n"
     (hel-test-run #'hel-mark-argument)
-    (should (equal (hel-test-render) "f(a, ^b|, c)\n"))))
+    (should (equal (hel-test-render) "f(a, |b, c)\n"))))
 
 (ert-deftest hel-mia-nothing-here ()
   "Mia with no argument around the cursor leaves the selection and
@@ -2945,9 +2945,9 @@ argument."
 (ert-deftest hel-mia-each-argument ()
   "Mia on any argument selects the argument alone."
   (hel-test-need-queries 'python)
-  (dolist (case '(("f(|a, b, c)\n" . "f(^a|, b, c)\n")
-                  ("f(a, |b, c)\n" . "f(a, ^b|, c)\n")
-                  ("f(a, b, |c)\n" . "f(a, b, ^c|)\n")))
+  (dolist (case '(("f(|a, b, c)\n" . "f(|a, b, c)\n")
+                  ("f(a, |b, c)\n" . "f(a, |b, c)\n")
+                  ("f(a, b, |c)\n" . "f(a, b, |c)\n")))
     (hel-test-with #'python-ts-mode (car case)
       (hel-test-run #'hel-mark-argument)
       (should (equal (hel-test-render) (cdr case))))))
@@ -2988,9 +2988,9 @@ without a stray comma."
   "Mie selects one element of a list, a key with its value in
 a dictionary, and the innermost entry in nested structures."
   (hel-test-need-queries 'python)
-  (dolist (case '(("x = [1, |2, 3]\n" . "x = [1, ^2|, 3]\n")
+  (dolist (case '(("x = [1, |2, 3]\n" . "x = [1, |2, 3]\n")
                   ("d = {\"a\": 1, \"b\": |2}\n" . "d = {\"a\": 1, ^\"b\": 2|}\n")
-                  ("d = {\"a\": [1, |2]}\n" . "d = {\"a\": [1, ^2|]}\n")))
+                  ("d = {\"a\": [1, |2]}\n" . "d = {\"a\": [1, |2]}\n")))
     (hel-test-with #'python-ts-mode (car case)
       (hel-test-run #'hel-mark-entry)
       (should (equal (hel-test-render) (cdr case))))))
@@ -3028,10 +3028,10 @@ does the same backward."
   (hel-test-need-queries 'python)
   ;; On the entry 1, which is the cursor character alone, ]e goes on to
   ;; the next entry.
-  (dolist (case '((hel-mark-entry-forward "x = [|1, 2]\n" "x = [1, ^2|]\n")
-                  (hel-mark-entry-forward "x = [1|, 2]\n" "x = [1, ^2|]\n")
-                  (hel-mark-entry-backward "x = [1, 2|]\n" "x = [1, |2^]\n")
-                  (hel-mark-entry-backward "x = [1, |2]\n" "x = [|1^, 2]\n")))
+  (dolist (case '((hel-mark-entry-forward "x = [|1, 2]\n" "x = [1, |2]\n")
+                  (hel-mark-entry-forward "x = [1|, 2]\n" "x = [1, |2]\n")
+                  (hel-mark-entry-backward "x = [1, 2|]\n" "x = [1, |2]\n")
+                  (hel-mark-entry-backward "x = [1, |2]\n" "x = [|1, 2]\n")))
     (pcase-let ((`(,command ,input ,expected) case))
       (hel-test-with #'python-ts-mode input
         (hel-test-run command)
@@ -3231,9 +3231,9 @@ select a and b without their commas."
     (hel-test-run #'hel-mark-argument-forward)
     (should (equal (hel-test-render) "def m(^self|, a, b):\n    pass\n"))
     (hel-test-run #'hel-mark-argument-forward)
-    (should (equal (hel-test-render) "def m(self, ^a|, b):\n    pass\n"))
+    (should (equal (hel-test-render) "def m(self, |a, b):\n    pass\n"))
     (hel-test-run #'hel-mark-argument-forward)
-    (should (equal (hel-test-render) "def m(self, a, ^b|):\n    pass\n"))))
+    (should (equal (hel-test-render) "def m(self, a, |b):\n    pass\n"))))
 
 (ert-deftest hel-forward-comment-chain ()
   "In `x = 1  # a' followed by `# b' and `# c', ]c from x selects
@@ -3314,7 +3314,7 @@ selects the word before it."
 object after point wins.  In `foo|.' miw selects the period."
   (hel-test-with #'text-mode "foo|.\n"
     (hel-test-run #'hel-mark-word)
-    (should (equal (hel-test-render) "foo^.|\n"))))
+    (should (equal (hel-test-render) "foo|.\n"))))
 
 (ert-deftest hel-miw-bare-point-before-space ()
   "Section Selecting an object: in `foo| bar' miw selects foo, because
@@ -3518,7 +3518,7 @@ its other pattern (section Query files and grammar versions)."
               "  (_) @argument)\n")
     (hel-test-with #'python-ts-mode "f(|a, b)\n"
       (hel-test-run #'hel-mark-argument)
-      (should (equal (hel-test-render) "f(^a|, b)\n")))))
+      (should (equal (hel-test-render) "f(|a, b)\n")))))
 
 (ert-deftest hel-query-unbalanced ()
   "A query file with unbalanced brackets gives no query and signals

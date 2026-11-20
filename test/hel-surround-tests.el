@@ -17,15 +17,16 @@
 
 (defun hel-surround-tests--check (cases)
   "Check CASES, a list of (MODE TEXT COMMAND EXPECTED).
-EXPECTED is the text that COMMAND selects, or nil for no selection."
+EXPECTED is the text that COMMAND selects, or nil when COMMAND finds no
+pair and leaves the selection as it is."
   (pcase-dolist (`(,mode ,text ,command ,expected) cases)
     (ert-info ((format "%S in %S" command text))
       (hel-test-with mode text
-        (funcall command 1)
-        (should (equal (when (use-region-p)
-                         (buffer-substring-no-properties (region-beginning)
-                                                         (region-end)))
-                       expected))))))
+        (let ((before (hel-selection)))
+          (funcall command 1)
+          (if expected
+              (should (equal (hel-test-selection) expected))
+            (should (equal (hel-selection) before))))))))
 
 (ert-deftest hel-surround-quoted ()
   "`mi\"' and `ma\"' in code, in a string and in a comment."
@@ -111,7 +112,7 @@ delimiters are the same text, and the second law does not apply."
                     (equal pair (hel-pair-at producer (hel-pair-open-begin pair))))
           (push (list 'start pos) failures))
         (when-let* ((parent (hel-pair-parent producer pair)))
-          (unless (hel--range-strictly-inside-p (hel-pair-outer-bounds pair)
+          (unless (hel-range-strictly-inside-p (hel-pair-outer-bounds pair)
                                                 (hel-pair-outer-bounds parent))
             (push (list 'parent-holds pos) failures))
           (unless (equal parent (hel-pair-at producer (hel-pair-open-begin parent)))

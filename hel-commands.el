@@ -112,21 +112,20 @@ then grows by whole lines."
   :merge-selections hel-extend-selection
   (interactive (list (prefix-numeric-value current-prefix-arg)
                      hel-extend-selection))
-  (if (and extend (hel-linewise-selection-p))
-      (hel-expand-line-selection count)
-    (let ((anchor (and extend
-                       (hel-selection-anchor (hel-selection)
-                                              (hel-sign count)))))
-      (unless extend
-        (if (use-region-p)
-            (hel-collapse-selection)
-          (deactivate-mark)))
-      ;; Emacs keeps the column if and only if the previous command was
-      ;; `next-line' or `previous-line'.
-      (setq this-command (if (natnump count) 'next-line 'previous-line))
-      (funcall-interactively 'next-line count)
-      (when anchor
-        (set-mark anchor)))))
+  (let ((selection (hel-selection)))
+    (if (and extend (hel-line-selection-p selection))
+        (hel-expand-line-selection count)
+      (let ((anchor (and extend
+                         (hel-selection-anchor selection (hel-sign count)))))
+        (unless extend
+          (hel-set-cursor (hel-selection-head selection)))
+        ;; Emacs keeps the column if and only if the previous command was
+        ;; `next-line' or `previous-line'.
+        (setq this-command (if (natnump count) 'next-line 'previous-line))
+        (funcall-interactively 'next-line count)
+        (when anchor
+          (hel-select (hel-range anchor (point))
+                      (if (< (point) anchor) -1 1)))))))
 
 ;; k
 (hel-define-command hel-previous-line (count &optional extend)
@@ -282,13 +281,16 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-end-of-line-command))
   (interactive (list hel-extend-selection))
-  (hel-move-to-pos (point) (hel-line-end) extend)
-  ;; "Stick" cursor to the end of line after moving to it. Vertical
-  ;; motions right after "gl" will place point at the end of each line.
-  (when (and (not visual-line-mode)
-             (eolp))
-    (setq temporary-goal-column most-positive-fixnum
-          this-command 'next-line)))
+  (let ((end (hel-line-end)))
+    (hel-move-to-pos (point) end extend)
+    ;; "Stick" cursor to the end of line after moving to it. Vertical motions
+    ;; right after "gl" will place point at the end of each line. A selection
+    ;; of one character leaves point before its character, so the test is on
+    ;; END and not on point.
+    (when (and (not visual-line-mode)
+               (save-excursion (goto-char end) (eolp)))
+      (setq temporary-goal-column most-positive-fixnum
+            this-command 'next-line))))
 
 ;; mm
 (hel-define-command hel-jump-to-match-item (&optional extend)
@@ -402,7 +404,7 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (if extend
-          (hel-move-to-pos (mark) (point) t)
+          (hel-move-to-pos nil (point) t)
         (hel-select (cons (point) (progn
                                     (hel-word-motion 1)
                                     (point))))))))
@@ -436,7 +438,7 @@ backward and jump to new top location."
       (hel-disable-multiple-cursors-mode)
       (hel-push-point orig-point)
       (if extend
-          (hel-move-to-pos (mark) (point) t)
+          (hel-move-to-pos nil (point) t)
         (hel-select (cons (point) (progn
                                     (hel-WORD-motion 1)
                                     (point))))))))
@@ -460,13 +462,14 @@ to the chosen one."
     (hel-disable-multiple-cursors-mode)
     (hel-push-point)
     (if extend
-        (let ((lines? (hel-linewise-selection-p)))
-          (hel-move-to-pos (mark) pos t)
+        (let ((lines? (hel-line-selection-p)))
+          (hel-move-to-pos nil pos t)
           (if lines? (hel-expand-selection-to-full-lines)))
       ;; else
-      (deactivate-mark)
-      (let ((column (current-column)))
-        (goto-char pos)
+      (let ((column (save-excursion
+                      (goto-char (hel-selection-head (hel-selection)))
+                      (current-column))))
+        (hel-set-cursor pos)
         (move-to-column column)))))
 
 ;; gk
@@ -550,10 +553,11 @@ depending on DIRECTION."
   :multiple-cursors nil
   (interactive "*")
   (hel-with-each-cursor
-    (when (use-region-p) (hel-ensure-region-direction 1))
-    (if (hel-linewise-selection-p)
-        (backward-char)
-      (move-end-of-line nil))
+    ;; The new line goes after the line of the last character of the
+    ;; selection.
+    (-let [(begin . end) (hel-selection-bounds)]
+      (goto-char (max begin (1- end))))
+    (move-end-of-line nil)
     (newline-and-indent))
   (hel-insert-state 1))
 
@@ -563,7 +567,7 @@ depending on DIRECTION."
   :multiple-cursors nil
   (interactive "*")
   (hel-with-each-cursor
-    (when (use-region-p) (hel-ensure-region-direction -1))
+    (goto-char (car (hel-selection-bounds)))
     (move-beginning-of-line nil)
     (newline)
     (forward-line -1)
@@ -576,10 +580,11 @@ depending on DIRECTION."
   :multiple-cursors t
   (interactive "p")
   (hel-save-selection
-    (when (use-region-p)
-      (hel-ensure-region-direction 1))
-    (unless (hel-linewise-selection-p 1)
-      (hel-forward-line 1))
+    ;; The blank lines go after the line of the last character of the
+    ;; selection.
+    (-let [(begin . end) (hel-selection-bounds)]
+      (goto-char (max begin (1- end))))
+    (hel-forward-line 1)
     (newline count)))
 
 ;; [ SPC
@@ -588,25 +593,23 @@ depending on DIRECTION."
   :multiple-cursors t
   (interactive "p")
   (hel-save-selection
-    (when (use-region-p)
-      (hel-ensure-region-direction -1))
+    (goto-char (car (hel-selection-bounds)))
     (hel-beginning-of-visible-line)
     (newline count)))
 
 ;; c
 (hel-define-command hel-change ()
   "Kill the selection and switch to Insert state in its place.
-A selection of one character, such as a bare cursor, stays out of the
-`kill-ring', where a single character only clutters it.  A selection of
+The character of a bare cursor stays out of the `kill-ring', where
+a single character only clutters it.  A selection of
 whole lines leaves an empty line, indented by the rules of the mode, and
 so does a bare cursor on an empty line."
   :multiple-cursors nil
   (interactive "*")
   (hel-with-each-cursor
-    (-let [(begin . end) (hel-selection-bounds)]
-      (cond ((or (hel-linewise-selection-p)
-                 (not (hel-bare-cursor-p)))
-             (let ((logical-lines? (hel-linewise-selection-p))
+    (-let [(selection &as (begin . end)) (hel-selection)]
+      (cond ((not (hel-bare-cursor-p selection))
+             (let ((logical-lines? (hel-line-selection-p selection))
                    (visual-lines? (hel-visual-lines-p)))
                (kill-region nil nil t)
                (cond (logical-lines?
@@ -633,18 +636,18 @@ so does a bare cursor on an empty line."
 ;; d
 (hel-define-command hel-cut ()
   "Kill (cut) the selection: delete it and put it in the `kill-ring'.
-The cursor goes onto the character before the deleted text.  A selection
-of one character, such as a bare cursor, stays out of the `kill-ring',
+The cursor goes onto the character before the deleted text.  A bare
+cursor is the exception: its character stays out of the `kill-ring',
 where a single character only clutters it, and `d' then works like
 Backspace."
   :multiple-cursors t
   :merge-selections t
   (interactive "*")
-  (-let [(begin . end) (hel-selection-bounds)]
+  (-let [(selection &as (begin . end)) (hel-selection)]
     ;; At the end of the buffer the selection is empty: there is
     ;; nothing to delete, and the cursor stays.
     (when (< begin end)
-      (if (= (- end begin) 1)
+      (if (hel-bare-cursor-p selection)
           (delete-region begin end)
         ;; `region-extract-function' handles a region that is not
         ;; contiguous, such as one of `rectangle-mark-mode'.
@@ -655,16 +658,16 @@ Backspace."
 ;; D
 (hel-define-command hel-delete ()
   "Delete the selection, without modifying the `kill-ring'.
-The cursor goes onto the character before the deleted text.  A selection
-of one character, such as a bare cursor, is the exception: the cursor goes
-onto the character after it, so `D' works like Delete."
+The cursor goes onto the character before the deleted text.  A bare
+cursor is the exception: the cursor goes onto the character after it, so
+`D' works like Delete."
   :multiple-cursors t
   :merge-selections t
   (interactive "*")
-  (-let [(begin . end) (hel-selection-bounds)]
+  (-let [(selection &as (begin . end)) (hel-selection)]
     (when (< begin end)
       (delete-region begin end)
-      (hel-set-cursor (if (= (- end begin) 1)
+      (hel-set-cursor (if (hel-bare-cursor-p selection)
                           begin
                         (max (1- begin) (point-min))))))
   (hel-extend-selection -1))
@@ -682,20 +685,24 @@ onto the character after it, so `D' works like Delete."
   "Undo."
   :multiple-cursors nil
   (interactive "*")
-  ;; Deactivate mark to trigger global undo instead of region undo.
-  (deactivate-mark)
-  (let ((deactivate-mark nil))
-    (undo-only)))
+  ;; Deactivate mark to trigger global undo instead of region undo.  When
+  ;; there is nothing to undo, the selection stays.
+  (hel-restore-selection-on-error
+    (deactivate-mark)
+    (let ((deactivate-mark nil))
+      (undo-only))))
 
 ;; U
 (hel-define-command hel-redo ()
   "Redo."
   :multiple-cursors nil
   (interactive "*")
-  ;; Deactivate mark to trigger global undo instead of region undo.
-  (deactivate-mark)
-  (let ((deactivate-mark nil))
-    (undo-redo)))
+  ;; Deactivate mark to trigger global undo instead of region undo.  When
+  ;; there is nothing to undo, the selection stays.
+  (hel-restore-selection-on-error
+    (deactivate-mark)
+    (let ((deactivate-mark nil))
+      (undo-redo))))
 
 ;; y
 (hel-define-command hel-copy ()
@@ -754,18 +761,18 @@ With \\[universal-argument] paste the last coppied multiple selections from the
   (interactive "*p")
   (let ((deactivate-mark nil))
     (unless (eq last-command 'yank)
-      (setq hel--yank-transform-linewise-selection?
-            (and (use-region-p)
-                 (hel-linewise-selection-p (hel-region-direction)))))
+      (let ((selection (hel-selection)))
+        (setq hel--yank-transform-linewise-selection?
+              (hel--paste-line-p selection
+                                 (or (hel-selection-direction selection) 1)))))
     (let ((yank-transform-functions (cons #'hel--yank-transform
                                           yank-transform-functions))
           (yank-pop (or (command-remapping 'yank-pop)
                         #'yank-pop)))
       (funcall-interactively yank-pop count))
-    (if (and (mark t)
-             (/= (point) (mark-marker)))
-        (activate-mark)
-      (deactivate-mark))))
+    (let ((mark (or (mark t) (point))))
+      (hel-select (hel-range mark (point)) (if (< mark (point)) 1 -1)
+                  hel--yank-transform-linewise-selection?))))
 
 ;; C-n
 (hel-define-command hel-paste-undo-pop (count)
@@ -798,18 +805,19 @@ direction.  An empty selection at the end of the buffer is left as it
 is."
   :multiple-cursors t
   (interactive "*")
-  (-let* ((((begin . end) dir) (hel-selection))
+  (-let* (((selection &as (begin . end) dir) (hel-selection))
           (dir (or dir 1)))
     (when (< begin end)
       (let ((deactivate-mark nil))
         (setq hel--yank-transform-linewise-selection?
-              (hel-linewise-selection-p dir))
+              (hel--paste-line-p selection dir))
         (delete-region begin end)
         (cl-letf ((yank-transform-functions (cons #'hel--yank-transform
                                                   yank-transform-functions))
                   ((symbol-function 'push-mark) #'hel-push-mark))
           (yank))
-        (hel-select (hel-range (mark t) (point)) dir)
+        (hel-select (hel-range (mark t) (point)) dir
+                    hel--yank-transform-linewise-selection?)
         (hel-extend-selection -1)
         (when (derived-mode-p 'prog-mode)
           (-let [(begin . end) (hel-selection-bounds)]
@@ -910,37 +918,51 @@ first character of a backward one. It becomes the cursor character.
 A bare cursor has nothing to collapse, so there also stop the search."
   :multiple-cursors t
   (interactive)
-  (let ((bare? (hel-bare-cursor-p)))
-    (hel-set-cursor (hel-selection-head (hel-selection)))
+  (let* ((selection (hel-selection))
+         (bare? (hel-bare-cursor-p selection)))
+    (hel-set-cursor (hel-selection-head selection))
     (when (and bare? hel-search--session)
       (hel-search-stop))))
 
 ;; x
 (hel-define-command hel-expand-line-selection (count)
-  "Expand or contract current selection linewise downward COUNT times."
+  "Expand or contract the line selection downward COUNT times.
+A selection that is not whole lines first grows to its whole lines, and
+this takes one step of COUNT.  Each other step moves the cursor end of the
+selection by one line: down for a positive COUNT, up for a negative one.
+When the cursor end would meet the other end, it passes over it, and the
+other end moves back by one line, so the line that the cursor end has left
+stays selected.  A selection of one line has the cursor at its start."
   :multiple-cursors t
   :merge-selections t
   (interactive "p")
   (let ((motion-dir (hel-sign count)))
-    (and (hel-expand-selection-to-full-lines motion-dir)
-         (cl-callf - count motion-dir))
+    (when (hel-expand-selection-to-full-lines motion-dir)
+      (cl-callf - count motion-dir))
     (unless (zerop count)
-      (let* ((region-dir (hel-region-direction))
-             (end (progn (hel-forward-line count)
-                         (when (= (point) (mark-marker))
-                           (hel-forward-line motion-dir))
-                         (point)))
-             (start (if (/= region-dir (hel-region-direction))
-                        (save-excursion
-                          (goto-char (mark-marker))
-                          (hel-forward-line (- motion-dir))
-                          (point))
-                      (mark))))
-        (set-mark start)
-        (goto-char end)))
+      (cl-flet ((line-after (pos count)
+                  (save-excursion
+                    (goto-char pos)
+                    (hel-forward-line count)
+                    (point))))
+        (-let* (((selection &as (begin . end)) (hel-selection))
+                ;; The line selection of an empty line has no direction.
+                ;; It has the cursor at its start, as each selection of
+                ;; one line.
+                (dir (or (hel-selection-direction selection) -1))
+                (anchor (if (< 0 dir) begin end))
+                (head (line-after (if (< 0 dir) end begin) count))
+                (head (if (= head anchor)
+                          (line-after head motion-dir)
+                        head))
+                (new-dir (if (< anchor head) 1 -1))
+                (anchor (if (= dir new-dir)
+                            anchor
+                          (line-after anchor (- motion-dir)))))
+          (hel-select (hel-range anchor head) new-dir t))))
     (-let [(begin . end) (hel-selection-bounds)]
       (when (= 1 (count-lines begin end t))
-        (hel-ensure-region-direction -1)))
+        (hel-select (cons begin end) -1 t)))
     (setq disable-point-adjustment t)))
 
 ;; X
@@ -967,39 +989,28 @@ A bare cursor has nothing to collapse, so there also stop the search."
   (interactive)
   (hel-with-each-cursor
     (hel-extend-selection -1)
-    (unless (hel-bare-cursor-p)
-      (let ((end (cdr (hel-selection-bounds))))
-        (hel-ensure-region-direction 1)
-        (goto-char (mark-marker))
-        (catch 'done
-          (let (border)
-            (while t
-              (goto-char (hel-line-end))
-              (when (<= end (point))
-                (goto-char end)
-                (throw 'done nil))
-              (setq border (point))
-              (forward-char)
-              (when (<= end (point))
-                (goto-char border)
-                (throw 'done nil))
-              (hel-create-secondary-cursor (cons (mark) border) 1 t)
-              (set-marker (mark-marker) (point)))))))))
+    (-let [(selection &as (begin . end)) (hel-selection)]
+      (unless (hel-bare-cursor-p selection)
+        ;; Each line of the selection becomes a forward selection without
+        ;; its newline. The cursor keeps the last line.
+        (let ((ranges (cl-loop for start = begin then (1+ line-end)
+                               for line-end = (min (hel-line-end start) end)
+                               collect (cons start line-end)
+                               until (<= end (1+ line-end)))))
+          (-each (-butlast ranges)
+            (lambda (range) (hel-create-secondary-cursor range 1)))
+          (hel-select (-last-item ranges) 1))))))
 
 ;; _
 (hel-define-command hel-trim-whitespace-from-selection ()
   "Trim the whitespace from both ends of the selection.
-A bare cursor stays as it is."
+A bare cursor, and a selection of whitespace only, stay as they are."
   :multiple-cursors t
   (interactive)
-  (unless (hel-bare-cursor-p)
-    (let* ((dir (hel-region-direction))
-           (point (progn (hel-skip-whitespace (- dir))
-                         (point)))
-           (mark  (progn (goto-char (mark-marker))
-                         (hel-skip-whitespace dir)
-                         (point))))
-      (hel-select (hel-range mark point) dir))))
+  (-let [(selection &as range dir) (hel-selection)]
+    (unless (hel-bare-cursor-p selection)
+      (-some-> (hel-trim-whitespace-from-range range)
+        (hel-select dir)))))
 
 ;; &
 (hel-define-command hel-align-selections ()
@@ -1034,18 +1045,13 @@ one that the cursor covers, stands in the column of the rightmost one."
                          0 cursors)))
             (dolist (cursor cursors)
               (hel-with-secondary-cursor cursor
-                (when-let* ((width (- column (head-column (hel-selection))))
+                (when-let* ((selection (hel-selection))
+                            (width (- column (head-column selection)))
                             ((< 0 width)))
-                  (let ((deactivate-mark nil)
-                        (padding (make-string width ?\s)))
-                    (if (and (use-region-p)
-                             (< 0 (hel-region-direction)))
-                        (progn
-                          (hel--exchange-point-and-mark)
-                          (insert padding)
-                          (hel--exchange-point-and-mark))
-                      ;; else
-                      (insert padding))))))))))))
+                  ;; The padding goes before the selection.
+                  (hel-save-selection
+                    (goto-char (car (hel-selection-bounds selection)))
+                    (insert (make-string width ?\s))))))))))))
 
 ;; C
 (hel-define-command hel-copy-selection (count)
@@ -1055,9 +1061,9 @@ one that the cursor covers, stands in the column of the rightmost one."
   (interactive "p")
   (hel-with-each-cursor
     (hel-motion-loop (dir count)
-      (if (use-region-p)
-          (hel--copy-selection dir)
-        (hel--copy-cursor dir)))))
+      (if (hel-bare-cursor-p)
+          (hel--copy-cursor dir)
+        (hel--copy-selection dir)))))
 
 ;; M-c
 (hel-define-command hel-copy-selection-up (count)
@@ -1068,39 +1074,41 @@ one that the cursor covers, stands in the column of the rightmost one."
   (hel-copy-selection (- count)))
 
 (defun hel--copy-cursor (direction)
-  "Copy point toward the DIRECTION."
-  (when-let* ((pos (save-excursion
-                     (cl-loop with column = (current-column)
-                              while (zerop (forward-line direction))
-                              when (= (move-to-column column) column)
-                              return (point))))
-              ((not (hel-secondary-cursor-at pos))))
-    (unless (hel-secondary-cursor-at (point))
-      (hel-create-secondary-cursor))
-    (deactivate-mark)
-    (goto-char pos)))
+  "Copy the bare cursor to the next line in DIRECTION with its column.
+The copy goes to the nearest line that reaches that column."
+  (-let* (((begin . end) (hel-selection-bounds))
+          (pos (save-excursion
+                 (goto-char begin)
+                 (cl-loop with column = (current-column)
+                          while (zerop (forward-line direction))
+                          when (= (move-to-column column) column)
+                          return (point)))))
+    (when (and pos (not (hel-secondary-cursor-at pos)))
+      (unless (hel-secondary-cursor-at begin)
+        (hel-create-secondary-cursor (cons begin end)))
+      (hel-set-cursor pos))))
 
 (defun hel--copy-selection (direction)
-  "Copy region toward the DIRECTION."
-  (-let* ((((beg . end) region-dir) (hel-selection))
-          (num-of-lines (count-lines beg end))
-          (beg-column (save-excursion (goto-char beg) (current-column)))
+  "Copy the selection to the lines next to it in DIRECTION.
+The copy has the columns, the number of lines and the direction of the
+selection.  Nothing happens when a secondary cursor already holds the copy."
+  (-let* (((selection &as (begin . end)) (hel-selection))
+          (num-of-lines (count-lines begin end))
+          (begin-column (save-excursion (goto-char begin) (current-column)))
           (end-column (save-excursion (goto-char end) (current-column))))
     (when-let* ((bounds (save-excursion
-                          (goto-char (if (< direction 0) beg end))
+                          (goto-char (if (< direction 0) begin end))
                           (hel--bounds-of-following-range
-                           beg-column end-column num-of-lines direction))))
-      (let (point mark)
-        (if (< (or region-dir -1) 0)
-            (-setq (point . mark) bounds)
-          (-setq (mark . point) bounds))
-        (if-let* ((cursor (hel-secondary-cursor-at point))
-                  ((= mark (hel--secondary-cursor-mark cursor))))
-            nil ;; Do nothing — secondary cursor is already at desired position.
-          ;; else
+                           begin-column end-column num-of-lines direction))))
+      (let* ((copy (cons bounds (cdr selection)))
+             (copy-point (if (eql (hel-selection-direction copy) 1)
+                             (cdr bounds)
+                           (car bounds))))
+        (unless (equal copy (-some-> (hel-secondary-cursor-at copy-point)
+                              (hel--secondary-cursor-value)
+                              (cdr)))
           (hel-create-secondary-cursor)
-          (goto-char point)
-          (set-marker (mark-marker) mark))))))
+          (apply #'hel-select copy))))))
 
 (defun hel--bounds-of-following-range ( start-column end-column
                                         number-of-lines direction)
@@ -1159,7 +1167,9 @@ of the last one."
   :multiple-cursors nil
   (interactive)
   (when hel-multiple-cursors-mode
-    (let ((ranges (-map #'-second-item (hel-selections))))
+    (let ((ranges (-map (-lambda ((_id . selection))
+                          (hel-selection-bounds selection))
+                        (hel-selections))))
       (hel-disable-multiple-cursors-mode)
       (hel-select (cons (car (-first-item ranges))
                         (cdr (-last-item ranges)))))))
@@ -1226,15 +1236,18 @@ of the last one."
 
 (defun hel--rotate-selections-content (count &optional backward)
   (when hel-multiple-cursors-mode
-    (let ((dir (and (region-active-p) (hel-region-direction))))
+    (let ((dir (hel-selection-direction)))
       ;; To rotate the content of adjacent selections, all regions need
-      ;; a negative direction.  Text inserted at the point of a secondary cursor
-      ;; goes before it, and text inserted at its mark goes after it, see
-      ;; `hel--save-cursor'.  The beginning of a region must move on an
-      ;; insertion at its position, and the end must not.  A bare cursor
-      ;; gets the region of its cursor character, which it rotates.
+      ;; a negative direction. Text inserted at the point of a secondary
+      ;; cursor goes before it, and text inserted at its mark goes after it,
+      ;; see `hel--save-cursor'. The beginning of a region must move on an
+      ;; insertion at its position, and the end must not. A bare cursor gets
+      ;; the region of its cursor character, which it rotates, so the region
+      ;; is set here and not with `hel-select'.
       (hel-with-each-cursor
-        (hel-select (hel-selection-bounds) -1))
+        (-let [(begin . end) (hel-selection-bounds)]
+          (set-mark end)
+          (goto-char begin)))
       (hel-with-main-cursor-as-secondary
         (let ((cursors (hel-all-secondary-cursors :sort)))
           (when backward
@@ -1258,12 +1271,15 @@ of the last one."
   "Replace the text in the region of the secondary CURSOR with CONTENT.
 Return the text that was there."
   (hel-with-secondary-cursor cursor
-    (let ((deactivate-mark nil) ;; Do not deactivate mark after insertion.
-          (dir (hel-region-direction))
-          (new-content (buffer-substring (point) (mark))))
-      (delete-region (point) (mark))
+    (-let* ((deactivate-mark nil) ;; Do not deactivate mark after insertion.
+            ((begin . end) (hel-range (point) (mark)))
+            (new-content (buffer-substring begin end)))
+      (delete-region begin end)
+      (goto-char begin)
       (insert content)
-      (hel-ensure-region-direction dir)
+      ;; The region covers the new text backward, as the rotation set it.
+      (set-marker (mark-marker) (point))
+      (goto-char begin)
       new-content)))
 
 ;; (keymap-lookup nil "M-<down-mouse-1>")
@@ -1284,7 +1300,7 @@ Return the text that was there."
                 ((numberp pos)))
       (if-let* ((cursor (hel-secondary-cursor-at pos)))
           (hel-delete-secondary-cursor cursor)
-        (hel-create-secondary-cursor (hel-char-range pos) -1 nil)))))
+        (hel-create-secondary-cursor (hel-char-range pos))))))
 
 ;;;; Digit arguments
 
@@ -1983,11 +1999,12 @@ take the least indentation of the region."
           (propertize "x" 'face 'help-key-binding))
   :multiple-cursors t
   (interactive)
-  (when-let* (((-let [(begin . end) (hel-selection-bounds)] (< begin end)))
+  (when-let* ((selection (hel-selection))
+              ((-let [((begin . end)) selection] (< begin end)))
               (key (read-char "Surround: " t)))
     (-let* (((delimiters . padding) (hel-surround--delimiters key))
-            (linewise? (and padding (hel-linewise-selection-p))))
-      (when (and (use-region-p) (not linewise?))
+            (linewise? (and padding (hel-line-selection-p selection))))
+      (unless (or linewise? (hel-bare-cursor-p selection))
         (hel-trim-whitespace-from-selection))
       (-let [(begin . end) (hel-selection-bounds)]
         (hel-save-selection
@@ -2185,16 +2202,16 @@ narrowing doesn't affect other windows displaying the same buffer. Call
 cursor does nothing: a buffer narrowed to one character is useless."
   :multiple-cursors t
   (interactive)
-  (unless (hel-bare-cursor-p)
-    (-let ((orig-buffer (current-buffer))
-           (name (or buffer-file-name
-                     list-buffers-directory))
-           ((begin . end) (hel-selection-bounds)))
-      (deactivate-mark)
-      (hel-clone-indirect-buffer-same-window)
-      (setq list-buffers-directory name
-            hel--narrowed-base-buffer orig-buffer)
-      (narrow-to-region begin end))))
+  (-let [(selection &as (begin . end)) (hel-selection)]
+    (unless (hel-bare-cursor-p selection)
+      (let ((orig-buffer (current-buffer))
+            (name (or buffer-file-name
+                      list-buffers-directory)))
+        (deactivate-mark)
+        (hel-clone-indirect-buffer-same-window)
+        (setq list-buffers-directory name
+              hel--narrowed-base-buffer orig-buffer)
+        (narrow-to-region begin end)))))
 
 ;; zw
 (hel-define-command hel-widen-indirectly-narrowed (&optional arg)

@@ -565,7 +565,8 @@ under the selection."
   (if hel-selection-history
       (progn
         (pop hel-selection-history)
-        (hel--restore-selection (car hel-selection-history))
+        (-let [(selection) (car hel-selection-history)]
+          (apply #'hel-select selection))
         ;; The oldest entry alone is not a chain any more.
         (unless (cdr hel-selection-history)
           (setq hel-selection-history nil))

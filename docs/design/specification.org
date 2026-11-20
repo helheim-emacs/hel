@@ -65,19 +65,43 @@ moving.
   not ~(anchor . head)~, which looks like a range but has no order.
   A selection of at most one character has no direction, and its
   DIRECTION is ~nil~: it has nothing to grow from on either side, and the
-  user cannot turn it around. ~hel-select~ stores it with point before the
-  character. A longer range without a direction means that the caller has
-  lost the direction, so ~hel-select~ signals an error there instead of
-  guessing an end for point. An entry of the history of =M-i= holds a selection, and an
-  entry of one character comes back as a bare cursor.
+  user cannot turn it around. ~hel-select~ stores it as a bare cursor.
+  A longer range without a direction means that the caller has lost the
+  direction, so ~hel-select~ signals an error there instead of guessing an
+  end for point. An entry of the history of =M-i= holds a selection and
+  comes back as that selection.
 - A command is a function of the selection value: two equal values give
   the same result. A bare cursor and an active region over the same one
   character are one value, because the user cannot tell them apart, and
   ~mark-active~ only stores the value. So commands ask ~hel-bare-cursor-p~,
-  which tests the length of the range, and never ~use-region-p~ to decide
-  what the user sees; a ~use-region-p~ in a command only guards code that
-  needs a mark. The one exception is a line selection of an empty line,
-  which ~hel-linewise-selection-p~ tells from a bare cursor by the active
+  and never ~use-region-p~ to decide what the user sees; a ~use-region-p~
+  in a command only guards code that needs a mark. The code that only
+  stores a selection, the writers and the merge, asks the length of the
+  range instead, because there the length is the question: a direction
+  needs at least two characters.
+- The line selection of an empty line is the one selection that its range
+  cannot tell apart: =x= on an empty line and a bare cursor there cover the
+  same newline. The user means different things by them, because Hel lets
+  the user decide at the destination where pasted text goes: after =x=,
+  =p= puts the text on a line of its own, and on a bare cursor it fills the
+  line. So this selection carries a third element, LINE?: ~(RANGE nil t)~.
+  LINE? is a private flag: code asks ~hel-line-selection-p~ and
+  ~hel-bare-cursor-p~ and never reads the flag, so that a value built by
+  hand without it stays valid. Every other selection leaves LINE? out, so a selection has one form and
+  ~equal~ agrees with what the user sees. The reader adds LINE? only when
+  the range is one empty line, so a stored value whose line has gained
+  text since reads back as a bare cursor, and no code has to keep the bit
+  in step with the buffer. The writer, ~hel-select~, makes one character
+  a bare cursor unless LINE? asks for the line selection, so no code makes
+  a line selection by accident. The line selection is not a bare cursor,
+  although it covers one character: the user sees a selected line, so it
+  acts as a line. =;= collapses it to a bare cursor, =d= and =c= put its
+  newline in the kill ring, and =s= keeps it as a selection.
+- The line selection of an empty line has the face of the region to the
+  edge of the window, as a selected line has, and a bare cursor on the same
+  line does not. So two selections that act differently also look
+  different. Hel paints it with the face ~region~ with ~:extend~, whatever
+  the theme gives ~region~, in the selected window only, as Emacs shows the
   region.
 - A selection always exists. It is the active region when that is not
   empty, and otherwise the /cursor character/: the character after point,
@@ -114,18 +138,21 @@ moving.
   line.
 - =M-;= does nothing on a bare cursor, as Helix swaps nothing on a cursor
   whose anchor and head are one position. =_= does nothing on a bare
-  cursor, so =ms= on a blank wraps that blank. =zn= does nothing on a bare
-  cursor: a buffer narrowed to one character is useless.
+  cursor, so =ms= on a blank wraps that blank. =_= trims only inside the
+  selection, and does nothing on a selection of blanks only, since nothing
+  would remain. =zn= does nothing on a bare cursor: a buffer narrowed to one
+  character is useless.
 - =d= and =D= leave the cursor on the character before the deleted text.
-  A selection of one character, such as a bare cursor, is the exception,
-  because there the user deletes a character rather than text: neither
+  A bare cursor is the exception, because there the user deletes
+  a character rather than text: neither
   command puts it in the kill ring, where a single character only
   clutters it. =d= then works like =<Backspace>= and leaves the cursor on
   the character before, and =D= works like =<Delete>= and leaves it on
   the character after. At the beginning of the buffer the cursor goes
-  onto the first character. =c= keeps one character out of the kill ring
-  for the same reason. On an empty line =c= keeps the newline and inserts
-  the indentation of the mode, as for a selection of whole lines.
+  onto the first character. =c= keeps the character of a bare cursor out
+  of the kill ring for the same reason. On an empty line =c= keeps the
+  newline and inserts the indentation of the mode, as for a selection of
+  whole lines.
 - =y= copies one character too, because the user asks for the copy, and
   a character that is not on the keyboard is worth copying. =*= and =M-*=
   take no pattern from one character: such a pattern is rarely wanted,
@@ -141,7 +168,8 @@ moving.
 - The lines of a selection run from the line of its first character to
   the line of its last character. So a selection that ends with a newline
   does not take the next line in, and a bare cursor on a newline has the
-  line that this newline ends. =x=, =>=, =<= and =J= follow this rule.
+  line that this newline ends. =x=, =>=, =<= and =J= follow this rule,
+  and =o= and =] SPC= add lines after the line of the last character.
 - A command that edits around the selection, such as =J=, =>=, =<=, =ms=
   and =mr=, keeps the selection on its text. Text inserted at either end
   stays outside the selection, and when the command replaces the text of
@@ -157,16 +185,16 @@ moving.
   old selection, and give a bare cursor, which has none, a default:
   forward, or the direction of the motion. So =R= on a bare cursor
   replaces the cursor character, and the cursor ends on the last character
-  of the pasted text. =v= on a bare cursor activates its region of one
-  character, which has no direction: point stays before the character, so
-  a command that drops the region leaves the same cursor character.
+  of the pasted text. =v= on a bare cursor leaves it bare: the next motion
+  keeps its character and grows the selection the way the motion goes.
 - =mm= moves the cursor character from a bracket to its match, and from
   inside a pair to the closing bracket, as in Helix. When extending, the
   head character moves and the anchor character stays, as with =h= and =l=.
-- Two levels write the selection. Two primitives store it and decide
-  nothing: ~hel-select~ stores an active region from a range and
-  a direction, and ~hel-set-cursor~ stores a bare cursor from point. Two
-  motions decide where the cursor goes and end with a primitive.
+- Two levels write the selection. Two primitives store it:
+  ~hel-select~ stores a selection value, an active region from a range and
+  a direction, or a bare cursor for one character, and ~hel-set-cursor~
+  stores a bare cursor from point. Two motions decide where the cursor goes
+  and end with a primitive.
   ~hel-move-onto-char~ goes to a character, for =h=, =l= and =mm=, and
   computes the direction itself. ~hel-move-to-pos~ goes to a position, for
   every other motion: it selects the text that the motion passed over, or
@@ -201,12 +229,16 @@ moving.
   window that owned the selection was deleted or shows another buffer, the
   window that the user enters still gets its own selection, not the mark
   that the gone window left.
-- The cursors are values ~(ID RANGE DIRECTION ACTIVE)~: one reader returns
+- The cursors are values ~(ID . SELECTION)~: one reader returns
   them all, an algorithm computes a new list, and one writer moves the
-  cursors by their ID, so each secondary cursor keeps its kill ring. The merge
+  cursors by their ID, so each secondary cursor keeps its kill ring. The
+  value holds no flag of an active region, because the user cannot see it:
+  two cursors that look the same have equal values, and the writer leaves
+  a cursor alone when its value has not changed. The merge
   after a command joins overlapping selections; the main cursor survives a
   merge with its own state, because the cursors are interchangeable and
-  then no state is copied. The set of cursor kinds is closed and the main
+  then no state is copied. A merged selection of one empty line is a line
+  selection when any cursor of the group selects the line. The set of cursor kinds is closed and the main
   cursor has no data of its own, so plain values serve where generic
   functions over two structs would only dispatch. The secondary cursors replay
   a command in buffer order, which keeps the cost of ~syntax-ppss~ linear in

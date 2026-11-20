@@ -173,6 +173,11 @@ installed dash has no `-uniq-by`.
   reference is no cost.
 - Add a macro only when the reader understands a call without expanding
   it, as with `hel-motion-loop`. Repetition alone is no reason.
+- Ask the predicate that names the concept, never compute the concept from
+  its parts: `hel--empty-line-range-p`, not a length and a test of the
+  characters around the range. As with a raw loop, the reader should see
+  the intention, not reconstruct it. When code needs a comment to say what
+  it computes, look for the function that already has that name.
 - Every public name is a cost. Add no command or option for a situation
   that a restart of Emacs solves.
 - A method of a thing keeps `(eql 'THING)` next to its producer
@@ -187,7 +192,21 @@ command treats a bare cursor like any other selection, and never gives the
 character in its own way, it names the concept: it asks `hel-bare-cursor-p`,
 never `use-region-p` or the length of the range, such as
 `(< 1 (- end begin))`. To get the bounds as well, destructure the value:
-`(-let [(selection &as (begin . end)) (hel-selection)] ...)`.
+`(-let [(selection &as (begin . end)) (hel-selection)] ...)`. Read the
+selection once, with `(hel-selection)`, and pass the value to the
+predicates and accessors: `(hel-bare-cursor-p selection)`, not
+`(hel-bare-cursor-p)` next to `(hel-selection-bounds)`. Read it again only
+after the command has changed it. The line
+selection of an empty line covers one character too, but it is not a bare
+cursor: the user sees a selected line. The code that only stores
+a selection, `hel-select`, the writers of the secondary cursors and the
+merge, asks the length of the range instead, `(hel-range-length range)`:
+there the length is the question, because a direction needs at least two
+characters. Never wrap a range as `(list range)` to ask
+`hel-bare-cursor-p`. The third element of a selection value is a private
+flag. Never read it: ask `hel-line-selection-p` or `hel-bare-cursor-p`.
+Pass it to `hel-select` only through `(apply #'hel-select selection)`, or
+as t to select an empty line as a line.
 
 **All files use `lexical-binding: t`.**
 
@@ -306,7 +325,7 @@ to scope bindings to specific Hel states:
 - `docs/`: user-facing documentation (`customization.org`,
   `keybindings.org`), demo videos, and `design/`: the specification, the
   open questions (`open-questions.org`), the notes of work that is still
-  open (`multiple-cursors-performance.org`,
+  open (`line-selection.org`, `multiple-cursors-performance.org`,
   `sean-parent-goals-review.org`), and `archive/` for design notes that are
   implemented or out of date. Not part of the package.
 - `queries/`: tree-sitter text object queries, see above.

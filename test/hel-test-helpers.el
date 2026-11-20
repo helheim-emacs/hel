@@ -15,10 +15,15 @@
 ;; Notation of a marked text:
 ;;
 ;;   |   main cursor (point)
-;;   ^   the other end of the main selection (mark); it is shown only while
-;;       the selection is active and not empty
+;;   ^   the other end of the main selection (mark); it is shown only when
+;;       the selection is not a bare cursor
 ;;   ¦   point of a secondary cursor
 ;;   ¬   the other end of the selection of a secondary cursor
+;;
+;; `hel-test-render' shows the selection value, not how Emacs stores it.
+;; A bare cursor is `|' before its cursor character, also when Emacs keeps
+;; an active region over that character.  The line selection of an empty
+;; line is not a bare cursor: "a\n|\n^b".
 ;;
 ;; A literal `|' or `^' in the text is written twice.  An input text marks
 ;; only the main cursor; `hel-test-render' shows all of them.
@@ -56,34 +61,30 @@ state, also one that no command leaves, such as a far inactive mark."
 
 (defun hel-test-secondary-cursors ()
   "Return the secondary cursors as a list of (POINT . MARK), sorted by POINT.
-MARK is nil when the cursor has no selection, or its selection is empty."
+The list shows the selection value of each cursor, not how Emacs stores
+it.  A bare cursor is (BEGIN . nil), at the start of its cursor
+character.  Any other selection gives point and the mark."
   (sort (mapcar (lambda (cursor)
-                  (let ((point (hel--secondary-cursor-point cursor))
-                        (mark (and (overlay-get cursor 'mark-active)
-                                   (hel--secondary-cursor-mark cursor))))
-                    (cons point (unless (eql point mark) mark))))
+                  (-let [(_id . selection) (hel--secondary-cursor-value cursor)]
+                    (if (hel-bare-cursor-p selection)
+                        (list (car (car selection)))
+                      (cons (hel--secondary-cursor-point cursor)
+                            (hel--secondary-cursor-mark cursor)))))
                 (hel-all-secondary-cursors))
         (lambda (a b) (< (car a) (car b)))))
 
 (defun hel-test-selection ()
-  "Return the text of the main selection, or nil when there is none."
-  (and (use-region-p)
-       (buffer-substring-no-properties (region-beginning) (region-end))))
+  "Return the text of the main selection.
+The text of a bare cursor is its cursor character."
+  (-let [(begin . end) (hel-selection-bounds)]
+    (buffer-substring-no-properties begin end)))
 
 (defun hel-test-selections ()
   "Return the selected text of every cursor, in buffer order.
-A cursor without a selection gives the empty string."
-  (let ((all (cons (if (use-region-p)
-                       (cons (region-beginning) (hel-test-selection))
-                     (cons (point) ""))
-                   (mapcar (lambda (cursor)
-                             (let ((point (hel--secondary-cursor-point cursor))
-                                   (mark (hel--secondary-cursor-mark cursor)))
-                               (cons (min point mark)
-                                     (buffer-substring-no-properties
-                                      (min point mark) (max point mark)))))
-                           (hel-all-secondary-cursors)))))
-    (mapcar #'cdr (sort all (lambda (a b) (< (car a) (car b)))))))
+The text of a bare cursor is its cursor character."
+  (mapcar (-lambda ((_id (begin . end)))
+            (buffer-substring-no-properties begin end))
+          (hel-selections)))
 
 (defun hel-test-cursor-chars ()
   "Return the selection of every cursor as (TEXT DIRECTION), in buffer order.
@@ -100,7 +101,7 @@ TEXT has at most one character."
                                       (hel--secondary-cursor-mark cursor)
                                       (overlay-get cursor 'mark-active)))))
                            (hel-all-secondary-cursors)))))
-    (mapcar (pcase-lambda (`(,_ (,begin . ,end) ,dir))
+    (mapcar (pcase-lambda (`(,_ (,begin . ,end) ,dir . ,_))
               (list (buffer-substring-no-properties begin end) dir))
             (sort all (lambda (a b) (< (car a) (car b)))))))
 
@@ -179,8 +180,11 @@ share, each with the cursor at another place."
 (defun hel-test-render ()
   "Return the accessible text of the buffer as a marked text."
   (let (marks)
-    (push (cons (point) ?|) marks)
-    (when (use-region-p)
+    ;; The marks show the selection value, not how Emacs stores it: a bare
+    ;; cursor is `|' at the start of its cursor character.
+    (if (hel-bare-cursor-p)
+        (push (cons (car (hel-selection-bounds)) ?|) marks)
+      (push (cons (point) ?|) marks)
       (push (cons (mark) ?^) marks))
     (pcase-dolist (`(,point . ,mark) (hel-test-secondary-cursors))
       (push (cons point ?¦) marks)
