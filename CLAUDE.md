@@ -57,6 +57,11 @@ are in Emacs syntax. See `queries/README.org`.
 `docs/design/specification.org` describes structural editing, text objects
 and ranges: the rules that the code implements. Every change to that code
 updates the specification in the same step, so the two always agree.
+The specification holds rules, their reasons and the laws, a sentence or
+two each. It holds no code listings, struct definitions, lists of tests or
+private function names, because copied code drifts from the source. Tests
+cite its section names (`Section "...` in `test/`), so check them before
+renaming a section.
 
 ### State System
 
@@ -99,6 +104,15 @@ command.
 ## Coding Conventions
 
 **Naming:**
+- Spell words out: `:begin`, not `:beg`. Short names do not make code
+  shorter or faster; they make the reader decode them. `pos` and `dir`
+  are the exception
+- A name starts with its subject, not with its file: `hel-node-parent`,
+  not `hel-tree-parent`, because a node has a parent and a tree does not.
+  The tree as a whole takes `hel-tree-`, one node `hel-node-`
+- Use common English words, and reuse the term that Hel already has
+  ("cursor character", "bare cursor") before you invent one. Write
+  `char`, not `character`, as Emacs does (`forward-char`)
 - `hel-` prefix for public symbols: an extension or a user may rely on them
 - `hel--` prefix for symbols internal to Hel core: they can change without
   notice, any core file may use them, and no extension may
@@ -142,8 +156,34 @@ command.
 - `hel-defvar-permanent-local` (in `hel-vars.el`): a buffer-local variable
   that survives major-mode changes (`permanent-local` property)
 
-**Libraries:** use `dash.el` functions and its threading macros (`->`, `->>`,
-`-some->>`) freely, but not the anaphoric `--` forms.
+**Libraries:** prefer `dash.el` over `cl-lib`, `seq` and built-in loops
+wherever a function fits: `-each` over `dolist`, `-all?` over `cl-every`,
+`-last-item` over `(car (last ...))`, `-let` for destructuring. Use the
+threading macros (`->`, `->>`, `-some->>`) for a chain of three or more
+steps, for a list that would otherwise come after a long lambda, or in
+place of a `nil` check before the next call. Leave a simple `(f (g x))` as
+it is. Never use the anaphoric `--` forms or `-->`: they bind `it`
+implicitly. Fix the first arguments with `-partial`, or write a lambda.
+Dash works on lists only: keep `aref` and `seq-*` for vectors. The
+installed dash has no `-uniq-by`.
+
+**Structure:**
+- Order a file from the top: the main idea first, the details below. Lisp
+  allows a call to a function that is defined later, so a forward
+  reference is no cost.
+- Add a macro only when the reader understands a call without expanding
+  it, as with `hel-motion-loop`. Repetition alone is no reason.
+- Every public name is a cost. Add no command or option for a situation
+  that a restart of Emacs solves.
+- A method of a thing keeps `(eql 'THING)` next to its producer
+  specializer, so that the reader sees which thing it serves.
+- A redesign follows the new model (producers, things, Helix semantics)
+  and gives each rule its own reason, never "as the old command does".
+
+**Selections:** a bare cursor is a selection of one character, the cursor
+character. Whether the mark is active is invisible to the user, so a
+command treats a bare cursor like any other selection, and never gives the
+"no region" case behaviour of its own.
 
 **All files use `lexical-binding: t`.**
 
@@ -205,6 +245,15 @@ make deps                     # install the dependencies into .deps/
   from the Elpaca build directory. Set `HEL_TEST_DEPS` for another layout.
 - CI (`.github/workflows/test.yml`) runs `make deps` and `make -k check` on
   Emacs 29.4, 30.2, 31.1 and the snapshot.
+- The user edits the files while an agent works. A temporary change, such
+  as breaking code to check that a test catches it, goes into a separate
+  `git worktree` in a scratch directory, never into the user's checkout.
+- A rename covers `hel/*.el`, `test/`, `docs/design/`, `docs/*.org` and the
+  extensions that use the name, such as `hel-paredit` and its `test/`.
+  It leaves `CHANGELOG.org` and the archive alone, because they record
+  history. `hel-dot-repeat` is a stale copy of Hel, so a match there says
+  nothing about who uses a name. Before renaming an argument or a local
+  variable, search the function body for the new name.
 
 The Emacs MCP (`mcp__emacs__eval-elisp`) is still the tool for quick
 experiments in the live Emacs:
