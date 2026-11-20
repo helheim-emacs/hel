@@ -62,9 +62,23 @@ moving.
   with ~equal~. ~hel-range~ builds one from two positions in any order.
 - A /direction/ is 1 or -1, a separate argument.
 - A /selection/ is ~(RANGE DIRECTION)~, the arguments of ~hel-select~, and
-  not ~(anchor . head)~, which looks like a range but has no order. An entry
-  of the history of =M-i= also records whether the region was active, so
-  a chain that began at a bare cursor returns to its cursor character.
+  not ~(anchor . head)~, which looks like a range but has no order.
+  A selection of at most one character has no direction, and its
+  DIRECTION is ~nil~: it has nothing to grow from on either side, and the
+  user cannot turn it around. ~hel-select~ stores it with point before the
+  character. A longer range without a direction means that the caller has
+  lost the direction, so ~hel-select~ signals an error there instead of
+  guessing an end for point. An entry of the history of =M-i= holds a selection, and an
+  entry of one character comes back as a bare cursor.
+- A command is a function of the selection value: two equal values give
+  the same result. A bare cursor and an active region over the same one
+  character are one value, because the user cannot tell them apart, and
+  ~mark-active~ only stores the value. So commands ask ~hel-bare-cursor-p~,
+  which tests the length of the range, and never ~use-region-p~ to decide
+  what the user sees; a ~use-region-p~ in a command only guards code that
+  needs a mark. The one exception is a line selection of an empty line,
+  which ~hel-linewise-selection-p~ tells from a bare cursor by the active
+  region.
 - A selection always exists. It is the active region when that is not
   empty, and otherwise the /cursor character/: the character after point,
   on which every command acts, as under the box cursor of Emacs and the
@@ -72,46 +86,70 @@ moving.
   with it. The inactive mark plays no part, so a command outside Hel that
   moves point always leaves the right cursor character, and no rule has to
   guard against a stale mark. At the end of the buffer the selection is
-  empty. A direction belongs only to an active selection: a forward one has
-  its head character before point, the one case where point is after the
-  cursor. So =;= and =<Esc>= move point onto the head character, =j= and
-  =k= first collapse a selection onto it and then keep its column, as Emacs
-  keeps the column of point.
-- Insert state never moves the selection, as in Helix. The text typed
-  after =a= joins the selection, so the cursor character becomes the last
-  character typed, and point steps back before it; after every other
-  command the text lands before the selection, and the cursor character
-  stays the one after it. So =<Esc>= with nothing typed leaves the
-  selection as it was, and the same key continues the typing at the same
-  place.
+  empty. A direction belongs only to a selection of more than one
+  character: a forward one has its head character before point, the one
+  case where point is after the cursor. So =;= and =<Esc>= move point onto
+  the head character, =j= and =k= first collapse a selection onto it and
+  then keep its column, as Emacs keeps the column of point. On a bare
+  cursor =;= stops the search, and =<Esc>= in wdired leaves wdired. A search
+  match of one character is a bare cursor too, so the first =<Esc>= on it
+  stops the search, while a longer match needs two presses.
+- The text typed in Insert state becomes the selection, after every key
+  that starts Insert state. One rule then covers =i=, =a=, =c=, =o=, =O=,
+  =I= and =A=, and the user can act on the typed text at once. The
+  selection is forward, so the cursor character is the last character
+  typed, where Vim leaves the cursor; one typed character is a bare cursor
+  on it. So a repeated =i= types before the text typed last, as in Vim.
+  Helix differs: there the text typed after =i= lands before the
+  selection, and the selection stays. The typed text runs from the place
+  where Insert state started to point: the mark of each cursor keeps that
+  place. When the user moves point in Insert state, the selection is the
+  way that point went from that place, in either direction, as for
+  a motion. When
+  nothing was typed, the selection stays as it was before =i=, =a=, =I= or
+  =A=; after =c=, =o= and =O=, which change the buffer, the cursor stays
+  where the typing would start.
 - =a= never leaves the line where the selection ends: when the selection
   ends with a newline, the typing starts before it. =o= and =O= open a new
   line.
-- =M-;= does nothing on the cursor character, as Helix swaps nothing on
-  a cursor whose anchor and head are one position.
+- =M-;= does nothing on a bare cursor, as Helix swaps nothing on a cursor
+  whose anchor and head are one position. =_= does nothing on a bare
+  cursor, so =ms= on a blank wraps that blank. =zn= does nothing on a bare
+  cursor: a buffer narrowed to one character is useless.
 - =d= and =D= leave the cursor on the character before the deleted text.
-  A selection of one
-  character, such as a bare cursor, is the exception, because there the
-  user deletes a character rather than text: neither command puts it in
-  the kill ring, where a single character only clutters it. =d= then
-  works like =<Backspace>= and leaves the cursor on the character before,
-  and =D= works like =<Delete>= and leaves it on the character after. At
-  the beginning of the buffer the cursor goes onto the first character.
-- =f=, =t=, =F= and =T= start from the cursor as Helix does: from a bare
-  cursor the search starts after the cursor character, and the selection
-  takes it in. So =t= skips the character right after the cursor, and
-  a repeated =t= moves on. From an active region they start at point. When
-  the character is not found, the selection stays.
-- =p= without a selection pastes after the cursor character and =P=
+  A selection of one character, such as a bare cursor, is the exception,
+  because there the user deletes a character rather than text: neither
+  command puts it in the kill ring, where a single character only
+  clutters it. =d= then works like =<Backspace>= and leaves the cursor on
+  the character before, and =D= works like =<Delete>= and leaves it on
+  the character after. At the beginning of the buffer the cursor goes
+  onto the first character. =c= keeps one character out of the kill ring
+  for the same reason. On an empty line =c= keeps the newline and inserts
+  the indentation of the mode, as for a selection of whole lines.
+- =y= copies one character too, because the user asks for the copy, and
+  a character that is not on the keyboard is worth copying. =*= and =M-*=
+  take no pattern from one character: such a pattern is rarely wanted,
+  and it would replace the last search. =y= and =/= search for one
+  character.
+- =f=, =t=, =F= and =T= are motions from the cursor, the head character
+  of the selection, whatever the length of the selection. The search
+  starts after the head character, so the first step never stops on it:
+  the user would see nothing happen. The new selection takes the head
+  character in, as in Helix. So =t= skips the character right after the
+  cursor, and a repeated =t= moves on. When the character is not found,
+  the selection stays.
+- =p= on a bare cursor pastes after the cursor character and =P=
   before it. Like =a=, =p= keeps to the line: on a newline the text goes
   before the newline. =n= and =N= search from the edge of the selection,
   so from a bare cursor =n= starts after the cursor character and never
   finds the match that the cursor is already on.
-- =R= without a selection replaces the cursor character, and the pasted
-  text becomes a forward selection, so the cursor ends on its last
-  character. =v= on a bare cursor keeps the direction -1: its selection of
-  one character has point before the character, so a command that drops
-  the region leaves the same cursor character.
+- =R=, =p=, =P=, =n=, =N= and the node commands keep the direction of the
+  old selection, and give a bare cursor, which has none, a default:
+  forward, or the direction of the motion. So =R= on a bare cursor
+  replaces the cursor character, and the cursor ends on the last character
+  of the pasted text. =v= on a bare cursor activates its region of one
+  character, which has no direction: point stays before the character, so
+  a command that drops the region leaves the same cursor character.
 - =mm= moves the cursor character from a bracket to its match, and from
   inside a pair to the closing bracket, as in Helix. When extending, the
   head character moves and the anchor character stays, as with =h= and =l=.
@@ -163,6 +201,16 @@ moving.
   functions over two structs would only dispatch. The secondary cursors replay
   a command in buffer order, which keeps the cost of ~syntax-ppss~ linear in
   the number of cursors.
+- The commands over all cursors read the selection of each cursor, so
+  a bare cursor takes part with its cursor character. =M-)= and =M-(=
+  rotate the cursor characters of bare cursors as they rotate longer
+  selections. =M--= selects from the beginning of the first selection to
+  the end of the last one, and the inactive mark of a bare cursor plays no
+  part. =&= lines up the head characters, the characters under the
+  cursors. =s= searches only inside the selections that are not bare
+  cursors, because a search inside one character makes little sense: when
+  every selection is a bare cursor =s= does nothing, and otherwise the
+  matches replace all cursors.
 - The search session is an object, a ~cl-defstruct~ that owns a timer,
   overlays and a buffer. The scans that it runs are algorithms over
   positions outside it: ~hel-matches-in-range~ collects the visible
@@ -1310,12 +1358,15 @@ innermost pair around it. So with the cursor character after =|=, in
 
 ** Going outward
 
-At a bare point, =mi(= takes the pair at the cursor character. Here the
-cursor character does not count as a selection: the pair of a bracket does
-not hold that bracket inside it, so the rule below would skip it. With an
-active region, =mi(= takes the smallest pair whose inner text holds the
-selection and is larger,
-so a repeated =mi(= grows outward one pair per press, and =ma(= then =mi(= selects
+At a bare cursor, =mi(= takes the pair at the cursor character, and on =(=
+that is the pair that this =(= opens. Here the cursor character does not
+count as a selection: the pair of a bracket does not hold that bracket
+inside it, so the rule below would skip it. A region of one character is
+a bare cursor too. With a longer selection, =mi(= takes the smallest pair
+whose inner text holds the selection and is larger. The same rule holds
+for a selection of one character that the previous step of the chain
+made, as =mi(= on =(c)=: otherwise the next =mi(= would take the same
+pair again. So a repeated =mi(= grows outward one pair per press, and =ma(= then =mi(= selects
 inside the next pair outward. A count goes that many pairs outward, and
 stops at the outermost one. =M-i= returns to the selection before, as
 after =M-o=.

@@ -544,15 +544,16 @@ child."
 
 (defun hel--tree-select-first-child (producer)
   "Select the first child of the node under the selection.
-Keep the direction of an active region. At a bare cursor, the node is
-the one under the cursor character, and the child is selected forward.
+Keep the direction of the selection. At a bare cursor, which has no
+direction, the node is the one under the cursor character, and the child
+is selected forward.
 Return non-nil if the selection changed."
   (-let [(range dir) (hel-selection)]
     (when-let* (((not (hel--selection-between-nodes-p producer)))
                 (node (hel--node-on-selection producer))
                 (child (-first-item (hel--node-all-children producer node)))
                 ((not (equal child range))))
-      (hel-select child (if (use-region-p) dir 1))
+      (hel-select child (or dir 1))
       t)))
 
 (defun hel--tree-shrink-1 (producer)
@@ -655,7 +656,8 @@ it takes the nearest node in DIR. Return non-nil if the selection changed."
                   (range (hel-node-bounds producer node))
                   (sibling (hel-node-sibling producer node dir))
                   (target (hel-node-bounds producer sibling)))
-        (-let [((begin . end) side) (hel-selection)]
+        (-let* ((((begin . end) side) (hel-selection))
+                (side (or side dir)))
           (cond ((= dir side)
                  (hel-select (hel-range (if (< 0 side) begin end) (far target))
                              side))
@@ -673,10 +675,11 @@ it takes the nearest node in DIR. Return non-nil if the selection changed."
 (defun hel--tree-select-sibling (producer count extend)
   "Select the COUNT-th sibling of the node under the selection.
 A negative COUNT goes backward. At the last sibling, keep the selection.
-Keep the direction of an active region; at a bare cursor, the direction is
-that of the motion. When no node is under the selection, first select the
-nearest node in the direction of the motion. With EXTEND, extend the
-selection instead of replacing it. PRODUCER finds the nodes."
+Keep the direction of the selection; at a bare cursor, which has no
+direction, the direction is that of the motion. When no node is under
+the selection, first select the nearest node in the direction of the
+motion. With EXTEND, extend the selection instead of replacing it.
+PRODUCER finds the nodes."
   (if extend
       (let ((origin (point)))
         (when (/= count
@@ -686,9 +689,7 @@ selection instead of replacing it. PRODUCER finds the nodes."
           (hel-reveal-point-when-on-top)))
     (let* ((origin (point))
            (motion-dir (hel-sign count))
-           (selection-dir (if (use-region-p)
-                              (hel-selection-direction)
-                            motion-dir))
+           (selection-dir (or (hel-selection-direction) motion-dir))
            (between? (hel--selection-between-nodes-p producer))
            (node (if between?
                      (hel--node-beside-selection producer motion-dir)
@@ -717,9 +718,7 @@ FN takes no arguments and runs at each cursor with its selection."
   (hel-with-each-cursor
     (hel-extend-selection -1)
     (when-let* ((ranges (funcall fn)))
-      (hel-select-ranges ranges (if (use-region-p)
-                                     (hel-region-direction)
-                                   1))))
+      (hel-select-ranges ranges (or (hel-selection-direction) 1))))
   (hel-draw-cursor))
 
 (defun hel--tree-select-all-siblings (producer)

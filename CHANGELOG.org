@@ -1,6 +1,11 @@
 * [Unreleased]
 ** Added
 
+- ~hel-bare-cursor-p~ tells whether a selection covers at most its cursor
+  character. Commands ask it, and not ~use-region-p~, because a bare cursor
+  and an active region over the same one character look the same to the
+  user.
+
 - Extensions can use more of Hel. ~hel-node-producer~ returns the producer
   that the ~hel-node-~ operations take. ~hel-extend-selection~ is non-nil
   while =v= makes motions extend the selection. ~hel-word-motion~,
@@ -125,11 +130,35 @@
 - Without a selection, the cursor stands on the character after point, as the
   box cursor of Emacs and the cursor of Helix do, and =h= and =l= move it by
   one. =j= and =k= keep its column. =;= leaves the cursor on the character at
-  the head of the selection. Insert state never moves the selection, as in
-  Helix: after =i=, =I=, =A=, =o=, =O= and =c= the cursor stays on the
-  character after the typed text, and after =a= it stands on the last
-  character typed. So =<Esc>= with nothing typed leaves the cursor where it
-  was.
+  the head of the selection.
+
+- The text typed in Insert state becomes the selection, after =i=, =a=,
+  =c=, =o=, =O=, =I= and =A= alike, and the cursor stands on the last
+  character typed, as in Vim. So =d= or =y= right after the typing acts on
+  the typed text. When point moves in Insert state, the selection is the
+  way that point went from the start of the typing. With nothing typed,
+  =<Esc>= after =i=, =a=, =I= or =A= leaves the selection as it was. Helix
+  differs: there the text typed after =i= lands before the selection.
+  ~hel-reactivate-selection-after-insert-state~ is removed.
+
+- A bare cursor is a selection of one character, and every command treats
+  it the same as an active region over that character.
+  - =d= and =D= leave the cursor on the character before the deleted text.
+    On one character neither puts it in the kill ring: =d= works like
+    Backspace and leaves the cursor on the character before, and =D= works
+    like Delete and leaves it on the character after. =c= on one character
+    also keeps it out of the kill ring. =y= copies one character too.
+  - =*= and =M-*= take no pattern from one character.
+  - =f=, =t=, =F= and =T= start from the head character of any selection
+    and never stop on it.
+  - On one character =;= stops the search, so the first =<Esc>= on a search
+    match of one character stops the search. =M-;=, =_= and =zn= do
+    nothing on one character, and =ms= wraps it.
+  - =mi(= on =(= takes the pair that this =(= opens.
+  - =s= skips bare cursors. =M-)= and =M-(= rotate the cursor characters
+    of bare cursors. =M--= merges the selections of all cursors, bare ones
+    included, and ignores the mark that a bare cursor kept from an old
+    region. =&= aligns the cursor characters.
 
 - =mm= starts from the character under the cursor and moves the cursor onto
   the matching bracket, as in Helix. Inside a pair it goes to the closing
@@ -292,8 +321,10 @@
 
 - ~hel-selection~ returns ~(RANGE DIRECTION)~, the arguments of ~hel-select~,
   and it never returns nil: without an active region that is not empty, it
-  returns the one character next to point that the cursor stands on. Test
-  ~use-region-p~ to tell whether the user has selected text.
+  returns the one character next to point that the cursor stands on.
+  A selection of at most one character has the direction nil, whether the
+  region is active or not, and ~hel-select~ signals an error for nil on
+  a longer range.
   ~hel-selection-bounds~ and ~hel-selection-direction~ return the two parts.
   ~hel-trim-whitespace-from-range~, ~hel-invert-case-in-range~,
   ~hel-replace-chars~, ~hel-read-char-and-replace~ and ~hel-range-visible-p~

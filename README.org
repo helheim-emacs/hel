@@ -146,30 +146,26 @@ a slightly different way (improved from the author's point of view), and some
 features like keyboard macros, registers, and jumplists already have their
 alternatives in Emacs.
 
-- In Emacs the cursor ("point" in Emacs terms) is located *between* two characters
-  rather than *on* a character like in Helix or Vim. I decided to keep this
-  behavior, instead of emulating original one, as Evil does, because the primary
-  object of interaction in Helix approach is a selection, not the cursor itself.
-  This has consequences. In Helix, the cursor is a one-character selection, so
-  Helix always operates on a selection. Hel does not. It has two distinct states:
-  either selection exists, or not. Hel provides some DWIM ("do what I mean"):
+- Every cursor is a selection, as in Helix: a cursor without a selection
+  selects one character, the one under the box. Emacs keeps the cursor
+  ("point" in Emacs terms) *between* two characters, so this character is
+  the one after point. A few commands treat
+  a selection of one character in their own way, because there you work
+  with a character rather than with text:
 
-  - =d= / =D=
+  - =d= / =D= remove the selection from the buffer, and the cursor goes onto
+    the character before it. =d= copies the deleted text to the clipboard,
+    =D= does not (Vim taught me that you don't always want to copy deleted
+    text to the clipboard). On a single character neither of them touches
+    the clipboard, since it makes no sense to copy one character into it.
+    Then =d= works like =Backspace=: the cursor moves onto the character
+    before. =D= works like =Delete=: the cursor stays on the character
+    after.
 
-    - When there is a selection, both =d= and =D= remove it from the buffer: =d=
-      copies the deleted text to the clipboard, =D= does not (Vim taught me
-      that you don't always want to copy deleted text to the clipboard).
+  - =c= on a single character does not copy it to the clipboard either.
 
-    - When there is no selection, common text editors provide two keys for
-      deleting a character: =Backspace= deletes the character before the cursor,
-      =Delete= — after it. Hel adopts this idea: =d= deletes the character before
-      the cursor, =D= — after. None of them touches the clipboard, since it
-      makes no sense to copy a single character into it.
-
-  - =r= / =R=
-
-    - When there is a selection they behave the same as in Helix.
-    - With no selection =r= replaces character before cursor, =R= — after.
+  - =*= takes no search pattern from a single character. To search for one
+    character, copy it with =y= and search with =/=.
 
 - =x= and =X= commands expand or contract line-wise selections down when the
   cursor is at the end of the selection, or up when the cursor is at the

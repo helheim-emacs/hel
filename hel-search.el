@@ -547,7 +547,7 @@ index in `hel-search-counter' depends on point.")
           (hel-search-session-restart ss regexp))
       (hel-search-start regexp))
     ;;
-    (let ((region-dir (if (use-region-p) (hel-region-direction) 1)))
+    (let ((region-dir (or (hel-selection-direction) 1)))
       (hel-recenter-point-on-jump
         (hel-motion-loop (dir count)
           (when-let* ((pos (-let [(begin . end) (hel-selection-bounds)]
@@ -578,7 +578,9 @@ Auto-detect word boundaries at the beginning and end of the search pattern."
   (let ((quote-fn (if hel-use-pcre-regex #'rxt-quote-pcre #'regexp-quote))
         patterns)
     (hel-with-each-cursor
-      (when (use-region-p)
+      ;; A pattern of one character is rarely wanted, and it would replace
+      ;; the last search.  `y' and `/' search for one character.
+      (when (< 1 (hel-range-length (hel-selection-bounds)))
         (let* ((beg (region-beginning))
                (end (region-end))
                (open-word-boundary
@@ -618,7 +620,8 @@ Do not auto-detect word boundaries in the search pattern."
   (let* ((quote-fn (if hel-use-pcre-regex #'rxt-quote-pcre #'regexp-quote))
          (patterns (let (patterns)
                      (hel-with-each-cursor
-                       (when (use-region-p)
+                       ;; See `hel-construct-search-pattern' for one character.
+                       (when (< 1 (hel-range-length (hel-selection-bounds)))
                          (push (->> (buffer-substring-no-properties (point) (mark))
                                     (funcall quote-fn))
                                patterns)))
@@ -634,17 +637,23 @@ Do not auto-detect word boundaries in the search pattern."
 
 ;; s
 (hel-define-command hel-select-in-selections (&optional invert)
-  "Create new selection withing current for all matches to the regexp."
+  "Create new selection withing current for all matches to the regexp.
+Search only inside the selections that are not bare cursors: a search
+inside one character makes little sense.  When every selection is a bare
+cursor, do nothing.  Otherwise the matches replace all cursors."
   :multiple-cursors nil
   (interactive)
-  (when (region-active-p)
-    (let* ((cursors (hel-selections))
-           ;; The main cursor goes first, so that it takes the first
-           ;; match inside its own selection.
-           (regions (-map #'cadr (-let [(main others)
-                                        (-separate (-lambda ((id)) (eql id 0))
-                                                   cursors)]
-                                   (append main others)))))
+  (let* ((cursors (hel-selections))
+         ;; The main cursor goes first, so that it takes the first
+         ;; match inside its own selection.
+         (regions (->> (-let [(main others)
+                              (-separate (-lambda ((id)) (eql id 0))
+                                         cursors)]
+                         (append main others))
+                       (-remove (-lambda ((_id . selection))
+                                  (hel-bare-cursor-p selection)))
+                       (-map #'-second-item))))
+    (when regions
       (deactivate-mark)
       (-each (hel-all-secondary-cursors) #'hel--delete-secondary-cursor)
       (hel-extend-selection -1)
@@ -659,8 +668,8 @@ Do not auto-detect word boundaries in the search pattern."
                      (-map (lambda (region) (list nil region 1 t))
                            (cdr regions))))))
         ;; Else restore original cursors.
-        (hel-set-selections cursors)))
-    (hel-auto-multiple-cursors-mode)))
+        (hel-set-selections cursors))
+      (hel-auto-multiple-cursors-mode))))
 
 ;; S
 (hel-define-command hel-split-selections ()
@@ -886,17 +895,17 @@ keys to repeat motion forward/backward."
 
 (defun hel--find-char-motion (prompt dir exclusive? extend)
   "Read a character with PROMPT and select up to it in DIR.
-EXCLUSIVE? stops before the character, as `t' and `T' do.  From a bare
-cursor the selection starts at the cursor character, which counts as
-passed: the search starts after it, and the selection takes it in, as
-in Helix.  From an active region the selection starts at point.  When
-the character is not found, the selection stays as it is.  EXTEND is
-as in `hel-move-to-pos'."
-  (-let* (((begin . end) (hel-selection-bounds))
-          ((from . start) (cond ((or extend (use-region-p))
-                                 (cons (point) (point)))
-                                ((< 0 dir) (cons begin end))
-                                (t (cons end begin)))))
+EXCLUSIVE? stops before the character, as `t' and `T' do.  The motion
+goes from the cursor, the head character of the selection, whatever the
+length of the selection.  The head character counts as passed: the
+search starts after it, so the first step never stops on it, and the
+new selection takes it in, as in Helix.  When the character is not
+found, the selection stays as it is.  EXTEND is as in `hel-move-to-pos'."
+  (-let* ((head (hel-selection-head))
+          (after-head (min (1+ head) (point-max)))
+          ((from . start) (cond (extend (cons (point) (point)))
+                                ((< 0 dir) (cons head after-head))
+                                (t (cons after-head head)))))
     (-when-let (to (save-excursion
                      (goto-char start)
                      (and (hel-find-char (read-char prompt t) dir exclusive?)

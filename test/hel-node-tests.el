@@ -133,7 +133,7 @@
     (hel-shrink-selection 3)
     (should (eq (hel-test-selection) nil))
     (should (= (point) 9))
-    (should (equal (hel-test-cursor-chars) '((" " -1))))))
+    (should (equal (hel-test-cursor-chars) '((" " nil))))))
 
 (ert-deftest hel-expand-negative-counts ()
   "A negative count of shrink expands, and a negative count of expand
@@ -445,7 +445,7 @@ is selected first."
     (should (equal (hel-test-selection) "(* x 2)"))
     (hel-shrink-selection 1)
     (should (eq (hel-test-selection) nil))
-    (should (equal (hel-test-cursor-chars) '(("x" -1))))))
+    (should (equal (hel-test-cursor-chars) '(("x" nil))))))
 
 (ert-deftest hel-lisp-expand-backward-and-forward ()
   "`M-b' and `M-e' expand as `M-o' does, with point at the start or the end."
@@ -648,7 +648,8 @@ Rule 7: shrink keeps the direction of the selection."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode "f(a, b, c, ^d|)\n"
     (hel-test-run #'hel-select-next-sibling -1)
-    (should (equal (hel-test-render) "f(a, b, ^c|, d)\n"))))
+    ;; "d" has no direction, so "c" takes the direction of the motion.
+    (should (equal (hel-test-render) "f(a, b, |c^, d)\n"))))
 
 (ert-deftest hel-next-sibling-at-last-argument ()
   "M-n at the last argument leaves the selection as it is.

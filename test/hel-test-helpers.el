@@ -89,7 +89,8 @@ A cursor without a selection gives the empty string."
   "Return the selection of every cursor as (TEXT DIRECTION), in buffer order.
 The selection is the one that `hel-selection' reads, so at a cursor without
 an active region TEXT is its cursor character.  DIRECTION is 1 when point
-is at the end of TEXT and -1 when it is at the beginning."
+is at the end of TEXT and -1 when it is at the beginning, and nil when
+TEXT has at most one character."
   (let ((all (cons (cons (point) (hel-selection))
                    (mapcar (lambda (cursor)
                              (let ((point (hel--secondary-cursor-point cursor)))

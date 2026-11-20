@@ -265,8 +265,11 @@ The state is point, the mark and the variables of
 (cl-defun hel--set-secondary-selection (cursor (begin . end) dir active)
   "Give the secondary CURSOR a new selection and draw it.
 With ACTIVE, it is a selection between BEGIN and END in the direction
-DIR: 1 or -1. Without ACTIVE, it is a bare cursor at BEGIN."
-  (-let [(point . mark) (if (and active (< 0 dir))
+DIR: 1 or -1, or nil for at most one character, as in `hel-select'.
+Without ACTIVE, it is a bare cursor at BEGIN."
+  (when (and active (null dir) (< 1 (- end begin)))
+    (error "No direction for a selection of %d characters" (- end begin)))
+  (-let [(point . mark) (if (and active dir (< 0 dir))
                             (cons end begin)
                           (cons begin end))]
     (move-overlay (overlay-get cursor 'point) point point)
@@ -543,7 +546,7 @@ the answer."
             ;; If command has `multiple-cursors' property assigned — use it,
             ;; else promt user and permanently store the decision.
             (if-let* ((val (plist-member (symbol-plist command) 'multiple-cursors)))
-                (cadr val)
+                (-second-item val)
               (hel--prompt-for-unknown-command command)))
            (hel-save-window-scroll
              (hel-save-main-cursor
@@ -623,8 +626,8 @@ of the result is active when the region of any cursor of the group is."
   (nreverse
    (-reduce-from (lambda (merged cursor)
                    (if (and merged
-                            (hel--ranges-overlap-p (cadr (car merged))
-                                                   (cadr cursor)))
+                            (hel--ranges-overlap-p (-second-item (car merged))
+                                                   (-second-item cursor)))
                        (cons (hel--merge-two-cursors (car merged) cursor)
                              (cdr merged))
                      (cons cursor merged)))
@@ -640,13 +643,17 @@ ranges that only touch do not."
 (defun hel--merge-two-cursors (a b)
   "Return the cursor that covers the selections of the cursors A and B.
 The main cursor survives; otherwise A does.  The survivor keeps its ID
-and direction."
-  (-let* (((id-a (begin-a . end-a) dir-a active-a) a)
-          ((id-b (begin-b . end-b) dir-b active-b) b)
-          (b-survives? (eql id-b 0)))
-    (list (if b-survives? id-b id-a)
-          (cons (min begin-a begin-b) (max end-a end-b))
-          (if b-survives? dir-b dir-a)
+and direction.  A bare survivor has no direction, so a merged selection
+longer than one character is forward then."
+  (-let* (((_ (begin-a . end-a) _ active-a) a)
+          ((id-b (begin-b . end-b) _ active-b) b)
+          ((id . survivor) (if (eql id-b 0) b a))
+          (range (cons (min begin-a begin-b) (max end-a end-b))))
+    (list id
+          range
+          (cond ((hel-bare-cursor-p (list range)) nil)
+                ((hel-bare-cursor-p survivor) 1)
+                (t (cadr survivor)))
           (or active-a active-b))))
 
 ;;; Integration with other Emacs functionalities

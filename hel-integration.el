@@ -509,7 +509,7 @@ If cursor is in read-only area, jump to prompt instead of deleting."
   (interactive)
   (cond (hel-extend-selection
          (hel-extend-selection -1))
-        ((use-region-p)
+        ((not (hel-bare-cursor-p))
          (deactivate-mark))
         (t
          (wdired-exit))))

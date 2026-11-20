@@ -483,14 +483,12 @@ command passes it as `:merge-selections' to `hel-define-command'.")
 
 (hel-defvar-permanent-local hel-selection-history nil
   "The selections of expand and text object commands run one after another.
-The newest entry comes first and holds the active region. The oldest entry
-holds the selection before the first of these commands.
+The newest entry comes first and holds the current selection. The oldest
+entry holds the selection before the first of these commands.
 `hel-shrink-selection' returns to the previous entry.
 
-Each entry is a list (RANGE DIRECTION ACTIVE RUN). RANGE and DIRECTION have
-the form that `hel-selection' returns. ACTIVE is t when the region is active.
-It is nil only in the oldest entry, when the commands start from a bare
-cursor: the selection of that entry is the cursor character.
+Each entry is a list (RANGE DIRECTION RUN). RANGE and DIRECTION have the
+form that `hel-selection' returns.
 
 RUN is non-nil when a repeated command selects several text objects in a row.
 For example, select two functions with `mif mif'. The first `mif' creates the

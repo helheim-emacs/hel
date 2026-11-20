@@ -79,7 +79,7 @@ the character after TO, whatever the flag of extending says."
       (hel-move-to-pos nil 15 nil)
       (should (equal (point) 15))
       (should-not (region-active-p))
-      (should (equal (hel-selection) '((15 . 16) -1))))))
+      (should (equal (hel-selection) '((15 . 16) nil))))))
 
 (ert-deftest hel-move-onto-char-across-the-anchor ()
   "With EXTEND, `hel-move-onto-char' keeps the anchor character inside the
@@ -88,14 +88,14 @@ selection, when the head crosses it in either direction."
   (hel-test-with #'fundamental-mode "abcd|"
     (hel-select (cons 2 4) 1)
     (hel-move-onto-char 2 t)
-    (should (equal (hel-selection) '((2 . 3) -1)))
+    (should (equal (hel-selection) '((2 . 3) nil)))
     (hel-move-onto-char 1 t)
     (should (equal (hel-selection) '((1 . 3) -1))))
   ;; Backward "bc", the head goes forward twice: "c", then "cd".
   (hel-test-with #'fundamental-mode "abcd|"
     (hel-select (cons 2 4) -1)
     (hel-move-onto-char 3 t)
-    (should (equal (hel-selection) '((3 . 4) 1)))
+    (should (equal (hel-selection) '((3 . 4) nil)))
     (hel-move-onto-char 4 t)
     (should (equal (hel-selection) '((3 . 5) 1)))))
 
@@ -104,7 +104,7 @@ selection, when the head crosses it in either direction."
   (hel-test-with #'fundamental-mode "ab|cd"
     (hel-move-onto-char 2 nil)
     (should (= (point) 2))
-    (should (equal (hel-selection) '((2 . 3) -1)))))
+    (should (equal (hel-selection) '((2 . 3) nil)))))
 
 (ert-deftest hel-extend-selection-argument ()
   "`hel-extend-selection' reads its argument as a minor mode does."
@@ -186,16 +186,16 @@ selection, when the head crosses it in either direction."
 (defun hel-selection-tests--read ()
   "Return the selection as (TEXT DIRECTION), and check where point is.
 TEXT is the text of the selection.  Point must be at the end of the
-selection that DIRECTION names."
+selection that DIRECTION names, or at its beginning without a direction."
   (-let [((begin . end) dir) (hel-selection)]
-    (should (= (point) (if (< 0 dir) end begin)))
+    (should (= (point) (if (and dir (< 0 dir)) end begin)))
     (list (buffer-substring-no-properties begin end) dir)))
 
 (ert-deftest hel-selection-without-mark ()
   "Without a mark, the cursor character is the character after point."
   (hel-test-with #'fundamental-mode "ab|cd"
     (should-not (mark t))
-    (should (equal (hel-selection-tests--read) '("c" -1)))))
+    (should (equal (hel-selection-tests--read) '("c" nil)))))
 
 (ert-deftest hel-selection-ignores-the-inactive-mark ()
   "The inactive mark does not change the cursor character."
@@ -204,17 +204,17 @@ selection that DIRECTION names."
       (set-marker (mark-marker) (+ (point) offset))
       (should-not (region-active-p))
       (should (equal (list offset (hel-selection-tests--read))
-                     (list offset '("c" -1)))))))
+                     (list offset '("c" nil)))))))
 
 (ert-deftest hel-selection-before-a-newline ()
   "Before a newline, the cursor character is the newline."
   (hel-test-with #'fundamental-mode "abc|\ndef"
-    (should (equal (hel-selection-tests--read) '("\n" -1)))))
+    (should (equal (hel-selection-tests--read) '("\n" nil)))))
 
 (ert-deftest hel-selection-at-the-end-of-the-buffer ()
   "At the end of the buffer, the cursor character is empty."
   (hel-test-with #'fundamental-mode "abc|"
-    (should (equal (hel-selection) (list (cons 4 4) -1)))))
+    (should (equal (hel-selection) (list (cons 4 4) nil)))))
 
 (ert-deftest hel-selection-active-region ()
   "An active region that is not empty is the selection."
@@ -223,17 +223,18 @@ selection that DIRECTION names."
     (should (equal (hel-selection) (list (cons 3 6) 1)))
     (hel-select (cons 3 6) -1)
     (should (equal (hel-selection) (list (cons 3 6) -1)))
-    ;; A region of one character before point, as a cursor character
-    ;; would be, keeps the region.
+    ;; A region of one character has no direction.
     (hel-select (cons 3 4) -1)
-    (should (equal (hel-selection) (list (cons 3 4) -1)))))
+    (should (equal (hel-selection) (list (cons 3 4) nil)))
+    (hel-select (cons 3 4) 1)
+    (should (equal (hel-selection) (list (cons 3 4) nil)))))
 
 (ert-deftest hel-selection-empty-active-region ()
   "An empty active region reads as a bare cursor."
   (hel-test-with #'fundamental-mode "ab|cd"
     (push-mark (point) t t)
     (should (region-active-p))
-    (should (equal (hel-selection-tests--read) '("c" -1)))))
+    (should (equal (hel-selection-tests--read) '("c" nil)))))
 
 ;;; The round-trip laws
 
@@ -242,10 +243,48 @@ selection that DIRECTION names."
   (hel-test-with #'fundamental-mode "ab\n\ncd|"
     (cl-loop for begin from (point-min) below (point-max)
              do (cl-loop for end from (1+ begin) to (point-max)
-                         do (dolist (dir '(1 -1))
-                              (let ((selection (list (cons begin end) dir)))
-                                (apply #'hel-select selection)
-                                (should (equal (hel-selection) selection))))))))
+                         do (dolist (dir (if (< 1 (- end begin))
+                                             '(1 -1)
+                                           '(1 -1 nil)))
+                              (hel-select (cons begin end) dir)
+                              ;; A selection of one character has no
+                              ;; direction.
+                              (should (equal (hel-selection)
+                                             (list (cons begin end)
+                                                   (and (< 1 (- end begin))
+                                                        dir)))))))))
+
+(ert-deftest hel-selection-one-character-has-no-direction ()
+  "Every stored form of one character gives the same value, without a
+direction.  So does the empty selection at the end of the buffer."
+  (dolist (input '("fo|o" "fo^o|" "fo|o^"))
+    (hel-test-with #'fundamental-mode input
+      (should (equal (hel-selection) '((3 . 4) nil)))
+      (should (null (hel-selection-direction)))
+      (should (hel-bare-cursor-p))))
+  (hel-test-with #'fundamental-mode "foo|"
+    (should (equal (hel-selection) '((4 . 4) nil)))
+    (should (hel-bare-cursor-p)))
+  (hel-test-with #'fundamental-mode "f^oo|"
+    (should (equal (hel-selection) '((2 . 4) 1)))
+    (should-not (hel-bare-cursor-p)))
+  ;; The predicate reads the length, also of a value built by hand.
+  (should (hel-bare-cursor-p '((3 . 4) 1)))
+  (should-not (hel-bare-cursor-p '((3 . 5) nil))))
+
+(ert-deftest hel-selection-head-without-direction ()
+  "The head of a selection without a direction is its first character."
+  (should (= (hel-selection-head '((3 . 4) nil)) 3))
+  (should (= (hel-selection-head '((4 . 4) nil)) 4))
+  (should (= (hel-selection-head '((1 . 4) 1)) 3))
+  (should (= (hel-selection-head '((1 . 4) -1)) 1)))
+
+(ert-deftest hel-selection-select-needs-a-direction ()
+  "`hel-select' signals an error for a longer range without a direction."
+  (hel-test-with #'fundamental-mode "ab\n\ncd|"
+    (should-error (hel-select (cons 1 3) nil))
+    (hel-select (cons 1 2) nil)
+    (should (equal (hel-selection) '((1 . 2) nil)))))
 
 (ert-deftest hel-selection-law-of-set-cursor ()
   "After `hel-set-cursor', the cursor character is the character after POS."
@@ -257,7 +296,7 @@ selection that DIRECTION names."
              (should (= (point) pos))
              (should (equal (hel-selection)
                             (list (cons pos (min (1+ pos) (point-max)))
-                                  -1))))))
+                                  nil))))))
 
 ;;; The selection of each window
 
@@ -285,7 +324,7 @@ The first window stays selected and owns the selection of the buffer."
     (hel-selection-tests--split)
     (hel-test-press! "h h")
     (let ((before (hel-selection-tests--window-state)))
-      (should (equal (car before) (list (cons (point) (1+ (point))) -1)))
+      (should (equal (car before) (list (cons (point) (1+ (point))) nil)))
       (hel-test-press! "C-x o l l l")
       (hel-test-press! "C-x o")
       (should (equal (hel-selection-tests--window-state) before)))))
@@ -385,7 +424,7 @@ the user lands in gets back its own selection."
   (hel-test-with #'fundamental-mode "one two thr|ee four five six"
     (hel-test-press! "h")
     (let ((before (hel-selection)))
-      (should (equal before (list (cons (point) (1+ (point))) -1)))
+      (should (equal before (list (cons (point) (1+ (point))) nil)))
       (hel-test-press! "C-x 3 C-x o")
       (should-not (eq (selected-window) (frame-first-window)))
       (should (equal (hel-selection) before)))))
@@ -729,20 +768,21 @@ display, and a box over the character after its point in a terminal."
     (should (equal (hel--merge-cursors cursors) cursors)))
   ;; Equal: two cursors on the same cursor character.
   (should (equal (hel--merge-cursors '((1 (2 . 3) 1 nil) (2 (2 . 3) -1 nil)))
-                 '((1 (2 . 3) 1 nil))))
+                 '((1 (2 . 3) nil nil))))
   ;; Two cursors with point at 3, and their cursor characters on the two
   ;; sides of it, only touch.
   (let ((cursors '((1 (2 . 3) 1 nil) (2 (3 . 4) -1 nil))))
     (should (equal (hel--merge-cursors cursors) cursors)))
   ;; Equal and empty, at the end of the buffer.
   (should (equal (hel--merge-cursors '((1 (9 . 9) -1 nil) (2 (9 . 9) -1 nil)))
-                 '((1 (9 . 9) -1 nil))))
+                 '((1 (9 . 9) nil nil))))
   ;; An empty range at the end of another range only touches it.
   (let ((cursors '((1 (7 . 9) 1 t) (2 (9 . 9) -1 nil))))
     (should (equal (hel--merge-cursors cursors) cursors)))
-  ;; The region of the result is active when one of the group is.
-  (should (equal (hel--merge-cursors '((1 (2 . 3) -1 nil) (2 (2 . 5) 1 t)))
-                 '((1 (2 . 5) -1 t))))
+  ;; The region of the result is active when one of the group is.  A bare
+  ;; survivor has no direction, so the longer result is forward.
+  (should (equal (hel--merge-cursors '((1 (2 . 3) -1 nil) (2 (2 . 5) -1 t)))
+                 '((1 (2 . 5) 1 t))))
   ;; Groups keep their order.
   (should (equal (hel--merge-cursors '((1 (1 . 3) 1 t)
                                        (2 (2 . 4) 1 t)
@@ -803,12 +843,12 @@ display, and a box over the character after its point in a terminal."
           (state (hel-selection-tests--cursors-state)))
       (should (equal (mapcar #'cdr values)
                      '(((1 . 3) -1 t)
-                       ((4 . 5) -1 nil)
+                       ((4 . 5) nil nil)
                        ((7 . 9) 1 t)
-                       ((10 . 11) -1 nil)
-                       ((13 . 14) -1 nil)
-                       ((14 . 15) -1 nil)
-                       ((15 . 15) -1 nil))))
+                       ((10 . 11) nil nil)
+                       ((13 . 14) nil nil)
+                       ((14 . 15) nil nil)
+                       ((15 . 15) nil nil))))
       (hel-set-selections values)
       (should (equal (hel-selection-tests--cursors-state) state))
       (should (equal (hel-selections) values)))))
@@ -819,11 +859,11 @@ The writer goes straight into the cursor, both when it creates the
 cursor and when it moves one."
   ;; a=1 b=2 c=4 d=5 e=7 f=8 g=10 h=11 i=13 j=14, and the end is 15.
   (hel-test-with #'fundamental-mode "|ab\ncd\nef\ngh\nij"
-    (let ((selections '(((4 . 5) -1 nil)      ; "c"
-                        ((7 . 8) -1 nil)      ; "e"
+    (let ((selections '(((4 . 5) nil nil)     ; "c"
+                        ((7 . 8) nil nil)     ; "e"
                         ((7 . 9) 1 t)         ; region "ef" forward
                         ((10 . 12) -1 t)      ; region "gh" backward
-                        ((15 . 15) -1 nil)))) ; the end of the buffer
+                        ((15 . 15) nil nil)))) ; the end of the buffer
       (dolist (selection selections)
         (let ((cursor (apply #'hel-create-secondary-cursor selection)))
           (should (equal (cdr (hel--secondary-cursor-value cursor))
@@ -848,7 +888,7 @@ cursor and when it moves one."
                                    (nil (7 . 8) -1 nil)))
       (should (equal (hel-test-render) "a|bc¦de¬f¦gh"))
       (should (equal (hel-test-cursor-chars)
-                     '(("b" -1) ("de" -1) ("g" -1))))
+                     '(("b" nil) ("de" -1) ("g" nil))))
       (should (eq kept (gethash kept-id hel--cursors-table)))
       (should (equal (overlay-get kept 'kill-ring) '("kept")))
       (should (equal kill-ring '("main")))
@@ -859,7 +899,7 @@ cursor and when it moves one."
         (hel-set-selections `((0 (2 . 3) -1 nil)
                                      (,id (5 . 6) -1 nil)))
         (should (gethash id hel--cursors-table))
-        (should (equal (hel-test-cursor-chars) '(("b" -1) ("e" -1))))))))
+        (should (equal (hel-test-cursor-chars) '(("b" nil) ("e" nil))))))))
 
 (ert-deftest hel-merge-overlapping-cursors-keeps-main-state ()
   "A merge keeps the main cursor with its own state and deletes the others."
