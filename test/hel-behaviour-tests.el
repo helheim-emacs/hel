@@ -703,7 +703,11 @@ bare cursor on that character: the two are the same selection."
   ("|foo bar" "vll" "^foo| bar")
   ("foo bar|" "vb" "foo |bar^")
   ("foo bar|" "vbb" "|foo bar^")
-  ("|a\nb\nc" "vj" "^a\n|b\nc")
+  ("|a\nb\nc" "vj" "^a\nb|\nc")
+  ("|a\nb\nc\nd" "v3j" "^a\nb\nc\nd|")
+  ;; The cursor keeps its column.
+  ("ab|c\nabc" "vj" "ab^c\nabc|")
+  ("abc\nab|c" "vk" "ab|c\nabc^")
   ;; A second `v' stops extending and keeps the selection.
   ("|foo bar baz" "vwvw" "foo ^bar |baz")
   ("|foobar" "vllvl" "foo|bar")
@@ -2590,6 +2594,8 @@ BEFORE is a function that runs before the keys."
 (hel-behaviour-law replace-char "fo#o bar" "r z")
 (hel-behaviour-law case "fo#o bar" "~")
 (hel-behaviour-law join "fo#o\nbar" "J")
+(hel-behaviour-law next-line-extend "a\nb#\nc\nd\n" "v j")
+(hel-behaviour-law previous-line-extend "a\nb\nc#\nd\n" "v k")
 
 (ert-deftest hel-behaviour-law-of-the-line-selection ()
   "Each key gives one result on the two forms of a selected empty line.

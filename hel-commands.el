@@ -117,15 +117,15 @@ then grows by whole lines."
         (hel-expand-line-selection count)
       (let ((anchor (and extend
                          (hel-selection-anchor selection (hel-sign count)))))
-        (unless extend
-          (hel-set-cursor (hel-selection-head selection)))
+        (hel-set-cursor (hel-selection-head selection))
         ;; Emacs keeps the column if and only if the previous command was
         ;; `next-line' or `previous-line'.
         (setq this-command (if (natnump count) 'next-line 'previous-line))
         (funcall-interactively 'next-line count)
         (when anchor
-          (hel-select (hel-range anchor (point))
-                      (if (< (point) anchor) -1 1)))))))
+          (-let [(begin . end) (hel-char-range (point))]
+            (hel-select (cons (min anchor begin) (max anchor end))
+                        (if (< (point) anchor) -1 1))))))))
 
 ;; k
 (hel-define-command hel-previous-line (count &optional extend)

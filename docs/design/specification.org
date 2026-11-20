@@ -114,7 +114,10 @@ moving.
   character: a forward one has its head character before point, the one
   case where point is after the cursor. So =;= and =<Esc>= move point onto
   the head character, =j= and =k= first collapse a selection onto it and
-  then keep its column, as Emacs keeps the column of point. On a bare
+  then keep its column, as Emacs keeps the column of point. =v j= and =v k=
+  move from the head character in the same way, and the character that
+  they reach becomes the new head character, so the cursor lands in the
+  column where it started. On a bare
   cursor =;= stops the search, and =<Esc>= in wdired leaves wdired. A search
   match of one character is a bare cursor too, so the first =<Esc>= on it
   stops the search, while a longer match needs two presses.
