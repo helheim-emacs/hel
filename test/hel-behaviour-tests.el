@@ -1033,6 +1033,13 @@ which runs last, pastes into its line."
   ("fo|o\n  bar\nbaz" "J" "fo|o bar\nbaz")
   ;; The cursor stays on the space that replaces the newline.
   ("foo|\nbar" "J" "foo| bar")
+  ;; The last line has no next line, so `J' joins nothing there.
+  ("foo\nb|ar" "J" "foo\nb|ar")
+  ("foo\nb|ar\n" "J" "foo\nb|ar\n")
+  ;; A selection that ends on the last line joins the lines in it.
+  ("f^oo\nb|ar" "J" "f^oo b|ar")
+  ;; An empty last line is a line, and joins.
+  ("b|ar\n\n" "J" "b|ar\n")
   ;; A selection joins all of its lines.
   ("^a\nb\nc\n|d" "J" "^a b c\n|d")
   ("^a\nb\nc|\nd" "J" "^a b c|\nd")

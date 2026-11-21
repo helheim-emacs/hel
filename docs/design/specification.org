@@ -179,6 +179,11 @@ moving.
   the selection, the selection covers the new text. So =J= on a newline
   leaves the cursor on the space that replaces it, and =mr= on
   a delimiter leaves the cursor on the new delimiter.
+- =J= joins the selected lines, and a selection within one line with the
+  next line. On the last line of the buffer =J= does nothing, because
+  there is no next line. Joining the line above would change a line that
+  is not selected, and joining with the final newline would remove it,
+  while a buffer always ends with a newline.
 - =p= on a bare cursor pastes after the cursor character and =P=
   before it. Like =a=, =p= keeps to the line: on a newline the text goes
   before the newline. =n= and =N= search from the edge of the selection,

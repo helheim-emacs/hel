@@ -828,23 +828,28 @@ is."
     (-let* ((deactivate-mark nil)
             ((begin . end) (hel-selection-bounds))
             ;; The selected lines join into one line.  A selection within
-            ;; one line joins it with the next line.
-            (count (max 1 (1- (count-lines begin end)))))
-      (goto-char begin)
-      ;; All these `let' bindings moves point.
-      (let ((in-comment? (progn (move-beginning-of-line nil)
-                                (skip-chars-forward " \t")
-                                (hel-bounds-of-comment-at (point))))
-            (ubeg (progn (forward-line 1)
-                         (line-beginning-position)))
-            (uend (progn (forward-line (1- count))
-                         (line-end-position))))
-        (when in-comment?
-          (uncomment-region ubeg uend)))
-      (dotimes (_ count)
-        (forward-line 0)
-        (delete-char -1)
-        (fixup-whitespace)))))
+            ;; one line joins it with the next line.  The last line has
+            ;; no next line, so there it joins nothing: neither the line
+            ;; above, which is not selected, nor the final newline.
+            (count (min (max 1 (1- (count-lines begin end)))
+                        (1- (count-lines (progn (goto-char begin) (pos-bol))
+                                         (point-max))))))
+      (when (< 0 count)
+        (goto-char begin)
+        ;; All these `let' bindings moves point.
+        (let ((in-comment? (progn (move-beginning-of-line nil)
+                                  (skip-chars-forward " \t")
+                                  (hel-bounds-of-comment-at (point))))
+              (ubeg (progn (forward-line 1)
+                           (line-beginning-position)))
+              (uend (progn (forward-line (1- count))
+                           (line-end-position))))
+          (when in-comment?
+            (uncomment-region ubeg uend)))
+        (dotimes (_ count)
+          (forward-line 0)
+          (delete-char -1)
+          (fixup-whitespace))))))
 
 ;; <
 (hel-define-command hel-indent-left (count)

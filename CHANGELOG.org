@@ -453,6 +453,9 @@
 
 - =C-p= indents the text in a programming mode, as =p= does.
 
+- =J= on the last line of the buffer does nothing. It joined the line
+  with the line above, or removed the final newline.
+
 * [0.13.0]
 ** Added
 
