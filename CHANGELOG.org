@@ -196,8 +196,8 @@
   it the same as an active region over that character.
   - =d= and =D= leave the cursor on the character before the deleted text.
     On one character neither puts it in the kill ring: =d= works like
-    Backspace and leaves the cursor on the character before, and =D= works
-    like Delete and leaves it on the character after. =c= on one character
+    Delete and leaves the cursor on the character after, and =D= works
+    like Backspace and leaves it on the character before. =c= on one character
     also keeps it out of the kill ring. =y= copies one character too.
   - =*= and =M-*= take no pattern from one character.
   - =f=, =t=, =F= and =T= start from the head character of any selection

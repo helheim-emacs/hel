@@ -859,19 +859,18 @@ cursor character, so extending goes on."
   ("x ^foo| bar" "d" "x|  bar" :kill "foo")
   ("a\nb|ar\nc\n" "xd" "a|\nc\n" :kill "bar\n")
   ;; One character, such as a bare cursor, stays out of the kill ring, and
-  ;; `d' works like Backspace.
-  ("foo| bar" "d" "fo|obar" :yank "kept" :kill "kept")
-  ("foo| bar" "hd" "f|o bar" :yank "kept" :kill "kept")
+  ;; `d' works like Delete: the cursor goes onto the character after it.
+  ("foo| bar" "d" "foo|bar" :yank "kept" :kill "kept")
+  ("foo| bar" "hd" "fo| bar" :yank "kept" :kill "kept")
   ("^f|oo" "d" "|oo" :yank "kept" :kill "kept")
-  ("ab|cd" "dd" "|ad" :yank "kept" :kill "kept")
-  ;; At the beginning of the buffer the cursor goes onto the first character.
+  ("ab|cd" "dd" "ab|" :yank "kept" :kill "kept")
   ("|foo" "d" "|oo" :yank "kept" :kill "kept")
   ;; A newline under the cursor joins the lines.
-  ("foo|\nbar" "d" "fo|obar" :yank "kept" :kill "kept")
+  ("foo|\nbar" "d" "foo|bar" :yank "kept" :kill "kept")
   ;; At the end of the buffer there is nothing to kill.
   ("foo|" "d" "foo|" :yank "kept" :kill "kept")
   ;; An empty region made by `C-SPC' is no selection.
-  ("fo|o bar" "C-SPC d" "f|o bar" :yank "kept" :kill "kept")
+  ("fo|o bar" "C-SPC d" "fo| bar" :yank "kept" :kill "kept")
   ;; Linewise.
   ("fo|o\nbar\n" "xd" "|bar\n" :kill "foo\n")
   ("|a\nb\nc\n" "xxd" "|c\n" :kill "a\nb\n"))
@@ -881,14 +880,15 @@ cursor character, so extending goes on."
   ("|foo^ bar" "D" "| bar" :yank "kept" :kill "kept")
   ;; The cursor goes onto the character before the deleted text.
   ("x ^foo| bar" "D" "x|  bar" :yank "kept" :kill "kept")
-  ;; On one character, such as a bare cursor, `D' works like Delete: the
-  ;; cursor goes onto the character after it.
-  ("foo| bar" "D" "foo|bar" :yank "kept" :kill "kept")
-  ("foo| bar" "hD" "fo| bar" :yank "kept" :kill "kept")
+  ;; On one character, such as a bare cursor, `D' works like Backspace.
+  ("foo| bar" "D" "fo|obar" :yank "kept" :kill "kept")
+  ("foo| bar" "hD" "f|o bar" :yank "kept" :kill "kept")
+  ("ab|cd" "DD" "|ad" :yank "kept" :kill "kept")
+  ;; At the beginning of the buffer the cursor goes onto the first character.
   ("^f|oo" "D" "|oo" :yank "kept" :kill "kept")
-  ("foo|\nbar" "D" "foo|bar")
+  ("foo|\nbar" "D" "fo|obar")
   ("foo|" "D" "foo|")
-  ("fo|o bar" "C-SPC D" "fo| bar")
+  ("fo|o bar" "C-SPC D" "f|o bar")
   ;; `DEL' does nothing in Normal state, because `d' deletes.
   ("foo|" "DEL" "foo|")
   ("^foo| bar" "DEL" "^foo| bar"))
@@ -1183,9 +1183,9 @@ which runs last, pastes into its line."
   ;; The line selection is a line: `d' and `c' put it in the kill ring,
   ;; and `D' leaves the cursor before it, as for any line.  A bare cursor
   ;; deletes a character.
-  ("a\n|\nb\n" "d" "a|\nb\n" :kill "")
+  ("a\n|\nb\n" "d" "a\n|b\n" :kill "")
   ("a\n|\n^b\n" "d" "a|\nb\n" :kill "\n")
-  ("a\n|\nb\n" "D" "a\n|b\n")
+  ("a\n|\nb\n" "D" "a|\nb\n")
   ("a\n|\n^b\n" "D" "a|\nb\n")
   ;; `;' collapses the line selection to a bare cursor.
   ("a\n|\n^b\n" ";" "a\n|\nb\n")
@@ -1849,10 +1849,10 @@ a bare cursor disappears."
 ;;; Multiple cursors: every command runs for all cursors
 
 (hel-test-table cursors-edit
-  ("|foo\nbar" "CD" "¦oo\n|ar")
+  ("|foo\nbar" "CD" "¦oo|\nar")
   ("^fo|o\nbar" "Cd" "¦o|\nr")
-  ("fo|o\nbar" "Cd" "f¦o\nb|a")
-  ("fo|o\nbar" "Chd" "¦fo\n|br")
+  ("fo|o\nbar" "Cd" "fo¦\nba|")
+  ("fo|o\nbar" "Chd" "f¦o\nb|r")
   ("fo|o\nbar" "ChrX" "f¦Xo\nb|Xr")
   ("^fo|o\nbar" "CD" "¦o|\nr")
   ("^fo|o\nbar" "Cc" "¦o\n|r" :state insert)
@@ -1933,7 +1933,7 @@ a bare cursor disappears."
     (hel-set-cursor 2)                      ; "b"
     (hel-test-add-secondary-cursor 6)       ; "b"
     (should (equal (hel-test-cursor-chars) '(("b" nil) ("b" nil))))
-    (hel-test-press! "D")
+    (hel-test-press! "d")
     (should (equal (hel-test-cursor-chars) '(("c" nil) ("c" nil))))
     (hel-test-press! "u")
     (should (equal (buffer-string) "abc\nabc"))
@@ -2457,7 +2457,7 @@ In this test the question is the guard of the test setup, which fails on it."
   ("|abcdefghijkl" "12l" "abcdefghijkl|")
   ;; `d' and `D' act on the selection and take no count.
   ("|abc" "2D" "|bc")
-  ("ab|c" "2d" "a|b")
+  ("ab|c" "2d" "ab|")
   ("|a\nb\nc\nd\n" "2j" "a\nb\n|c\nd\n")
   ("a\nb\nc\n|d\n" "2k" "a\n|b\nc\nd\n")
   ("|a b a b a" "/a RET 2n" "a b a b |a")

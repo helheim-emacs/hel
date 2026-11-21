@@ -158,9 +158,9 @@ alternatives in Emacs.
     =D= does not (Vim taught me that you don't always want to copy deleted
     text to the clipboard). On a single character neither of them touches
     the clipboard, since it makes no sense to copy one character into it.
-    Then =d= works like =Backspace=: the cursor moves onto the character
-    before. =D= works like =Delete=: the cursor stays on the character
-    after.
+    Then =d= works like =Delete=: the cursor stays on the character
+    after. =D= works like =Backspace=: the cursor moves onto the character
+    before.
 
   - =c= on a single character does not copy it to the clipboard either.
 

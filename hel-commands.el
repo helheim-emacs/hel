@@ -642,8 +642,8 @@ so does a bare cursor on an empty line."
   "Kill (cut) the selection: delete it and put it in the `kill-ring'.
 The cursor goes onto the character before the deleted text.  A bare
 cursor is the exception: its character stays out of the `kill-ring',
-where a single character only clutters it, and `d' then works like
-Backspace."
+where a single character only clutters it, and the cursor goes onto the
+character after it, so `d' works like Delete."
   :multiple-cursors t
   :merge-selections t
   (interactive "*")
@@ -652,28 +652,27 @@ Backspace."
     ;; nothing to delete, and the cursor stays.
     (when (< begin end)
       (if (hel-bare-cursor-p selection)
-          (delete-region begin end)
+          (progn
+            (delete-region begin end)
+            (hel-set-cursor begin))
         ;; `region-extract-function' handles a region that is not
         ;; contiguous, such as one of `rectangle-mark-mode'.
-        (kill-region nil nil t))
-      (hel-set-cursor (max (1- begin) (point-min)))))
+        (kill-region nil nil t)
+        (hel-set-cursor (max (1- begin) (point-min))))))
   (hel-extend-selection -1))
 
 ;; D
 (hel-define-command hel-delete ()
   "Delete the selection, without modifying the `kill-ring'.
-The cursor goes onto the character before the deleted text.  A bare
-cursor is the exception: the cursor goes onto the character after it, so
-`D' works like Delete."
+The cursor goes onto the character before the deleted text, so on
+a bare cursor `D' works like Backspace."
   :multiple-cursors t
   :merge-selections t
   (interactive "*")
-  (-let [(selection &as (begin . end)) (hel-selection)]
+  (-let [(begin . end) (hel-selection-bounds)]
     (when (< begin end)
       (delete-region begin end)
-      (hel-set-cursor (if (hel-bare-cursor-p selection)
-                          begin
-                        (max (1- begin) (point-min))))))
+      (hel-set-cursor (max (1- begin) (point-min)))))
   (hel-extend-selection -1))
 
 ;; C-w in insert state

@@ -149,9 +149,9 @@ moving.
   A bare cursor is the exception, because there the user deletes
   a character rather than text: neither
   command puts it in the kill ring, where a single character only
-  clutters it. =d= then works like =<Backspace>= and leaves the cursor on
-  the character before, and =D= works like =<Delete>= and leaves it on
-  the character after. At the beginning of the buffer the cursor goes
+  clutters it. =d= then works like =<Delete>= and leaves the cursor on
+  the character after, and =D= works like =<Backspace>= and leaves it on
+  the character before. At the beginning of the buffer the cursor goes
   onto the first character. =c= keeps the character of a bare cursor out
   of the kill ring for the same reason. On an empty line =c= keeps the
   newline and inserts the indentation of the mode, as for a selection of
