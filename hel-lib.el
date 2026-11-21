@@ -609,8 +609,22 @@ cursor, which has none, becomes forward."
                         (cdr (hel-visible-line-bounds (max begin (1- end)))))
                   (or direction dir 1)
                   t)
-      (hel--fix-newline-at-end-of-buffer)
       t)))
+
+(defun hel--add-final-newline (end)
+  "Add a newline at the end of the buffer when END is there on a line
+without one, so that the last line is a whole line.  Return END, past
+the newline when one was added.  A read-only buffer and the minibuffer
+stay as they are."
+  (if (and (= end (point-max))
+           (not buffer-read-only)
+           (not (minibufferp))
+           (/= end (save-excursion (goto-char end) (line-beginning-position))))
+      ;; The newline is a part of the selection that the caller writes,
+      ;; so it must not deactivate the mark.
+      (let ((deactivate-mark nil))
+        (save-excursion (goto-char end) (insert ?\n) (point)))
+    end))
 
 ;;; Selection
 ;;
@@ -990,53 +1004,88 @@ If NOMSG is nil show `Mark set' message in echo area."
     (set-mark (mark t)))
   nil)
 
-(defvar hel--yank-transform-linewise-selection? nil)
+(defun hel-paste (yank-function side)
+  "Paste after the selection when SIDE is 1, and before it when -1.
+The selection decides where the text goes, never the text itself, so the user
+chooses at the destination. The text goes on lines of its own when the selection
+has whole lines at SIDE, and into the line otherwise. At its end, the selection
+must end at the start of a line and begin on an earlier line; at its beginning,
+it must start a line and hold the end of that line. A bare cursor pastes on its
+line: on a newline the text goes before the newline.
 
-(defun hel-paste (yank-function direction)
-  "Paste after the selection when DIRECTION is 1, and before it when -1.
+The line selection of one empty line is a gap between paragraphs. The text goes
+into the gap, whatever SIDE is, and one empty line stays above it and one below.
+So the text loses every newline at its ends, and a text of only newlines
+changes nothing.
+
 The pasted text becomes the selection, in the direction of the old
-selection, or forward after a bare cursor. Pasting after a bare cursor
-stays on its line: on a newline the text goes before the newline.
-The line selection of an empty line covers the same newline, but it is
-whole lines, so the paste treats it as whole lines. YANK-FUNCTION is
-a function like `yank'."
-  (let* ((selection (hel-selection))
-         (region-dir (or (hel-selection-direction selection) 1))
-         (bare? (hel-bare-cursor-p selection))
-         (deactivate-mark nil))
-    (setq hel--yank-transform-linewise-selection?
-          (unless bare?
-            (hel--fix-newline-at-end-of-buffer)
-            (hel--paste-line-p (hel-selection) direction)))
+selection, or forward when the old one has none. YANK-FUNCTION inserts
+the text, as `yank' does."
+  (-let* (((selection &as (begin . end) dir) (hel-selection))
+          (gap? (and (hel-line-selection-p selection)
+                     (hel--empty-line-range-p (cons begin end))))
+          (shape (cond (gap? 'gap)
+                       ((hel--paste-line-p selection side) 'line)))
+          (deactivate-mark nil))
     ;; The text goes in at a bare cursor, which `yank' needs: it sets
     ;; the mark at the start of the text itself.
-    (-let [(begin . end) (hel-selection-bounds)]
-      (hel-set-cursor (if (and (< 0 direction)
-                               (or (not bare?)
-                                   (not (memq (char-after begin) '(?\n nil)))))
-                          end
-                        begin)))
-    (cl-letf ((yank-transform-functions (cons #'hel--yank-transform
-                                              yank-transform-functions))
+    (hel-set-cursor (if (or gap?
+                            (and (< 0 side)
+                                 (not (and (hel-bare-cursor-p selection)
+                                           (memq (char-after begin)
+                                                 '(?\n nil))))))
+                        end
+                      begin))
+    (let ((range (hel--paste-insert yank-function shape (or dir 1))))
+      (when gap?
+        (if (null range)
+            (apply #'hel-select selection)
+          ;; The empty line below the text.  Point stays before it.
+          (save-excursion
+            (goto-char (cdr range))
+            (insert ?\n)))))))
+
+(defun hel--paste-insert (yank-function shape dir)
+  "Insert a text at point with YANK-FUNCTION, in SHAPE, and select it.
+SHAPE says where the text goes, as `hel--paste-shape' takes it.  The new
+selection has the direction DIR.  In a `prog-mode' buffer the text is
+indented.  Return the bounds of the inserted text, or nil when the text
+is empty."
+  (let ((deactivate-mark nil))
+    (cl-letf ((yank-transform-functions
+               (cons (-partial #'hel--paste-shape shape)
+                     yank-transform-functions))
               ;; Intercept `push-mark' so that any time `yank' calls it,
               ;; `hel-push-mark' is executed instead.
               ((symbol-function 'push-mark) #'hel-push-mark))
       (funcall yank-function))
-    (hel-select (hel-range (point) (mark t)) region-dir
-                hel--yank-transform-linewise-selection?)
-    (hel-extend-selection -1)
-    (when (derived-mode-p 'prog-mode)
-      (-let [(begin . end) (hel-selection-bounds)]
-        (indent-region begin end)))))
+    (let ((empty? (= (point) (mark t))))
+      (hel-select (hel-range (point) (mark t)) dir shape)
+      (hel-extend-selection -1)
+      (when (derived-mode-p 'prog-mode)
+        (-let [(begin . end) (hel-selection-bounds)]
+          (indent-region begin end)))
+      (unless empty?
+        (hel-selection-bounds)))))
 
-(defun hel--yank-transform (str)
-  (if (and (not (string-empty-p str))
-           (xor hel--yank-transform-linewise-selection?
-                (hel-string-ends-with-newline str)))
-      (if hel--yank-transform-linewise-selection?
-          (concat str "\n")
-        (string-trim-right str "[\r\n]+"))
-    str))
+(defun hel--paste-shape (shape text)
+  "Return TEXT in the SHAPE that a paste gives it.
+SHAPE nil pastes into a line, and the text loses its last newline.
+SHAPE `line' pastes on lines of their own, and the text ends with
+a newline. SHAPE `gap' pastes between two empty lines, and the text
+loses every newline at its ends and then ends with one newline; a text
+of only newlines becomes empty."
+  (if (string-empty-p text)
+      text
+    (pcase-exhaustive shape
+      ('nil (string-trim-right text "\n"))
+      ('line (if (string-suffix-p "\n" text)
+                 text
+               (concat text "\n")))
+      ('gap (let ((text (string-trim text "\n+" "\n+")))
+              (if (string-empty-p text)
+                  text
+                (concat text "\n")))))))
 
 (defun hel--copy-append (string)
   "Append STRING to the end of the latest kill in the kill ring."
@@ -1057,7 +1106,7 @@ a function like `yank'."
 
 (defun hel-indent (indent-function count)
   "Indent the lines of the selection COUNT times with INDENT-FUNCTION.
-A bare cursor indents its line.  INDENT-FUNCTION takes the beginning and
+A bare cursor indents its line. INDENT-FUNCTION takes the beginning and
 the end of the text to indent, as `indent-rigidly-left' does."
   (cl-flet ((indent-selection ()
               (dotimes (_ count)
@@ -1084,26 +1133,6 @@ the end of the text to indent, as `indent-rigidly-left' does."
                (hel-expand-selection-to-full-lines)
                (indent-selection))
              (hel-extend-selection -1))))))
-
-(defun hel--fix-newline-at-end-of-buffer ()
-  "If selection ends at the end of buffer, and buffer doesn't ends with newline
-character -- add it and adjust selection."
-  ;; This function assumes that region is active, but doesn't check it!
-  (cond ((or (minibufferp) buffer-read-only)
-         nil)
-        ;; region is forward
-        ((< (mark-marker) (point))
-         (when (and (eobp) (not (bolp)))
-           (let ((deactivate-mark nil))
-             (insert ?\n))))
-        ;; else region is backward
-        ((= (mark-marker) (point-max))
-         (save-excursion
-           (goto-char (mark-marker))
-           (when (and (eobp) (not (bolp)))
-             (let ((deactivate-mark nil))
-               (insert ?\n))
-             (move-marker (mark-marker) (point)))))))
 
 ;;; Fold opening
 

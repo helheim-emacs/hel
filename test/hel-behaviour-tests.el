@@ -810,8 +810,11 @@ cursor character, so extending goes on."
   ("fo|o\nbar\nbaz\n" "xxx" "^foo\nbar\nbaz\n|")
   ;; `x' on the last line selects up to the end of the buffer.
   ("foo\nb|ar\n" "x" "foo\n|bar\n^")
-  ;; A last line without a newline gets one.
+  ;; A last line without a newline gets one, also when `x' reaches it
+  ;; from the line above, and when `%' selects every line.
   ("foo\nb|ar" "x" "foo\n|bar\n^")
+  ("fo|o\nbar" "xx" "^foo\nbar\n|")
+  ("fo|o\nbar" "%" "|foo\nbar\n^")
   ;; A count selects that many lines.
   ("|a\nb\nc\nd\n" "2x" "^a\nb\n|c\nd\n")
   ("|a\nb\nc\nd\n" "3x" "^a\nb\nc\n|d\n")
@@ -952,6 +955,13 @@ cursor character, so extending goes on."
   ("foo^\n|bar" "p" "foo^xx|\nbar" :yank "xx")
   ;; A text with a newline loses it on a selection that is not linewise.
   ("^foo| bar" "p" "foo^xx| bar" :yank "xx\n")
+  ;; Only the last newline goes: a blank line in the text is text.
+  ("^foo| bar" "p" "foo^xx\n| bar" :yank "xx\n\n")
+  ;; The selection decides alone, also at the end of a buffer without
+  ;; a final newline: there `vl' selects characters, and not a line.
+  ("foo\nb|ar" "vlp" "foo\nbar^xx|" :yank "xx\n")
+  ("foo\nb|ar" "vlP" "foo\nb^xx|ar" :yank "xx\n")
+  ("foo\nb|ar\n" "vlp" "foo\nbar^xx|\n" :yank "xx\n")
   ;; A linewise selection pastes on separate lines.
   ("fo|o\nbar\n" "xp" "foo\n|xx\n^bar\n" :yank "xx\n")
   ("fo|o\nbar\n" "xP" "|xx\n^foo\nbar\n" :yank "xx\n")
@@ -964,7 +974,8 @@ cursor character, so extending goes on."
   ("fo|o\nbar\n" "xdp" "b^foo|ar\n" :kill "foo\n")
   ;; Paste in programming modes indents the pasted lines.
   (:mode c-mode "{\n  a;|\n}\n" "p" "{\n  a;^xx|\n}\n" :yank "xx")
-  (:mode c-mode "{\n|  a;\n}\n" "xp" "{\n  a;\n|  xx\n^}\n" :yank "xx\n"))
+  (:mode c-mode "{\n|  a;\n}\n" "xp" "{\n  a;\n|  xx\n^}\n" :yank "xx\n")
+  (:mode c-mode "{\n|  a;\n}\n" "xp C-p" "{\n  a;\n|  yy\n^}\n" :yank "yy\n"))
 
 (ert-deftest hel-behaviour-edit-paste-pop ()
   "`C-p' and `C-n' replace the pasted text with other kills."
@@ -976,6 +987,18 @@ cursor character, so extending goes on."
     (hel-test-expect "C-p" "foo ^two|bar")
     (hel-test-expect "C-p" "foo ^one|bar")
     (hel-test-expect "C-n" "foo ^two|bar")))
+
+(ert-deftest hel-behaviour-cursors-paste-pop-keeps-each-shape ()
+  "`C-p' gives each cursor the shape of its own paste.
+The main cursor pastes on a line of its own, and the secondary cursor,
+which runs last, pastes into its line."
+  (hel-test-with 'text-mode "a|a\nbb\ncc\n"
+    (kill-new "yy")
+    (kill-new "xx")
+    (hel-test-press! "x")
+    (hel-test-add-secondary-cursor 8 8)
+    (hel-test-expect "p" "aa\n|xx\n^bb\ncc¬xx¦\n")
+    (hel-test-expect "C-p" "aa\n|yy\n^bb\ncc¬yy¦\n")))
 
 (hel-test-table edit-replace-char
   ;; With a selection `r' replaces each character.
@@ -1059,6 +1082,8 @@ cursor character, so extending goes on."
   ;; A partial selection moves all of its lines and stays on its text.
   ("f^oo\nb|ar\nbaz" ">" " f^oo\n b|ar\nbaz")
   ("  f^oo\n  b|ar\nbaz" "<" " f^oo\n b|ar\nbaz")
+  ;; An indent of the last line leaves the buffer without a final newline.
+  ("foo\n^ba|r" ">" "foo\n ^ba|r")
   ;; A line selection stays linewise.
   ("^a\nb\n|c" ">" "^ a\n b\n|c")
   ("^ a\n b\n|c" "<" "^a\nb\n|c")
@@ -1119,17 +1144,32 @@ cursor character, so extending goes on."
   ("a\n|\nb\n" "x" "a\n|\n^b\n")
   ("a\n|\nb\n" "x x" "a\n^\nb\n|")
   ("a\n|\nb\n" "x X" "|a\n\n^b\n")
-  ;; Paste fills the empty line from a bare cursor, and puts the text on
-  ;; a line of its own from the line selection.
+  ;; Paste fills the empty line from a bare cursor.  The line selection
+  ;; of the empty line is a gap: `p' and `P' put the text into it, with
+  ;; one empty line above and one below.
   ("a\n|\nb\n" "p" "a\n^foo|\nb\n" :yank "foo\n")
   ("a\n|\nb\n" "p" "a\n^foo|\nb\n" :yank "foo")
-  ("a\n|\n^b\n" "p" "a\n\n^foo\n|b\n" :yank "foo\n")
-  ("a\n|\n^b\n" "p" "a\n\n^foo\n|b\n" :yank "foo")
+  ("a\n|\n^b\n" "p" "a\n\n^foo\n|\nb\n" :yank "foo\n")
+  ("a\n|\n^b\n" "p" "a\n\n^foo\n|\nb\n" :yank "foo")
   ("a\n|\nb\n" "P" "a\n^foo|\nb\n" :yank "foo")
-  ("a\n|\n^b\n" "P" "a\n^foo\n|\nb\n" :yank "foo")
+  ("a\n|\n^b\n" "P" "a\n\n^foo\n|\nb\n" :yank "foo")
+  ;; `R' replaces the gap with the text.
   ("a\n|\nb\n" "R" "a\n^foo|b\n" :yank "foo")
   ("a\n|\n^b\n" "R" "a\n^foo\n|b\n" :yank "foo")
-  ("a\n|\n^b\n" "p C-p" "a\n\n^bar\n|b\n" :yank "bar")
+  ;; `C-p' replaces the text and keeps the gaps.
+  ("a\n|\n^b\n" "p C-p" "a\n\n^bar\n|\nb\n" :yank "bar")
+  ("a\n|\n^b\n" "p C-p" "a\n\n^bar\n|\nb\n" :yank "\nbar\n\n")
+  ;; The text loses the newlines at its ends, so each gap is one line.
+  ;; A text of only newlines changes nothing.
+  ("a\n|\n^b\n" "p" "a\n\n^foo\n|\nb\n" :yank "\n\nfoo\n\n")
+  ("a\n|\n^b\n" "P" "a\n\n^foo\n\nbar\n|\nb\n" :yank "foo\n\nbar\n")
+  ("a\n|\n^b\n" "p" "a\n|\n^b\n" :yank "\n\n")
+  ;; The empty lines at the edges of the buffer are gaps too.
+  ("|\n^b\n" "p" "\n^foo\n|\nb\n" :yank "foo")
+  ("a\n|\n^" "P" "a\n\n^foo\n|\n" :yank "foo")
+  ;; Two empty lines are whole lines, and a line of blanks is not empty.
+  ("a\n|\n\nb\n" "xxp" "a\n\n\n^foo\n|b\n" :yank "foo")
+  ("a\n|  \n^b\n" "p" "a\n  \n|foo\n^b\n" :yank "foo")
   ;; Surround puts the delimiters on lines of their own around the line.
   ("a\n|\nb\n" "m s (" "a\n( |\n )b\n")
   ("a\n|\n^b\n" "m s (" "a\n(\n|\n^)\nb\n")
@@ -1174,7 +1214,7 @@ cursor character, so extending goes on."
   ;; There is nothing to undo.
   ("|foo" "u" "|foo" :error "No further undo")
   ;; Undo works over the whole buffer, and not in the selection.
-  ("^foo| bar" "D%u" "^foo| bar")
+  ("^foo| bar\n" "D%u" "^foo| bar\n")
   ;; An insert session with one word is one step.
   ("|foo" "ibar<escape>u" "|foo")
   ;; Words typed in Insert state are separate steps.
@@ -1855,7 +1895,7 @@ a bare cursor disappears."
 
 (hel-test-table cursors-commands-that-reset
   ;; `%' keeps one cursor.
-  ("|foo\nbar" "C%" "|foo\nbar^"))
+  ("|foo\nbar\n" "C%" "|foo\nbar\n^"))
 
 (ert-deftest hel-behaviour-cursors-copy-paste ()
   "Each cursor has its own kill ring."
@@ -2123,9 +2163,9 @@ In this test the question is the guard of the test setup, which fails on it."
 (hel-test-table jump
   ("a|b\nc\nd" "C-sjC-o" "a|b\nc\nd")
   ("a|b\nc\nd" "ggC-o" "a|b\nc\nd")
-  ("a|b\nc\nd" "%C-o" "a|b\nc\nd")
+  ("a|b\nc\nd\n" "%C-o" "a|b\nc\nd\n")
   ;; `C-o' drops the selection.
-  ("a|b\nc\nd" "C-s%C-o" "a|b\nc\nd")
+  ("a|b\nc\nd\n" "C-s%C-o" "a|b\nc\nd\n")
   ;; An empty mark ring: nothing happens.
   ("a|b" "C-o" "a|b")
   ("a|b" "C-<i>" "a|b")

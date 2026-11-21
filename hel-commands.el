@@ -464,7 +464,11 @@ to the chosen one."
     (if extend
         (let ((lines? (hel-line-selection-p)))
           (hel-move-to-pos nil pos t)
-          (if lines? (hel-expand-selection-to-full-lines)))
+          (when lines?
+            (hel-expand-selection-to-full-lines)
+            (-let [((begin . end) dir) (hel-selection)]
+              (hel-select (cons begin (hel--add-final-newline end))
+                          (or dir 1) t))))
       ;; else
       (let ((column (save-excursion
                       (goto-char (hel-selection-head (hel-selection)))
@@ -759,20 +763,23 @@ With \\[universal-argument] paste the last coppied multiple selections from the
   "Replace just-pasted text with next COUNT element from `kill-ring'."
   :multiple-cursors t
   (interactive "*p")
-  (let ((deactivate-mark nil))
-    (unless (eq last-command 'yank)
-      (let ((selection (hel-selection)))
-        (setq hel--yank-transform-linewise-selection?
-              (hel--paste-line-p selection
-                                 (or (hel-selection-direction selection) 1)))))
-    (let ((yank-transform-functions (cons #'hel--yank-transform
-                                          yank-transform-functions))
+  (-let* (((selection &as (begin . end) dir) (hel-selection))
+          (dir (or dir 1))
+          ;; After a paste the selection is the pasted text, so its shape
+          ;; tells how that paste shaped the text.  A paste into a gap
+          ;; leaves an empty line above the text and one below.
+          (shape (cond ((not (eq last-command 'yank))
+                        (and (hel--paste-line-p selection dir) 'line))
+                       ((not (hel-line-selection-p selection))
+                        nil)
+                       ((and (hel--empty-line-range-p (cons (1- begin) begin))
+                             (hel--empty-line-range-p (cons end (1+ end))))
+                        'gap)
+                       (t 'line)))
           (yank-pop (or (command-remapping 'yank-pop)
                         #'yank-pop)))
-      (funcall-interactively yank-pop count))
-    (let ((mark (or (mark t) (point))))
-      (hel-select (hel-range mark (point)) (if (< mark (point)) 1 -1)
-                  hel--yank-transform-linewise-selection?))))
+    (hel--paste-insert (lambda () (funcall-interactively yank-pop count))
+                       shape dir)))
 
 ;; C-n
 (hel-define-command hel-paste-undo-pop (count)
@@ -808,20 +815,10 @@ is."
   (-let* (((selection &as (begin . end) dir) (hel-selection))
           (dir (or dir 1)))
     (when (< begin end)
-      (let ((deactivate-mark nil))
-        (setq hel--yank-transform-linewise-selection?
-              (hel--paste-line-p selection dir))
+      (let ((shape (and (hel--paste-line-p selection dir) 'line))
+            (deactivate-mark nil))
         (delete-region begin end)
-        (cl-letf ((yank-transform-functions (cons #'hel--yank-transform
-                                                  yank-transform-functions))
-                  ((symbol-function 'push-mark) #'hel-push-mark))
-          (yank))
-        (hel-select (hel-range (mark t) (point)) dir
-                    hel--yank-transform-linewise-selection?)
-        (hel-extend-selection -1)
-        (when (derived-mode-p 'prog-mode)
-          (-let [(begin . end) (hel-selection-bounds)]
-            (indent-region begin end)))))))
+        (hel--paste-insert #'yank shape dir)))))
 
 ;; J
 (hel-define-command hel-join-line ()
@@ -960,9 +957,14 @@ stays selected.  A selection of one line has the cursor at its start."
                             anchor
                           (line-after anchor (- motion-dir)))))
           (hel-select (hel-range anchor head) new-dir t))))
-    (-let [(begin . end) (hel-selection-bounds)]
-      (when (= 1 (count-lines begin end t))
-        (hel-select (cons begin end) -1 t)))
+    ;; A last line without a newline gets one, so that the selection
+    ;; holds it as a whole line.
+    (-let* ((((begin . end) dir) (hel-selection))
+            (new-end (hel--add-final-newline end)))
+      (cond ((= 1 (count-lines begin new-end t))
+             (hel-select (cons begin new-end) -1 t))
+            ((/= end new-end)
+             (hel-select (cons begin new-end) dir t))))
     (setq disable-point-adjustment t)))
 
 ;; X
@@ -980,7 +982,11 @@ stays selected.  A selection of one line has the cursor at its start."
   (hel-push-point)
   ;; `minibuffer-prompt-end'is really `point-min' in most cases, but if we're
   ;; in the minibuffer, this is at the end of the prompt.
-  (hel-select (cons (minibuffer-prompt-end) (point-max)) -1))
+  ;; `%' selects every line, so the last line gets its newline, as with
+  ;; `x'.
+  (hel-select (cons (minibuffer-prompt-end)
+                    (hel--add-final-newline (point-max)))
+              -1))
 
 ;; M-s
 (hel-define-command hel-split-selection-on-newline ()

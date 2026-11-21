@@ -184,6 +184,27 @@ moving.
   before the newline. =n= and =N= search from the edge of the selection,
   so from a bare cursor =n= starts after the cursor character and never
   finds the match that the cursor is already on.
+- Paste puts the text where the selection says, never where the text
+  says, so the user chooses at the destination. After whole lines the text
+  goes on lines of its own, and elsewhere into the line. The text takes
+  the shape of the place: on lines of its own it ends with a newline, and
+  in a line it loses its last newline. A blank line before that newline
+  is text, and it stays. =C-p= reads the shape back from the selection,
+  which is the pasted text, so each cursor keeps the shape of its own
+  paste.
+- The line selection of one empty line is a gap between paragraphs. =p=
+  and =P= move the paragraphs apart and put the text into the gap, with
+  one empty line above it and one below, also at the edges of the buffer.
+  The text loses every newline at its ends, so each gap stays one line,
+  and a text of only newlines changes nothing. =R= replaces the gap with
+  the text. A line of blanks is not a gap: trailing whitespace is
+  a mistake, and the rule does not adapt to it.
+- A buffer should end with a newline, and saving adds one. The commands
+  that select whole lines, =x=, =X=, =%= and =gj= when it extends a line
+  selection, add it early when their selection reaches a last line without one, so
+  that the last line is a whole line like any other. Other commands, such
+  as =>=, leave the buffer without it, and paste reads the selection as it
+  is.
 - =R=, =p=, =P=, =n=, =N= and the node commands keep the direction of the
   old selection, and give a bare cursor, which has none, a default:
   forward, or the direction of the motion. So =R= on a bare cursor

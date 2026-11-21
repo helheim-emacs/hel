@@ -79,6 +79,24 @@
   ~hel-mark-pair~ selects one.
 
 ** Changed
+- =p= and =P= on the line selection of one empty line, which =x= makes,
+  put the text into that line as into a gap between paragraphs: one empty
+  line stays above the text and one below. The text loses the newlines at
+  its ends, so each gap is one line.
+
+- Paste decides by the selection alone. At the end of a buffer without
+  a final newline, =vl p= pastes into the line, as it does in a buffer
+  with one, and =vl P= no longer adds a newline.
+
+- =%= and =x x= that reach a last line without a newline add the newline,
+  as =x= on that line does, so =p= after them pastes on a line of its own.
+  =>= and =<= no longer add it.
+
+- An inline paste removes only the last newline of the text. A blank line
+  before it stays.
+
+- ~hel-paste~ calls its second argument SIDE.
+
 - The line selection of an empty line, which =x= makes, has the face of
   the region to the edge of the window, so it looks different from a bare
   cursor on the same line. It is a part of the selection value:
@@ -427,6 +445,13 @@
   methods of that producer read it with ~hel-thing-instance-data~.
   ~hel-thing-instance-bounds~ returns its range, and
   ~hel-thing-instance-edge~ returns its ~:begin~ or ~:end~ edge.
+
+** Fixed
+- =C-p= with several cursors gives each cursor the shape of its own paste.
+  It took the shape of the last cursor, so a line pasted at the main
+  cursor could lose its newline.
+
+- =C-p= indents the text in a programming mode, as =p= does.
 
 * [0.13.0]
 ** Added
