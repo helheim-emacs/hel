@@ -121,12 +121,10 @@
                   #'hel--delete-dead-main-cursor-overlays)
         (add-hook 'enable-theme-functions  #'hel--on-theme-change)
         (add-hook 'disable-theme-functions #'hel--on-theme-change)
-        (add-function :after pre-redisplay-function
-                      #'hel--draw-main-cursor-overlay)
+        (add-function :after pre-redisplay-function #'hel--draw-main-cursor-overlay)
         ;; A change of focus may redraw only the cursor of Emacs, without
         ;; `pre-redisplay-function', so the box would keep its face.
-        (add-function :after after-focus-change-function
-                      #'force-window-update)
+        (add-function :after after-focus-change-function #'force-window-update)
         (add-function :around show-paren-data-function #'hel--show-paren-data)
         ;; Setup ESC, C-i and C-m keys
         (-each (frame-list) #'hel-setup-terminal-keys)
@@ -141,12 +139,10 @@
     (remove-hook 'window-buffer-change-functions #'hel--fundamental-mode-hack)
     (remove-hook 'change-major-mode-after-body-hook #'hel--check-if-cursor-is-hidden)
     (remove-hook 'window-configuration-change-hook #'hel-draw-cursor)
-    (remove-hook 'window-configuration-change-hook
-                 #'hel--delete-dead-main-cursor-overlays)
+    (remove-hook 'window-configuration-change-hook #'hel--delete-dead-main-cursor-overlays)
     (remove-hook 'enable-theme-functions  #'hel--on-theme-change)
     (remove-hook 'disable-theme-functions #'hel--on-theme-change)
-    (remove-function pre-redisplay-function
-                     #'hel--draw-main-cursor-overlay)
+    (remove-function pre-redisplay-function #'hel--draw-main-cursor-overlay)
     (remove-function after-focus-change-function #'force-window-update)
     (remove-function show-paren-data-function #'hel--show-paren-data)
     (hel--delete-main-cursor-overlays)
@@ -794,145 +790,6 @@ a Hel modal state. Can be a symbol or list of symbols.
   (apply #'hel-keymap-set hel-overriding-local-map args)
   (hel-update-active-keymaps))
 
-;;; The selection of each window
-;;
-;; `Point' belongs to the window, while `mark' belongs to the buffer.
-;; The selection (region) consists of `point' and `mark', so when focus moves
-;; into another window `point' jumps, while `mark' stays in place. So we need to
-;; manually manage selections per window. The selected window owns the selection
-;; in the buffer. The other windows that show the buffer keep theirs in the
-;; window parameter `hel--selection' until they are selected again.
-;;
-;; The owner changes around a command, in three steps:
-;;
-;; 1. `hel--pre-command-hook' takes a snapshot of the selection of the
-;;    current buffer into `hel--selection-record'.
-;;
-;; 2. The command runs. It may select another window, and it may change the
-;;    selection too: a mouse click deactivates the mark.
-;;
-;; 3. `hel--post-command-hook' checks whether the selected window is still the
-;;    owner. If it is not, `hel--switch-selection-owner' saves the snapshot in
-;;    the window that the user left. Then it decides which selection the new
-;;    window gets:
-;;
-;;    - The `mark' and `mark-active' are the same as in the snapshot. Then the
-;;      command only moved the user into another window and the new window gets
-;;      back the selection that it remembers.
-;;
-;;    - The `mark' or `mark-active' differs from the snapshot. Then the command
-;;      made a selection of its own, for example a command that moves into
-;;      another window and selects a word there. This selection stays.
-;;
-;;    Then the new window becomes the owner. The window that the user left
-;;    stores the snapshot.
-
-(hel-defvar-permanent-local hel--selection-owner nil
-  "The window that owns the selection of the buffer.")
-
-(defvar hel--selection-record nil
-  "The selection of the current buffer before the current command.
-It is a list (BUFFER MARK ACTIVE? EXTENDING?): the buffer, the position of
-the `mark', `mark-active' and `hel-extend-selection'.")
-
-(cl-defstruct (hel--window-selection
-               (:constructor hel--window-selection-create)
-               (:copier nil))
-  "The selection that a window saves while it is not the owner.
-BUFFER is the buffer that the selection belongs to. POINT is a marker
-at the point of the window, and MARK a marker at the mark. ACTIVE and
-EXTENDING are the values of `mark-active' and `hel-extend-selection'."
-  buffer point mark active extending)
-
-(defun hel--switch-selection-owner ()
-  "Make the selected window the owner of the current buffer's selection.
-When ownership changes, save the selection in the previous owner's window
-parameter `hel--selection', then restore the selection saved by the newly
-selected window.
-
-Do not restore a saved selection if the command has changed the mark or its
-active state; this preserves selections made by the command. If the previous
-owner is no longer live or no longer displays this buffer, its selection cannot
-be saved. A window with no saved selection, or one whose point has moved since,
-gets no active selection, and the mark stays where it is. A buffer that has
-never had an owner keeps its selection."
-  (let ((window (selected-window))
-        (owner hel--selection-owner)
-        (buffer (current-buffer)))
-    (when (eq (window-buffer window) buffer)
-      (when owner
-        ;; A record of another buffer says nothing about this one: the
-        ;; command did not touch the selection of this buffer.
-        (-let [(mark active? extending?)
-               (if (eq (car hel--selection-record) buffer)
-                   (cdr hel--selection-record)
-                 (list (mark t) mark-active hel-extend-selection))]
-          (when (and (window-live-p owner)
-                     (eq (window-buffer owner) buffer))
-            (hel--save-window-selection owner mark active? extending?))
-          ;; The `mark' and `mark-active' are the same as in the snapshot.
-          ;; Then the command only moved the user into another window and the
-          ;; new window gets back the selection that it remembers.
-          (when (and (eql mark (mark t))
-                     (eq active? mark-active))
-            (hel--restore-window-selection window))))
-      (hel--forget-window-selection window)
-      (setq hel--selection-owner window))))
-
-(defun hel--save-window-selection (window mark active? extending?)
-  "Save in WINDOW the selection of the current buffer.
-The selection is the point of WINDOW and MARK, a position or nil.
-ACTIVE? says whether the region is active, and EXTENDING? whether
-motions extend the selection."
-  (let ((saved (or (window-parameter window 'hel--selection)
-                   (set-window-parameter
-                    window 'hel--selection
-                    (hel--window-selection-create :point (make-marker)
-                                                  :mark (make-marker))))))
-    (setf (hel--window-selection-buffer saved) (current-buffer)
-          (hel--window-selection-active saved) active?
-          (hel--window-selection-extending saved) extending?)
-    (set-marker (hel--window-selection-point saved) (window-point window))
-    (set-marker (hel--window-selection-mark saved) mark)))
-
-(defun hel--restore-window-selection (window)
-  "Give the current buffer the selection saved in WINDOW.
-The saved selection is out of date when it belongs to another buffer, or
-when the point of WINDOW has moved since it was saved: with the old mark,
-the moved point would make a selection that the user never made. Without
-an up-to-date saved selection the region is inactive and motions do not
-extend, but the mark stays where it is."
-  (let* ((saved (window-parameter window 'hel--selection))
-         (valid? (and saved
-                      (eq (hel--window-selection-buffer saved)
-                          (current-buffer))
-                      (eql (marker-position (hel--window-selection-point saved))
-                           (window-point window))))
-         ;; The region of the buffer is the region of another window, so it
-         ;; must not become the primary selection.
-         (select-active-regions nil)
-         (was-extending? hel-extend-selection))
-    (deactivate-mark)
-    (setq hel-extend-selection nil)
-    (when valid?
-      (set-marker (mark-marker)
-                  (marker-position (hel--window-selection-mark saved)))
-      (setq hel-extend-selection (hel--window-selection-extending saved))
-      (when (hel--window-selection-active saved)
-        (activate-mark)))
-    ;; The color of the cursor shows whether motions extend.
-    (unless (eq was-extending? hel-extend-selection)
-      (hel-draw-cursor))))
-
-(defun hel--forget-window-selection (window)
-  "Forget the selection saved in WINDOW."
-  ;; A remembered selection holds markers, and every marker slows down the
-  ;; edits of its buffer.
-  (when-let* ((saved (window-parameter window 'hel--selection)))
-    (setf (hel--window-selection-buffer saved) nil)
-    (set-marker (hel--window-selection-point saved) nil)
-    (set-marker (hel--window-selection-mark saved) nil)))
-
 ;;; Command loop hooks
 
 (defun hel--pre-command-hook ()
@@ -998,7 +855,7 @@ action. The step is terminated with `hel--single-undo-step-end'."
     (when (car-safe buffer-undo-list)
       (undo-boundary))
     (setq hel--buffer-undo-list-pointer buffer-undo-list
-          hel-undo--selections (hel-selections))))
+          hel--undo-selections (hel-selections))))
 
 (defun hel--single-undo-step-end ()
   "Finalize undo step started by `hel--single-undo-step-beginning'."
@@ -1016,7 +873,7 @@ action. The step is terminated with `hel--single-undo-step-end'."
           (hel--merge-undo-step))
       (setq hel--in-single-undo-step nil
             hel--buffer-undo-list-pointer nil
-            hel-undo--selections nil))))
+            hel--undo-selections nil))))
 
 (defun hel--buffer-undo-list-tip-is-redo-record-p ()
   "Return non-nil if the tip of `buffer-undo-list' was produced by an undo.
@@ -1056,7 +913,7 @@ Emacs marks such records in `undo-equiv-table'."
       (let ((tail undo-list))
         (while (not (eq (cdr tail) hel--buffer-undo-list-pointer))
           (setq tail (cdr tail)))
-        (setcdr tail (cons `(apply hel--undo-step-end ,hel-undo--selections)
+        (setcdr tail (cons `(apply hel--undo-step-end ,hel--undo-selections)
                            hel--buffer-undo-list-pointer))))))
 
 (defun hel-commit-undo-checkpoint ()
@@ -1411,6 +1268,137 @@ Delete also the paint of the line selection of an empty line."
 
 (defun hel--on-theme-change (_theme)
   (hel--update-main-cursor-color (face-background 'cursor)))
+
+;;; Make a window own the selection
+;;
+;; `Point' belongs to the window, while `mark' belongs to the buffer.
+;; The selection (region) consists of `point' and `mark', so when focus moves
+;; into another window `point' jumps, while `mark' stays in place. So we need to
+;; manually manage selections per window. The selected window owns the selection
+;; in the buffer. The other windows that show the buffer keep theirs in the
+;; window parameter `hel--selection' until they are selected again.
+;;
+;; The owner changes around a command, in three steps:
+;;
+;; 1. `hel--pre-command-hook' takes a snapshot of the selection of the
+;;    current buffer into `hel--selection-record'.
+;;
+;; 2. The command runs. It may select another window, and it may change the
+;;    selection too: a mouse click deactivates the mark.
+;;
+;; 3. `hel--post-command-hook' checks whether the selected window is still the
+;;    owner. If it is not, `hel--switch-selection-owner' saves the snapshot in
+;;    the window that the user left. Then it decides which selection the new
+;;    window gets:
+;;
+;;    - The `mark' and `mark-active' are the same as in the snapshot. Then the
+;;      command only moved the user into another window and the new window gets
+;;      back the selection that it remembers.
+;;
+;;    - The `mark' or `mark-active' differs from the snapshot. Then the command
+;;      made a selection of its own, for example a command that moves into
+;;      another window and selects a word there. This selection stays.
+;;
+;;    Then the new window becomes the owner. The window that the user left
+;;    stores the snapshot.
+
+(cl-defstruct (hel--window-selection
+               (:constructor hel--window-selection-create)
+               (:copier nil))
+  "The selection that a window saves while it is not the owner.
+BUFFER is the buffer that the selection belongs to. POINT is a marker
+at the point of the window, and MARK a marker at the mark. ACTIVE and
+EXTENDING are the values of `mark-active' and `hel-extend-selection'."
+  buffer point mark active extending)
+
+(defun hel--switch-selection-owner ()
+  "Make the selected window the owner of the current buffer's selection.
+When ownership changes, save the selection in the previous owner's window
+parameter `hel--selection', then restore the selection saved by the newly
+selected window.
+
+Do not restore a saved selection if the command has changed the mark or its
+active state; this preserves selections made by the command. If the previous
+owner is no longer live or no longer displays this buffer, its selection cannot
+be saved. A window with no saved selection, or one whose point has moved since,
+gets no active selection, and the mark stays where it is. A buffer that has
+never had an owner keeps its selection."
+  (let ((window (selected-window))
+        (owner hel--selection-owner)
+        (buffer (current-buffer)))
+    (when (eq (window-buffer window) buffer)
+      (when owner
+        ;; A record of another buffer says nothing about this one: the
+        ;; command did not touch the selection of this buffer.
+        (-let [(mark active? extending?)
+               (if (eq (car hel--selection-record) buffer)
+                   (cdr hel--selection-record)
+                 (list (mark t) mark-active hel-extend-selection))]
+          (when (and (window-live-p owner)
+                     (eq (window-buffer owner) buffer))
+            (hel--save-window-selection owner mark active? extending?))
+          ;; The `mark' and `mark-active' are the same as in the snapshot.
+          ;; Then the command only moved the user into another window and the
+          ;; new window gets back the selection that it remembers.
+          (when (and (eql mark (mark t))
+                     (eq active? mark-active))
+            (hel--restore-window-selection window))))
+      (hel--forget-window-selection window)
+      (setq hel--selection-owner window))))
+
+(defun hel--save-window-selection (window mark active? extending?)
+  "Save in WINDOW the selection of the current buffer.
+The selection is the point of WINDOW and MARK, a position or nil.
+ACTIVE? says whether the region is active, and EXTENDING? whether
+motions extend the selection."
+  (let ((saved (or (window-parameter window 'hel--selection)
+                   (set-window-parameter
+                    window 'hel--selection
+                    (hel--window-selection-create :point (make-marker)
+                                                  :mark (make-marker))))))
+    (setf (hel--window-selection-buffer saved) (current-buffer)
+          (hel--window-selection-active saved) active?
+          (hel--window-selection-extending saved) extending?)
+    (set-marker (hel--window-selection-point saved) (window-point window))
+    (set-marker (hel--window-selection-mark saved) mark)))
+
+(defun hel--restore-window-selection (window)
+  "Give the current buffer the selection saved in WINDOW.
+The saved selection is out of date when it belongs to another buffer, or
+when the point of WINDOW has moved since it was saved: with the old mark,
+the moved point would make a selection that the user never made. Without
+an up-to-date saved selection the region is inactive and motions do not
+extend, but the mark stays where it is."
+  (let* ((saved (window-parameter window 'hel--selection))
+         (valid? (and saved
+                      (eq (hel--window-selection-buffer saved)
+                          (current-buffer))
+                      (eql (marker-position (hel--window-selection-point saved))
+                           (window-point window))))
+         ;; The region of the buffer is the region of another window, so it
+         ;; must not become the primary selection.
+         (select-active-regions nil)
+         (was-extending? hel-extend-selection))
+    (deactivate-mark)
+    (setq hel-extend-selection nil)
+    (when valid?
+      (set-marker (mark-marker)
+                  (marker-position (hel--window-selection-mark saved)))
+      (setq hel-extend-selection (hel--window-selection-extending saved))
+      (when (hel--window-selection-active saved)
+        (activate-mark)))
+    ;; The color of the cursor shows whether motions extend.
+    (unless (eq was-extending? hel-extend-selection)
+      (hel-draw-cursor))))
+
+(defun hel--forget-window-selection (window)
+  "Forget the selection saved in WINDOW."
+  ;; A remembered selection holds markers, and every marker slows down the
+  ;; edits of its buffer.
+  (when-let* ((saved (window-parameter window 'hel--selection)))
+    (setf (hel--window-selection-buffer saved) nil)
+    (set-marker (hel--window-selection-point saved) nil)
+    (set-marker (hel--window-selection-mark saved) nil)))
 
 ;;; .
 (provide 'hel-core)

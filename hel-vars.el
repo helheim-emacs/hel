@@ -563,6 +563,14 @@ Default value is 0 - scroll half the screen.")
   "Like `this-command' but for secondary cursors.
 The command that that will be executed for each secondary cursor.")
 
+(defvar hel--selection-record nil
+  "The selection of the current buffer before the current command.
+It is a list (BUFFER MARK ACTIVE? EXTENDING?): the buffer, the position of
+the `mark', `mark-active' and `hel-extend-selection'.")
+
+(hel-defvar-permanent-local hel--selection-owner nil
+  "The window that owns the selection of the buffer.")
+
 (defvar hel-executing-command-for-secondary-cursor nil
   "Non-nil if `this-command' is currently executing for secondary cursor.")
 
@@ -573,7 +581,7 @@ multiple cursors.")
 (hel-defvar-permanent-local hel--buffer-undo-list-pointer nil
   "Stores the start of the current undo step in `buffer-undo-list'.")
 
-(hel-defvar-permanent-local hel-undo--selections nil
+(hel-defvar-permanent-local hel--undo-selections nil
   "The values of all cursors at the beginning of the current undo step.
 The list is the one that `hel-selections' returns.")
 
