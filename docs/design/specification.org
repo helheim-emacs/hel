@@ -362,7 +362,8 @@ secondary cursors, whose state lives in overlays.
   in a light theme and on a bright cursor in a dark theme. Every window
   that shows a buffer in Normal state draws a box: the selected window over the head character of the selection,
   another window over the character after its own point, with a dimmer
-  face. That dimmer box lies under the highlights of other packages, so
+  face. The selected window of a frame without focus draws the dimmer box
+  too, as Emacs draws a hollow cursor there. That dimmer box lies under the highlights of other packages, so
   the matches that Consult previews from the minibuffer stay fully
   visible; the box in the selected window lies above them. A window that
   is not selected keeps no selection of its own, but its point is enough

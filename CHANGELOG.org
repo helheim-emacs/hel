@@ -462,6 +462,9 @@
 - =C-S-o= and =C-S-i= remove the secondary cursors, which have no place in
   the other buffer.
 
+- The box of the main cursor in Normal state dims when the Emacs frame
+  loses focus, as the cursor of Emacs does.
+
 * [0.13.0]
 ** Added
 

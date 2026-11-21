@@ -123,6 +123,10 @@
         (add-hook 'disable-theme-functions #'hel--on-theme-change)
         (add-function :after pre-redisplay-function
                       #'hel--draw-main-cursor-overlay)
+        ;; A change of focus may redraw only the cursor of Emacs, without
+        ;; `pre-redisplay-function', so the box would keep its face.
+        (add-function :after after-focus-change-function
+                      #'force-window-update)
         (add-function :around show-paren-data-function #'hel--show-paren-data)
         ;; Setup ESC, C-i and C-m keys
         (-each (frame-list) #'hel-setup-terminal-keys)
@@ -143,6 +147,7 @@
     (remove-hook 'disable-theme-functions #'hel--on-theme-change)
     (remove-function pre-redisplay-function
                      #'hel--draw-main-cursor-overlay)
+    (remove-function after-focus-change-function #'force-window-update)
     (remove-function show-paren-data-function #'hel--show-paren-data)
     (hel--delete-main-cursor-overlays)
     (hel--delete-dead-main-cursor-overlays)
@@ -1287,7 +1292,8 @@ Redisplay calls this function before it redraws WINDOWS, or t for all
 windows, so the box follows point after every command, including the
 commands outside Hel.  The selected window draws the box over the head
 character of the selection.  Another window on the buffer draws it at its
-own point, with the face `hel-other-window-cursor'.  On a newline or at
+own point, with the face `hel-other-window-cursor'.  The selected window
+of a frame without focus uses that face too.  On a newline or at
 the end of the buffer the box is a cell of one space.  Outside Normal
 state there is no box.
 
@@ -1325,7 +1331,10 @@ face of the region to the edge of the window, see
                            (eql (overlay-start overlay) begin)
                            (eql (overlay-end overlay) end))
                 (move-overlay overlay begin end (current-buffer)))
-              (let ((face (if selected?
+              ;; A frame without focus draws its selected window with
+              ;; the dimmer box, as Emacs draws a hollow cursor there.
+              (let ((face (if (and selected?
+                                   (frame-focus-state (window-frame window)))
                               (nth 2 (hel--cursor-look t))
                             'hel-other-window-cursor)))
                 (if (= begin end)

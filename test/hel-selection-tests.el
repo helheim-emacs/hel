@@ -542,6 +542,19 @@ the face `hel-other-window-cursor'.  Each window has its own overlay."
       (should (equal (hel-test-drawn-cursor-char second)
                      '(1 2 hel-normal-state-main-cursor nil))))))
 
+(ert-deftest hel-cursor-box-dims-without-focus ()
+  "When the frame loses focus, the selected window draws its box with the
+face `hel-other-window-cursor', as Emacs draws a hollow cursor there.  The
+box stays over the head character of the selection."
+  (hel-test-with #'fundamental-mode "a^bc|d"
+    (cl-letf (((symbol-function 'frame-focus-state) #'ignore))
+      (hel-test-redisplay)
+      (should (equal (hel-test-drawn-cursor-char)
+                     '(3 4 hel-other-window-cursor nil))))
+    (hel-test-redisplay)
+    (should (equal (hel-test-drawn-cursor-char)
+                   '(3 4 hel-normal-state-main-cursor nil)))))
+
 (ert-deftest hel-cursor-box-in-another-window-under-highlights ()
   "In another window the box lies under a highlight with a priority, as
 the match that Consult previews there with priority 2.  In the selected

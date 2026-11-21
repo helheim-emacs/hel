@@ -46,6 +46,10 @@
 ;; Hel selections are the active region, and the region is active only with
 ;; `transient-mark-mode'.  Batch Emacs starts with this mode disabled.
 (transient-mark-mode 1)
+;; The selected window of a frame without focus draws a dimmer cursor.  The
+;; frame of batch Emacs never receives a focus event, so `frame-focus-state'
+;; reports it as not focused.
+(set-frame-parameter nil 'last-focus-update t)
 
 ;;; Guard against prompts
 
