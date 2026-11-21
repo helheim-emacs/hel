@@ -2193,7 +2193,7 @@ In this test the question is the guard of the test setup, which fails on it."
     (hel-test-expect "C-<i>" "a\nb\nc\nd\n|e")))
 
 (ert-deftest hel-behaviour-jump-global-ring ()
-  "`C-S-o' goes back to another buffer."
+  "`C-S-o' and `C-S-i' go to the position saved in another buffer."
   (let ((other (generate-new-buffer "*hel-test-other*")))
     (unwind-protect
         (hel-test-with 'text-mode "a|b\nc"
@@ -2206,7 +2206,31 @@ In this test the question is the guard of the test setup, which fails on it."
             (goto-char 3)
             (hel-test-press! "gg")
             (hel-test-press! "C-S-o")
-            (should (eq (current-buffer) first))))
+            (should (equal (list (current-buffer) (point))
+                           (list first 2)))
+            (hel-test-press! "C-S-i")
+            (should (equal (list (current-buffer) (point))
+                           (list other 3)))))
+      (kill-buffer other))))
+
+(ert-deftest hel-behaviour-jump-global-ring-removes-cursors ()
+  "`C-S-o' removes the secondary cursors."
+  (let ((other (generate-new-buffer "*hel-test-other*")))
+    (unwind-protect
+        (hel-test-with 'text-mode "a|b\nc"
+          (let ((first (current-buffer)))
+            (hel-test-press! "G")
+            (with-current-buffer other
+              (text-mode)
+              (insert "foo\nbar\n"))
+            (switch-to-buffer other)
+            (hel-test-press! "gg")
+            (hel-test-add-secondary-cursor 6 5)
+            (hel-test-press! "C-S-o")
+            (should (equal (list (current-buffer) (point))
+                           (list first 2)))
+            (should-not (with-current-buffer other
+                          (hel-all-secondary-cursors)))))
       (kill-buffer other))))
 
 ;;; Scrolling

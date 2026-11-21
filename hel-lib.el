@@ -941,24 +941,28 @@ and jump to the new top position.  EXTEND is as in `hel-move-to-pos'."
 (defun hel--jump-over-global-mark-ring (&optional backward?)
   "Jump to the top location on the `global-mark-ring'.
 If current buffer is the same as the target one, rotate `global-mark-ring'
-forward (or BACKWARD) and jump to new top location."
+forward (or BACKWARD) and jump to new top location.  The jump removes the
+secondary cursors, because they have no place in the target buffer."
   ;; Delete entries that refer to non-existent buffers.
   (when (setq global-mark-ring (-filter #'marker-buffer global-mark-ring))
     (when (eq (marker-buffer (car global-mark-ring))
               (current-buffer))
       (cl-callf hel-rotate-ring global-mark-ring backward?))
+    (hel-disable-multiple-cursors-mode)
     (hel-recenter-point-on-jump
       (let* ((marker (car global-mark-ring))
              (buffer (marker-buffer marker))
              (position (marker-position marker)))
-        (set-buffer buffer)
+        ;; `switch-to-buffer' goes first: it moves point back to where
+        ;; the window last showed the buffer, when
+        ;; `switch-to-buffer-preserve-window-point' is t, as by default.
+        (switch-to-buffer buffer)
         (or (<= (point-min) position (point-max))
             (if widen-automatically
                 (widen)
               (error "Global mark position is outside accessible part of buffer %s"
                      (buffer-name buffer))))
         (goto-char position)
-        (switch-to-buffer buffer)
         (deactivate-mark)))))
 
 (defun hel-rotate-ring (ring &optional backward?)

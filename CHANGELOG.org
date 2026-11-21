@@ -456,6 +456,12 @@
 - =J= on the last line of the buffer does nothing. It joined the line
   with the line above, or removed the final newline.
 
+- =C-S-o= and =C-S-i= go to the saved position in the other buffer. They
+  went to the place where the window last showed that buffer.
+
+- =C-S-o= and =C-S-i= remove the secondary cursors, which have no place in
+  the other buffer.
+
 * [0.13.0]
 ** Added
 

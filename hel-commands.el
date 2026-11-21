@@ -358,7 +358,7 @@ position. See `hel-backward-mark-ring'.
   "Jump to the top location on `global-mark-ring'.
 If current buffer is the same as the target one, rotate `global-mark-ring'
 forward (like revolver cylinder) and jump to new top location."
-  :multiple-cursors t
+  :multiple-cursors nil
   (interactive)
   (hel--jump-over-global-mark-ring))
 
@@ -367,7 +367,7 @@ forward (like revolver cylinder) and jump to new top location."
   "Jump to the top location on `global-mark-ring'.
 If current buffer is the same as the target one, rotate `global-mark-ring'
 backward and jump to new top location."
-  :multiple-cursors t
+  :multiple-cursors nil
   (interactive)
   (hel--jump-over-global-mark-ring t))
 
