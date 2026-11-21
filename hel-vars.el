@@ -568,6 +568,12 @@ The command that that will be executed for each secondary cursor.")
 It is a list (BUFFER MARK ACTIVE? EXTENDING?): the buffer, the position of
 the `mark', `mark-active' and `hel-extend-selection'.")
 
+(defvar hel--main-cursor-error nil
+  "The (DEPTH . ERROR) of the command at the main cursor, or nil.
+DEPTH is the recursion depth where the command ran: a command in
+a minibuffer that the command opened runs deeper, and its error is not
+an error of the command.")
+
 (hel-defvar-permanent-local hel--selection-owner nil
   "The window that owns the selection of the buffer.")
 

@@ -1215,4 +1215,72 @@ the box, the head character of the selection."
       (should (equal (list input (-take 4 (funcall show-paren-data-function)))
                      (list input pair))))))
 
+;;; A command that fails at some cursors
+
+(defun hel-test--always-fail ()
+  "Signal a user error at every cursor."
+  (interactive)
+  (user-error "Nothing here"))
+
+(put 'hel-test--always-fail 'multiple-cursors t)
+
+(defun hel-test--fail-at-main-cursor ()
+  "Signal a user error.  The command runs only for the main cursor."
+  (interactive)
+  (user-error "Nothing here"))
+
+(put 'hel-test--fail-at-main-cursor 'multiple-cursors nil)
+
+(ert-deftest hel-failed-secondary-cursor-deleted ()
+  "A secondary cursor where the command fails is deleted, the others go on.
+The cursor at the end of the buffer, after a newline, has no word to
+select.  `hel-restore-cursors' brings all three cursors back."
+  (hel-test-with #'fundamental-mode "|foo bar\n"
+    (hel-test-add-secondary-cursor 5)         ; "b"
+    (hel-test-add-secondary-cursor 9)         ; the end of the buffer
+    (hel-test-run #'hel-mark-word)
+    (should (equal (hel-test-selections) '("foo" "bar")))
+    (should (equal (hel-test-selection) "foo"))
+    (should (= 3 (length hel--selections-history)))))
+
+(ert-deftest hel-failed-main-cursor-replaced ()
+  "When the command fails at the main cursor, the nearest cursor becomes main.
+The error goes the way of the command loop: `command-error-function'
+reports it, and `post-command-hook' then runs the command for the secondary
+cursors.  The default `command-error-function' ends a batch Emacs, so the
+test calls only the function that Hel adds to it."
+  (should (advice-function-member-p #'hel--record-main-cursor-error
+                                    command-error-function))
+  (hel-test-with #'fundamental-mode "foo bar\n|"
+    (hel-test-add-secondary-cursor 1)         ; "f"
+    (hel-test-add-secondary-cursor 5)         ; "b"
+    (setq this-command #'hel-mark-word)
+    (run-hooks 'pre-command-hook)
+    (condition-case err
+        (call-interactively #'hel-mark-word)
+      (error (hel--record-main-cursor-error err "" nil)))
+    (run-hooks 'post-command-hook)
+    (should (equal (hel-test-selections) '("foo" "bar")))
+    (should (equal (hel-test-selection) "bar"))))
+
+(ert-deftest hel-command-failed-at-every-cursor ()
+  "When the command fails at every cursor, every cursor stays."
+  (hel-test-with #'fundamental-mode "|foo bar\n"
+    (hel-test-add-secondary-cursor 5)
+    (hel-test-add-secondary-cursor 9)
+    (should-error (hel-test-run #'hel-test--always-fail) :type 'user-error)
+    (should (equal (hel-test-selections) '("f" "b" "")))
+    (should-not hel--selections-history)))
+
+(ert-deftest hel-command-for-main-cursor-failed ()
+  "A command that runs only for the main cursor keeps it when it fails.
+The secondary cursors did not run the command, so no cursor has a result
+that the main cursor would differ from."
+  (hel-test-with #'fundamental-mode "|foo bar\n"
+    (hel-test-add-secondary-cursor 5)
+    (should-error (hel-test-run #'hel-test--fail-at-main-cursor)
+                  :type 'user-error)
+    (should (equal (hel-test-selections) '("f" "b")))
+    (should-not hel--selections-history)))
+
 ;;; hel-selection-tests.el ends here

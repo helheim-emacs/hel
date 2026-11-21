@@ -271,11 +271,6 @@ FUN on each invocation should move point."
     (overlay-buffer)
     (buffer-live-p)))
 
-(defun hel-pulse-main-selection (&optional face)
-  "Flash the selection of the main cursor with FACE."
-  (-let [(begin . end) (hel-selection-bounds)]
-    (pulse-momentary-highlight-region begin end face)))
-
 (defun hel-reveal-point-when-on-top (&rest _)
   "Reveal point when it's only partially visible.
 For some reason, Emacs can become slow while point is partially visible, so this
@@ -1243,7 +1238,7 @@ The result is a (BEGIN . END) pair."
 
 ;;; Advices
 
-(declare-function hel-extend-selection "hel-commands" (arg) t)
+(declare-function hel-extend-selection "hel-core" (arg) t)
 (declare-function hel-insert-state "hel-core" (&optional arg) t)
 
 (defun hel-keep-selection-a (command &rest args)
@@ -1261,7 +1256,7 @@ The result is a (BEGIN . END) pair."
   (or hel-extend-selection
       (deactivate-mark)))
 
-(declare-function hel-disable-multiple-cursors-mode "hel-multiple-cursors-core")
+(declare-function hel-disable-multiple-cursors-mode "hel-cursors")
 
 (defun hel-jump-command-a (command &rest args)
   "Aroung advice for COMMAND that moves point."

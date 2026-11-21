@@ -921,47 +921,46 @@ grows outward also from a pair text of one character.
 When no pair holds the selection, as for quotes, which do not nest, take
 the pair at the cursor: so `ma\"' then `mi\"' selects the inside of the
 same string."
-  (if-let* ((selection (hel-selection))
-            (trimmed (hel-trimmed-selection selection))
-            (head (hel-selection-head trimmed))
-            (producer (hel-pair-producer char head)))
-      (progn
-        (hel--sync-selection-history)
-        (cl-flet ((side-bounds (pair)
-                    (if (eq side :inner)
-                        (hel-pair-text-bounds producer pair)
-                      (hel-pair-outer-bounds pair))))
-          (let* ((before (hel--selection-entry))
-                 (bounds (and (or (not (hel-bare-cursor-p selection))
-                                  hel-selection-history)
-                              (hel-selection-bounds trimmed)))
-                 (pair (or (when bounds
-                             (cl-loop for pair = (hel-pair-at producer (car bounds))
-                                      then (hel-pair-parent producer pair)
-                                      while pair
-                                      when (hel-range-strictly-inside-p
-                                            bounds (side-bounds pair))
-                                      return pair))
-                           (hel-pair-at producer head))))
-            (when pair
-              (cl-loop repeat (1- count)
-                       for parent = (hel-pair-parent producer pair)
-                       while parent
-                       do (setq pair parent)))
-            (when-let* ((pair)
-                        (range (side-bounds pair))
-                        ;; Skip a pair that is selected already. At a bare
-                        ;; cursor, a one-character pair text is still selected,
-                        ;; so the history records it and a repeated key grows
-                        ;; outward from it.
-                        ((or (hel-bare-cursor-p (car before))
-                             (not (equal range
-                                         (hel-selection-bounds (car before)))))))
-              (hel-push-point)
-              (hel-select range)
-              (hel--record-selection before)
-              (hel-reveal-point-when-on-top)))))
-    (message "No %c pair here" char)))
+  (let* ((selection (hel-selection))
+         (trimmed (hel-trimmed-selection selection))
+         (head (-some-> trimmed (hel-selection-head)))
+         (producer (or (and head (hel-pair-producer char head))
+                       (user-error "No %c pair here" char))))
+    (hel--sync-selection-history)
+    (cl-flet ((side-bounds (pair)
+                (if (eq side :inner)
+                    (hel-pair-text-bounds producer pair)
+                  (hel-pair-outer-bounds pair))))
+      (let* ((before (hel--selection-entry))
+             (bounds (and (or (not (hel-bare-cursor-p selection))
+                              hel-selection-history)
+                          (hel-selection-bounds trimmed)))
+             (pair (or (when bounds
+                         (cl-loop for pair = (hel-pair-at producer (car bounds))
+                                  then (hel-pair-parent producer pair)
+                                  while pair
+                                  when (hel-range-strictly-inside-p
+                                        bounds (side-bounds pair))
+                                  return pair))
+                       (hel-pair-at producer head))))
+        (when pair
+          (cl-loop repeat (1- count)
+                   for parent = (hel-pair-parent producer pair)
+                   while parent
+                   do (setq pair parent)))
+        (when-let* ((pair)
+                    (range (side-bounds pair))
+                    ;; Skip a pair that is selected already. At a bare
+                    ;; cursor, a one-character pair text is still selected,
+                    ;; so the history records it and a repeated key grows
+                    ;; outward from it.
+                    ((or (hel-bare-cursor-p (car before))
+                         (not (equal range
+                                     (hel-selection-bounds (car before)))))))
+          (hel-push-point)
+          (hel-select range)
+          (hel--record-selection before)
+          (hel-reveal-point-when-on-top))))))
 
 ;;; .
 (provide 'hel-surround)

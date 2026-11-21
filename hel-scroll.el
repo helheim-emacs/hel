@@ -32,7 +32,7 @@
 (eval-when-compile (require 'hel-macros))
 (require 'hel-vars)
 (require 'hel-lib)
-(require 'hel-multiple-cursors-core)
+(require 'hel-cursors)
 (require 'hel-core)
 (require 'ultra-scroll)
 

@@ -62,7 +62,7 @@
 (require 'treesit)
 (require 'hel-vars)
 (require 'hel-lib)
-(require 'hel-multiple-cursors-core)
+(require 'hel-cursors)
 (require 'hel-core)
 
 ;;; Motions
@@ -527,41 +527,39 @@ goes to the edge where they were added.
 KIND is:
 - `:inner' for what `mi' selects;
 - `:around' for what `ma' selects."
-  (if-let* ((head (-some-> (hel-trimmed-selection) (hel-selection-head)))
-            (producer (hel-thing-producer thing head)))
-      (progn
-        (hel--sync-selection-history)
-        (-let* ((dir (hel-sign count))
-                (before (hel--selection-entry))
-                (key (list thing kind))
-                ((_ (run-key run-first run-last)) (car hel-selection-history))
-                (extend? (equal key run-key))
-                ((first . last)
-                 (if extend?
-                     (hel--extend-things thing producer run-first run-last count)
-                   (when-let* ((instance (hel-thing-owning thing producer head)))
-                     (hel--extend-things thing producer instance nil (- count dir))))))
-          (when-let* ((first)
-                      (range (pcase kind
-                               (:inner
-                                (cons (hel-thing-instance-begin first)
-                                      (hel-thing-instance-end last)))
-                               (:around
-                                (hel-thing-around thing producer first last))))
-                      ;; Skip an object that is selected already. At a bare
-                      ;; cursor, a one-character object is still selected, so
-                      ;; the history records it and a repeated key goes on
-                      ;; from it.
-                      ((or (hel-bare-cursor-p (car before))
-                           (not (equal range
-                                       (hel-selection-bounds (car before)))))))
-            (hel-push-point)
-            (hel-select range (if (or extend? (/= 1 (abs count)))
-                                  dir
-                                (hel-thing-selection-direction thing)))
-            (hel--record-selection before (list key first last))
-            (hel-reveal-point-when-on-top))))
-    (hel--no-thing-producer-message thing)))
+  (let* ((head (-some-> (hel-trimmed-selection) (hel-selection-head)))
+         (producer (hel--thing-producer-or-error thing head)))
+    (hel--sync-selection-history)
+    (-let* ((dir (hel-sign count))
+            (before (hel--selection-entry))
+            (key (list thing kind))
+            ((_ (run-key run-first run-last)) (car hel-selection-history))
+            (extend? (equal key run-key))
+            ((first . last)
+             (if extend?
+                 (hel--extend-things thing producer run-first run-last count)
+               (when-let* ((instance (hel-thing-owning thing producer head)))
+                 (hel--extend-things thing producer instance nil (- count dir))))))
+      (when-let* ((first)
+                  (range (pcase kind
+                           (:inner
+                            (cons (hel-thing-instance-begin first)
+                                  (hel-thing-instance-end last)))
+                           (:around
+                            (hel-thing-around thing producer first last))))
+                  ;; Skip an object that is selected already. At a bare
+                  ;; cursor, a one-character object is still selected, so
+                  ;; the history records it and a repeated key goes on
+                  ;; from it.
+                  ((or (hel-bare-cursor-p (car before))
+                       (not (equal range
+                                   (hel-selection-bounds (car before)))))))
+        (hel-push-point)
+        (hel-select range (if (or extend? (/= 1 (abs count)))
+                              dir
+                            (hel-thing-selection-direction thing)))
+        (hel--record-selection before (list key first last))
+        (hel-reveal-point-when-on-top)))))
 
 (defun hel-mark-to-thing-edge (thing count edge skip-gap? extend)
   "Select from the cursor to the EDGE of the COUNT-th THING.
@@ -581,52 +579,51 @@ and the motion starts past it. Go on to the next edge when the motion
 would stop on the anchor of the selection, where the selection would be
 empty. When no thing exists in the direction, the selection stays as
 it is."
-  (if-let* ((selection (hel-selection))
-            (producer (hel-thing-producer thing (hel-selection-head selection))))
-      (cl-flet ((reach (pos count)
-                  ;; The range in the order of the motion: (START . END).
-                  (-when-let ((begin . end)
-                              (hel-thing-reach thing producer pos count edge skip-gap?))
-                    (if (< 0 count) (cons begin end) (cons end begin)))))
-        (let ((anchor (and extend
-                           (hel-selection-anchor selection (hel-sign count)))))
-          (-when-let* (((start . end)
-                        (if extend
-                            (reach (-let [((begin . end)) selection]
-                                     (if (= anchor begin) end begin))
-                                   count)
-                          ;; NEAR and FAR are the edges of the head character
-                          ;; behind and ahead of the motion.
-                          (-let* (((begin . end) (-> (hel-selection-head selection)
-                                                     (hel-char-range)))
-                                  (near (if (< 0 count) begin end))
-                                  (far  (if (< 0 count) end begin))
-                                  (step (reach near (hel-sign count))))
-                            (cond ((= (point) (if (< count 0)
-                                                  (point-min)
-                                                (point-max)))
-                                   ;; Nothing lies ahead of a cursor at the edge
-                                   ;; of the buffer.
-                                   nil)
-                                  ((and step (/= near far) (eql (cdr step) far))
-                                   ;; At the edge of the buffer the motion from
-                                   ;; FAR gives an empty range. Then a bare
-                                   ;; cursor selects its character, and
-                                   ;; a selection stays.
-                                   (-let [(start . end) (reach far count)]
-                                     (cond ((and start (/= start end))
-                                            (cons start end))
-                                           ((hel-bare-cursor-p selection) step))))
-                                  ((= 1 (abs count)) step)
-                                  (t (reach near count))))))
-                       ((start . end) (if (eql end anchor)
-                                          (reach end (hel-sign count))
-                                        (cons start end))))
-            (when (hel-thing-jump-p thing) (hel-push-point))
-            (hel-move-to-pos start end extend)
-            (hel-reveal-point-when-on-top))))
-    ;; else
-    (hel--no-thing-producer-message thing)))
+  (let* ((selection (hel-selection))
+         (producer (hel--thing-producer-or-error
+                    thing (hel-selection-head selection))))
+    (cl-flet ((reach (pos count)
+                ;; The range in the order of the motion: (START . END).
+                (-when-let ((begin . end)
+                            (hel-thing-reach thing producer pos count edge skip-gap?))
+                  (if (< 0 count) (cons begin end) (cons end begin)))))
+      (let ((anchor (and extend
+                         (hel-selection-anchor selection (hel-sign count)))))
+        (-when-let* (((start . end)
+                      (if extend
+                          (reach (-let [((begin . end)) selection]
+                                   (if (= anchor begin) end begin))
+                                 count)
+                        ;; NEAR and FAR are the edges of the head character
+                        ;; behind and ahead of the motion.
+                        (-let* (((begin . end) (-> (hel-selection-head selection)
+                                                   (hel-char-range)))
+                                (near (if (< 0 count) begin end))
+                                (far  (if (< 0 count) end begin))
+                                (step (reach near (hel-sign count))))
+                          (cond ((= (point) (if (< count 0)
+                                                (point-min)
+                                              (point-max)))
+                                 ;; Nothing lies ahead of a cursor at the edge
+                                 ;; of the buffer.
+                                 nil)
+                                ((and step (/= near far) (eql (cdr step) far))
+                                 ;; At the edge of the buffer the motion from
+                                 ;; FAR gives an empty range. Then a bare
+                                 ;; cursor selects its character, and
+                                 ;; a selection stays.
+                                 (-let [(start . end) (reach far count)]
+                                   (cond ((and start (/= start end))
+                                          (cons start end))
+                                         ((hel-bare-cursor-p selection) step))))
+                                ((= 1 (abs count)) step)
+                                (t (reach near count))))))
+                     ((start . end) (if (eql end anchor)
+                                        (reach end (hel-sign count))
+                                      (cons start end))))
+          (when (hel-thing-jump-p thing) (hel-push-point))
+          (hel-move-to-pos start end extend)
+          (hel-reveal-point-when-on-top))))))
 
 ;;; Producers
 
@@ -639,9 +636,12 @@ a buffer with embedded languages, in the same language."
   (-some (lambda (source) (funcall source pos))
          (get thing 'hel-thing-sources)))
 
-(defun hel--no-thing-producer-message (thing)
-  "Report that no source of THING applies at the cursor."
-  (message "No %s here" thing))
+(defun hel--thing-producer-or-error (thing pos)
+  "Return the producer of THING for a search from POS.
+Signal a user error when no source of THING applies at POS, or when POS
+is nil because the command has no place to search from."
+  (or (and pos (hel-thing-producer thing pos))
+      (user-error "No %s here" thing)))
 
 ;;;; The tree-sitter query producer
 

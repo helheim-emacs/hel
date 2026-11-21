@@ -39,7 +39,7 @@
 (require 'pcre2el)
 (require 'hel-vars)
 (require 'hel-lib)
-(require 'hel-multiple-cursors-core)
+(require 'hel-cursors)
 (require 'hel-core)
 
 ;;; Utils

@@ -21,13 +21,17 @@ dependency order:
 ```
 hel-vars.el                   settings, customization groups, faces,
                               hel-defvar-permanent-local
-hel-lib.el                    utilities, hel-motion-loop, highlight system,
-                              lines, mark ring
+hel-lib.el                    the selection, utilities, hel-motion-loop,
+                              highlight system, lines, mark ring
 hel-macros.el                 hel-define-command, hel-define-advice,
                               hel-advice-add
-hel-multiple-cursors-core.el  secondary cursors, undo/redo integration
+hel-cursors.el                secondary cursors: the object, access, values,
+                              hel-with-each-cursor, the merge; drawing the
+                              main and the secondary cursors
 hel-core.el                   state machine, hel-define-state,
-                              hel-keymap-set, pre/post-command hooks, hel-mode
+                              hel-keymap-set, pre/post-command hooks, hel-mode,
+                              running a command for every cursor, command
+                              settings, whitelists
 hel-text-objects.el           the thing protocol, run producers, text objects,
                               the motions over things
 hel-structural-editing.el     the tree level: operations on nodes, node
@@ -78,9 +82,14 @@ Secondary cursors are overlays that store point, mark, kill-ring, and
 buffer-local state; point and the mark are empty overlays, not markers.
 `hel--save-cursor` and `hel--load-cursor` move the state between Emacs and
 an overlay. The main cursor's command runs first; `hel--post-command-hook`
-then replays it for each secondary cursor, in buffer order.
+then replays it for each secondary cursor, in buffer order. A cursor where
+the command signals an error is deleted (see "Cursors" in the
+specification), so a command reports "nothing here" with `user-error`,
+never with `message`: a message leaves that cursor behind, unlike the
+others.
 
-Command dispatch uses the `multiple-cursors` symbol property:
+Command dispatch, in `hel-core.el`, uses the `multiple-cursors` symbol
+property:
 
 - `t`: run the command for all cursors.
 - `nil` (property explicitly set): run it only for the main cursor.

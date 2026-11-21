@@ -786,9 +786,8 @@ arguments, with the same around ranges."
   "In Lisp without a query, the class and argument objects keep the
 selection."
   (hel-test-with #'emacs-lisp-mode (hel-test-mark hel-to--elisp "defun a")
-    (let ((inhibit-message t))
-      (hel-mark-argument 1)
-      (hel-mark-around-class 1))
+    (should-error (hel-mark-argument 1) :type 'user-error)
+    (should-error (hel-mark-around-class 1) :type 'user-error)
     (should (hel-bare-cursor-p))))
 
 ;;; Prose objects
@@ -2367,10 +2366,10 @@ as hel-paredit does, so its count is not checked."
 
 (ert-deftest hel-class-has-no-source-in-text-mode ()
   "Section Choosing a producer: when no source applies, the class command
-leaves the selection as it is."
+signals a user error and leaves the selection as it is."
   (hel-test-with #'text-mode "foo |bar\n"
     (should-not (hel-to--producer 'class))
-    (hel-test-run #'hel-mark-class)
+    (should-error (hel-test-run #'hel-mark-class) :type 'user-error)
     (should (equal (hel-test-render) "foo |bar\n"))
     (should (null mark-ring))))
 
@@ -3043,8 +3042,9 @@ selection as it is."
   (hel-test-need-queries 'python)
   (should (hel-test-unchanged-p #'hel-mark-entry "|x = 1\n"
                                 #'python-ts-mode))
-  (should (hel-test-unchanged-p #'hel-mark-entry "(list 1 |2)\n"
-                                #'emacs-lisp-mode)))
+  (hel-test-with #'emacs-lisp-mode "(list 1 |2)\n"
+    (should-error (hel-test-run #'hel-mark-entry) :type 'user-error)
+    (should (equal (hel-test-render) "(list 1 |2)\n"))))
 
 (ert-deftest hel-count-more-than-exist ()
   "Section Selecting an object: when fewer objects exist, the driver
@@ -3494,8 +3494,10 @@ blank line between them as one comment."
 
 (ert-deftest hel-elisp-mia-nothing ()
   "In a buffer without a parser, mia leaves the selection as it is."
-  (should (hel-test-unchanged-p #'hel-mark-argument
-                                "(foo |a b)\n" #'emacs-lisp-mode)))
+  (hel-test-with #'emacs-lisp-mode "(foo |a b)\n"
+    (should-error (hel-test-run #'hel-mark-argument) :type 'user-error)
+    (should (equal (hel-test-render) "(foo |a b)\n"))
+    (should (null mark-ring))))
 
 (ert-deftest hel-c-mode-mif ()
   "In a buffer without a parser, mif selects a function through

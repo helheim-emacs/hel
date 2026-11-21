@@ -36,7 +36,7 @@
 (require 'hel-vars)
 (require 'hel-lib)
 (require 'hel-macros)
-(require 'hel-multiple-cursors-core)
+(require 'hel-cursors)
 (require 'hel-core)
 (require 'hel-text-objects)
 (require 'hel-structural-editing)

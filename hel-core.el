@@ -47,13 +47,12 @@
 (require 'dash)
 (require 'hel-vars)
 (require 'hel-lib)
-(require 'hel-multiple-cursors-core)
+(require 'hel-cursors)
 (require 'paren)
 
 ;; Declarations
 (defvar edebug-mode)
 (defvar edebug-mode-map)
-(defvar hel--cursor-hidden?)
 (declare-function hel--show-paren-data "hel-integration")
 
 ;;; Hel mode
@@ -126,6 +125,7 @@
         ;; `pre-redisplay-function', so the box would keep its face.
         (add-function :after after-focus-change-function #'force-window-update)
         (add-function :around show-paren-data-function #'hel--show-paren-data)
+        (add-function :before command-error-function #'hel--record-main-cursor-error)
         ;; Setup ESC, C-i and C-m keys
         (-each (frame-list) #'hel-setup-terminal-keys)
         (add-hook 'after-make-frame-functions #'hel-setup-terminal-keys)
@@ -145,6 +145,7 @@
     (remove-function pre-redisplay-function #'hel--draw-main-cursor-overlay)
     (remove-function after-focus-change-function #'force-window-update)
     (remove-function show-paren-data-function #'hel--show-paren-data)
+    (remove-function command-error-function #'hel--record-main-cursor-error)
     (hel--delete-main-cursor-overlays)
     (hel--delete-dead-main-cursor-overlays)
     (hel-setup-mode-line :remove)))
@@ -795,7 +796,8 @@ a Hel modal state. Can be a symbol or list of symbols.
 (defun hel--pre-command-hook ()
   "Hook run before each command is executed. See `pre-command-hook'."
   (unless hel-executing-command-for-secondary-cursor
-    (setq hel-this-command this-command)
+    (setq hel-this-command this-command
+          hel--main-cursor-error nil)
     (setq hel--selection-record (list (current-buffer) (mark t) mark-active
                                       hel-extend-selection))
     (cond (hel-normal-state
@@ -817,7 +819,9 @@ a Hel modal state. Can be a symbol or list of symbols.
       ;; unconditionally removed from it.
       (condition-case err
           (progn
-            (hel--execute-command-for-all-secondary-cursors hel-this-command)
+            (when (hel--command-for-all-cursors-p hel-this-command)
+              (->> (hel--execute-command-for-all-secondary-cursors hel-this-command)
+                   (hel--handle-command-errors (hel--main-cursor-error))))
             (when (hel--merge-cursors-p hel-this-command)
               (hel-merge-overlapping-cursors)))
         (error
@@ -839,6 +843,320 @@ a Hel modal state. Can be a symbol or list of symbols.
 
 (put 'hel--pre-command-hook 'permanent-local-hook t)
 (put 'hel--post-command-hook 'permanent-local-hook t)
+
+;;; Running a command for every cursor
+;;
+;; Emacs runs a command for the main cursor, and `hel--post-command-hook'
+;; runs it for each secondary cursor. The `multiple-cursors' property of
+;; the command decides whether it runs for them:
+;; - t         for all cursors
+;; - nil       property explicitly set: only for the main cursor
+;; - no value  property not present: prompt the user and permanently store
+;;             the choice in `hel-whitelist-file'
+
+(defun hel--execute-command-for-all-cursors (command)
+  "Call COMMAND interactively for each cursor, the main one first.
+Then merge the cursors whose selections overlap, when the `merge-selections'
+property of COMMAND asks for it. An error of COMMAND at the main cursor is
+signalled again at the end, so the caller sees it as the command loop
+reports it."
+  (setq hel--main-cursor-error nil)
+  (condition-case err
+      (hel--call-interactively command)
+    (error (hel--record-main-cursor-error err nil nil)))
+  (when (hel--command-for-all-cursors-p command)
+    (->> (hel--execute-command-for-all-secondary-cursors command)
+         (hel--handle-command-errors (hel--main-cursor-error))))
+  (when (hel--merge-cursors-p command)
+    (hel-merge-overlapping-cursors))
+  (setq hel--input-cache nil)
+  (-when-let ((condition . data) (hel--main-cursor-error))
+    (signal condition data)))
+
+(defun hel--command-for-all-cursors-p (command)
+  "Return non-nil when COMMAND runs for the secondary cursors too.
+The `multiple-cursors' property of COMMAND decides. For a command without
+the property, ask the user and remember the answer. A command that Hel
+does not support with multiple cursors runs only for the main cursor, and
+the user gets a message."
+  (when hel-multiple-cursors-mode
+    (cond ((and (symbolp command)
+                (get command 'hel-unsupported))
+           (message "%S is not supported with multiple cursors" command)
+           nil)
+          ;; If it's a lambda, we can't know if it's supported or not —
+          ;; so go ahead and assume it's ok.
+          ((not (symbolp command)))
+          ;; If command has `multiple-cursors' property assigned — use it,
+          ;; else promt user and permanently store the decision.
+          ((if-let* ((val (plist-member (symbol-plist command) 'multiple-cursors)))
+               (-second-item val)
+             (hel--prompt-for-unknown-command command))))))
+
+(defun hel--execute-command-for-all-secondary-cursors (command)
+  "Call COMMAND interactively for each secondary cursor, in buffer order.
+An error at one cursor does not stop the others. Return the errors as
+a list of (CURSOR . ERROR), in buffer order."
+  (let (errors)
+    (hel-save-window-scroll
+      (hel-save-main-cursor
+        ;; `syntax-ppss' reuses an earlier parse only for a position after it.
+        ;; In buffer order every cursor finds such a parse; in reverse order
+        ;; none does, and each cursor parses the buffer from its start.
+        (dolist (cursor (hel-all-secondary-cursors :sort))
+          (condition-case err
+              (hel-with-secondary-cursor cursor
+                (hel--call-interactively command))
+            (error
+             (push (cons cursor err) errors))))
+        ;; After the command, the command loop deactivates the mark of the
+        ;; main cursor when any run of the command has set `deactivate-mark',
+        ;; as an edit does. The secondary cursors must follow, so that all
+        ;; cursors end in one form. Only a cursor with an active mark has
+        ;; anything to deactivate, and in Insert state no cursor has one.
+        (when deactivate-mark
+          (dolist (cursor (hel-all-secondary-cursors))
+            (when (overlay-get cursor 'mark-active)
+              (hel-with-secondary-cursor cursor
+                (deactivate-mark)))))))
+    (nreverse errors)))
+
+(defun hel--call-interactively (command)
+  "Run COMMAND, simulating the parts of the command loop that makes sense for
+secondary cursor."
+  (unless (eq command 'ignore)
+    (let ((this-command command))
+      (call-interactively command))))
+
+(defun hel--merge-cursors-p (command)
+  "Return non-nil if regions need to be merged after COMMAND."
+  (and hel-multiple-cursors-mode
+       (cond ((symbolp command)
+              (let ((val (get command 'merge-selections)))
+                (cond ((symbolp val)
+                       (symbol-value val))
+                      ((functionp val)
+                       (funcall val)))))
+             ((functionp command) ;; COMMAND is a lambda
+              t))))
+
+;;; Commands that fail at some cursors
+
+(defun hel--record-main-cursor-error (error _context _caller)
+  "Remember the ERROR that the command loop reports.
+The command loop reports the error at the main cursor before
+`post-command-hook' runs the command for the secondary cursors.
+`hel-mode' adds this function to `command-error-function'."
+  (setq hel--main-cursor-error (cons (recursion-depth) error)))
+
+(defun hel--main-cursor-error ()
+  "Return the error of the current command at the main cursor, or nil."
+  (-let [(depth . error) hel--main-cursor-error]
+    (and (eql depth (recursion-depth)) error)))
+
+(defun hel--handle-command-errors (main-error secondary-errors)
+  "Delete the cursors where a command that ran for all cursors failed.
+A cursor that the command did not change differs from the cursors that it
+did, and the next command would act on it as on a result: deleting it keeps
+all cursors in one form. When the main cursor failed, the nearest secondary
+cursor becomes the main one. A command that failed at every cursor has no
+result to keep, so all cursors stay and the user sees its error.
+
+Before deleting, save the cursors for `hel-restore-cursors', so that the
+user can bring the deleted ones back.
+
+MAIN-ERROR is the error at the main cursor, or nil. SECONDARY-ERRORS
+lists (CURSOR . ERROR) for each secondary cursor where the command
+signalled ERROR, in buffer order."
+  (when (and (or main-error
+                 secondary-errors)
+             (not (and main-error
+                       (= (length secondary-errors)
+                          (length (hel-all-secondary-cursors))))))
+    (let ((removed (+ (length secondary-errors)
+                      (if main-error 1 0)))
+          (error-message (error-message-string
+                          (or main-error
+                              (-let [(_ . error) (-first-item secondary-errors)]
+                                error)))))
+      (setq hel--selections-history (hel-selections))
+      (-each secondary-errors (-compose #'hel--delete-secondary-cursor #'car))
+      (when main-error
+        (hel-make-cursor-main (or (hel-next-secondary-cursor (point))
+                                  (hel-previous-secondary-cursor (point)))))
+      (hel-auto-multiple-cursors-mode)
+      (message "[Hel] %s: removed %d %s, %s restores %s"
+               error-message
+               removed
+               (if (= removed 1) "cursor" "cursors")
+               (substitute-command-keys "\\[hel-restore-cursors]")
+               (if (= removed 1) "it" "them")))))
+
+;;; Command settings
+
+(defmacro hel-cache-input (fn-name)
+  "Advice function to cache users input to use it with all cursors.
+
+This macro wraps functions in around advice that caches the user's response so
+it can be reused across all cursors.
+
+FN-NAME must be an interactive function that takes PROMPT as its first argument,
+like `read-char' or `read-from-minibuffer'. The PROMPT argument will be used as
+a hash key to distinguish between different calls to FN-NAME within the same
+command. Calls with equal PROMPT or without it would be indistinguishable."
+  `(hel-define-advice ,fn-name (:around (orig-fun &rest args) hel-cache-input)
+     "Cache the users input to use it with multiple cursors."
+     (if hel-multiple-cursors-mode
+         (let* (;; Use PROMPT argument as a hash key to distinguish different
+                ;; calls of `read-char' like functions within one command.
+                (prompt (car-safe args))
+                (key (list ,(symbol-name fn-name) prompt)))
+           (with-memoization (alist-get key hel--input-cache nil nil #'equal)
+             (apply orig-fun args)))
+       ;; else
+       (apply orig-fun args))))
+
+(defun hel-set-unsupported-command (symbol)
+  "Prevent command from being executed while there are multiple cursors."
+  (hel-advice-add symbol :around #'hel--unsupported-a)
+  (put symbol 'hel-unsupported t))
+
+(defun hel--unsupported-a (orig-fun &rest args)
+  "Prevent command from being executed while there are multiple cursors."
+  (unless (and hel-multiple-cursors-mode
+               (called-interactively-p 'any))
+    (apply orig-fun args)))
+
+(defun hel-set-multiple-cursors-command (symbol)
+  "Mark command to be executed for all cursors."
+  (put symbol 'multiple-cursors t))
+
+(defun hel-set-single-cursor-command (symbol)
+  "Mark command to be executed only for main cursor."
+  (put symbol 'multiple-cursors nil))
+
+;; Execute following commands for ALL cursor.
+(mapc #'hel-set-multiple-cursors-command
+      '(append-next-kill
+        back-to-indentation
+        backward-char
+        backward-delete-char-untabify
+        backward-kill-word
+        backward-list
+        backward-paragraph
+        backward-sexp
+        backward-word
+        beginning-of-line
+        capitalize-word
+        comment-dwim             ;; gc
+        default-indent-new-line
+        delete-backward-char
+        delete-blank-lines
+        delete-char
+        delete-forward-char
+        downcase-word
+        end-of-line
+        eval-defun
+        eval-expression
+        exchange-point-and-mark
+        fill-region              ;; gq
+        forward-char
+        forward-list
+        forward-paragraph
+        forward-sexp
+        forward-word
+        hippie-expand
+        indent-region            ;; =
+        indent-rigidly-left      ;; >
+        indent-rigidly-right     ;; <
+        insert-char              ;; C-x 8 RET
+        join-line
+        just-one-space
+        keyboard-quit            ;; C-g
+        kill-line
+        kill-region
+        kill-ring-save
+        kill-whole-line
+        kill-word
+        left-char
+        left-word
+        move-beginning-of-line
+        move-end-of-line
+        newline
+        newline-and-indent
+        next-line
+        org-cycle
+        org-delete-backward-char
+        org-force-self-insert
+        org-indent-region
+        org-metaup
+        org-return
+        org-self-insert-command
+        previous-line
+        quoted-insert            ;; C-q
+        repeat
+        right-char
+        right-word
+        self-insert-command
+        set-mark-command
+        transpose-chars
+        transpose-lines
+        transpose-paragraphs
+        transpose-regions
+        transpose-sexps
+        upcase-word
+        yank
+        yank-pop
+        zap-to-char))
+
+;; Execute following commands only for MAIN cursor.
+(mapc #'hel-set-single-cursor-command
+      '(browse-url-at-point      ;; gx
+        delete-other-windows
+        describe-bindings
+        describe-function
+        describe-mode
+        describe-prefix-bindings
+        digit-argument
+        edebug-next-mode
+        eval-buffer
+        exit-minibuffer
+        find-file-at-point       ;; gf
+        hel-normal-state         ;; <escape>
+        kill-buffer-and-window
+        minibuffer-complete-and-exit
+        mouse-drag-region
+        mouse-set-point
+        mwheel-scroll
+        negative-argument
+        other-window
+        quit-window
+        repeat-complex-command
+        save-buffer
+        scroll-down-command
+        scroll-up-command
+        split-window-below
+        split-window-right
+        tab-bar-mouse-down-1
+        tab-next
+        tab-previous
+        toggle-frame-fullscreen
+        toggle-input-method
+        top-level
+        undefined
+        undo
+        undo-redo
+        undo-fu-only-redo
+        undo-fu-only-undo
+        undo-tree-redo
+        undo-tree-undo
+        universal-argument
+        universal-argument-more
+        view-echo-area-messages
+        windmove-down
+        windmove-left
+        windmove-right
+        windmove-up))
 
 ;;; Undo
 
@@ -1056,219 +1374,6 @@ CURSORS is a list of cursor values, as `hel-selections' returns it."
 
 (hel-advice-add 'toggle-input-method :around #'hel--refresh-input-method-a)
 
-;;; Cursor
-
-(defvar-local hel--cursor-hidden? nil
-  "Whether the major mode of the current buffer hides the cursor.")
-
-(defun hel--check-if-cursor-is-hidden ()
-  "Remember whether the major mode of the current buffer hides the cursor."
-  (setq hel--cursor-hidden? (and (local-variable-p 'cursor-type)
-                                 (null cursor-type))))
-
-(defun hel--cursor-look (main?)
-  "Return how a cursor looks in the current state: (SHAPE FACE BOX).
-SHAPE is the shape of the cursor: `bar', `box', `hbar' or nil for none.
-FACE colours it.  BOX is the face of the box that Hel draws over the
-cursor character in Normal state, and nil in other states.  MAIN? is
-non-nil for the main cursor and nil for a secondary one.
-
-In Normal state every cursor is a box that Hel draws.  With
-`hel-cursor-type' set to `hybrid', the main cursor is a bar at point and
-a faint box.  In Insert state every cursor is a bar at point.  In Emacs
-state the main cursor is an underscore.  While motions extend the
-selection, every cursor has the face `hel-extend-selection-cursor'.
-
-In a text terminal every bar is a box over the character after point.
-The terminal shows its own cursor as a box, and a bar drawn as a string
-would move the text to the right."
-  (let ((face (if hel-extend-selection
-                  'hel-extend-selection-cursor
-                (nth (if main? 0 1) (hel-state-property hel-state :cursor)))))
-    (pcase hel-state
-      ('normal (list (cond ((not main?) 'box)
-                           ((not (display-graphic-p)) 'box)
-                           ((eq hel-cursor-type 'hybrid) 'bar))
-                     face
-                     (if (and main? (eq hel-cursor-type 'hybrid))
-                         'hel-cursor-highlight
-                       face)))
-      ('insert (list (if (display-graphic-p) 'bar 'box) face nil))
-      ('emacs (list (if main? 'hbar) face nil)))))
-
-(defun hel-draw-cursor ()
-  "Give the cursor of Emacs the shape and the colour of the current state.
-The colour also shows whether motions extend the selection."
-  (when (and (eq (window-buffer) (current-buffer))
-             hel-local-mode
-             (not hel--cursor-hidden?))
-    (-let [(shape face) (hel--cursor-look t)]
-      (setq cursor-type (if (eq shape 'hbar) '(hbar . 4) shape))
-      (when face
-        (hel--set-cursor-color (face-background face nil t))))))
-
-;;;; The overlay of the main cursor
-
-(defvar hel--main-line-overlay nil
-  "The overlay that paints the line selection of an empty line.
-Emacs draws the region of the main cursor, and its face stops at the
-newline, so this overlay paints the selected empty line to the edge of
-the window, in the selected window only. `hel--draw-main-cursor-overlay'
-moves it, and it deletes it when the main cursor has no such selection.")
-
-(defun hel--cursor-bounds (selection)
-  "Return the bounds of the cursor of SELECTION, a (BEGIN . END) pair.
-The cursor covers the head character of SELECTION: the cursor character,
-or the character at the head end of an active region.  When the head
-character is a newline, or at the end of the buffer, BEGIN equals END:
-the cursor is drawn there as a cell of one space, because a face on
-a newline would paint to the edge of the window.  SELECTION is (RANGE
-DIRECTION), as `hel-selection' returns it."
-  (let ((head (hel-selection-head selection)))
-    (cons head (if (memq (char-after head) '(?\n nil))
-                   head
-                 (1+ head)))))
-
-(defun hel--cursor-display (begin face)
-  "Return a string that draws the box of a cursor on trailing whitespace.
-With `show-trailing-whitespace' on, Emacs draws trailing whitespace with
-the face `trailing-whitespace' only, so the box disappears.  Emacs does
-not use that face for a display string.  So the box over a trailing space
-or tab is a display string of that character with FACE.  A tab keeps its
-width.  BEGIN is the position of the cursor character.  Return nil when
-the character is not trailing whitespace or the option is off."
-  (when (and show-trailing-whitespace
-             (save-excursion
-               (goto-char begin)
-               (looking-at-p "[ \t]+$")))
-    (propertize (string (char-after begin)) 'face face)))
-
-(defun hel--draw-main-cursor-overlay (windows)
-  "Draw the box of the main cursor in each of WINDOWS.
-Redisplay calls this function before it redraws WINDOWS, or t for all
-windows, so the box follows point after every command, including the
-commands outside Hel.  The selected window draws the box over the head
-character of the selection.  Another window on the buffer draws it at its
-own point, with the face `hel-other-window-cursor'.  The selected window
-of a frame without focus uses that face too.  On a newline or at
-the end of the buffer the box is a cell of one space.  Outside Normal
-state there is no box.
-
-In the selected window, the line selection of an empty line gets the
-face of the region to the edge of the window, see
-`hel--main-line-overlay'."
-  (dolist (window (if (consp windows) windows (window-list-1 nil t t)))
-    (when (window-live-p window)
-      (let ((overlay (window-parameter window 'hel--main-cursor-overlay))
-            (selected? (eq window (selected-window))))
-        (with-current-buffer (window-buffer window)
-          (if (or hel--cursor-hidden? (not hel-normal-state))
-              (progn
-                (-some-> overlay (delete-overlay))
-                (when selected?
-                  (-some-> hel--main-line-overlay (delete-overlay))))
-            ;; else
-            (-let* ((selection (if selected?
-                                   (hel-selection)
-                                 (hel--selection-from (window-point window) nil nil)))
-                    ((begin . end) (hel--cursor-bounds selection)))
-              (unless overlay
-                (setq overlay (-doto (make-overlay begin end)
-                                (overlay-put 'type 'main-cursor)
-                                (overlay-put 'window window)))
-                (set-window-parameter window 'hel--main-cursor-overlay overlay))
-              ;; In the selected window the box lies above the region of Emacs,
-              ;; which has (nil . 100), and the bracket that `show-paren-mode'
-              ;; highlights, which has `show-paren-priority', 1000 by default.
-              ;; In another window it lies under every highlight with
-              ;; a priority, such as the matches that Consult previews there
-              ;; from the minibuffer.
-              (overlay-put overlay 'priority (if selected? 1001 0))
-              (unless (and (eq (overlay-buffer overlay) (current-buffer))
-                           (eql (overlay-start overlay) begin)
-                           (eql (overlay-end overlay) end))
-                (move-overlay overlay begin end (current-buffer)))
-              ;; A frame without focus draws its selected window with
-              ;; the dimmer box, as Emacs draws a hollow cursor there.
-              (let ((face (if (and selected?
-                                   (frame-focus-state (window-frame window)))
-                              (nth 2 (hel--cursor-look t))
-                            'hel-other-window-cursor)))
-                (if (= begin end)
-                    (-doto overlay
-                      (overlay-put 'face nil)
-                      (overlay-put 'display nil)
-                      (overlay-put 'after-string
-                                   (propertize " " 'face face 'cursor t)))
-                  (-doto overlay
-                    (overlay-put 'face face)
-                    (overlay-put 'display (hel--cursor-display begin face))
-                    (overlay-put 'after-string nil))))
-              ;; The line selection of an empty line looks like a selected
-              ;; line, and a bare cursor on the same line does not.
-              (when selected?
-                (-let* (((range &as line-begin . line-end) (hel-selection-bounds selection))
-                        (empty-line? (and (hel--empty-line-range-p range)
-                                          (not (hel-bare-cursor-p selection)))))
-                  (cond ((not empty-line?)
-                         (-some-> hel--main-line-overlay (delete-overlay)))
-                        (hel--main-line-overlay
-                         (move-overlay hel--main-line-overlay
-                                       line-begin line-end (current-buffer)))
-                        (t
-                         (setq hel--main-line-overlay
-                               (-doto (make-overlay line-begin line-end)
-                                 (overlay-put 'face '(:inherit region
-                                                      :extend t))
-                                 ;; The same as the region of Emacs.
-                                 (overlay-put 'priority 100)))))
-                  (when empty-line?
-                    (overlay-put hel--main-line-overlay 'window window)))))))))))
-
-(defun hel--delete-dead-main-cursor-overlays ()
-  "Delete the boxes that deleted windows leave in their buffers.
-Emacs runs this function when a window of the frame is added or deleted."
-  (dolist (buffer (->> (window-list)
-                       (-map #'window-buffer)
-                       (-uniq)))
-    (with-current-buffer buffer
-      (save-restriction
-        (widen)
-        (->> (overlays-in (point-min) (point-max))
-             (-filter (lambda (ov)
-                        (and (eq (overlay-get ov 'type) 'main-cursor)
-                             (not (window-live-p (overlay-get ov 'window))))))
-             (mapc #'delete-overlay))))))
-
-(defun hel--delete-main-cursor-overlays ()
-  "Delete the box of the main cursor in every window.
-Delete also the paint of the line selection of an empty line."
-  (-some-> hel--main-line-overlay (delete-overlay))
-  (walk-windows (lambda (window)
-                  (-some-> (window-parameter window 'hel--main-cursor-overlay)
-                    (delete-overlay)))
-                t t))
-
-;;;; Update cursor color on theme change
-
-(defun hel--set-cursor-color (color)
-  ;; Cursor color can only be set for each frame but not for each buffer, also
-  ;; `modify-frame-parameters' forces a redisplay, so only call it when the
-  ;; color actually changes.
-  (unless (equal color (frame-parameter nil 'cursor-color))
-    (modify-frame-parameters (selected-frame) `((cursor-color . ,color)))))
-
-(defun hel--update-main-cursor-color (color)
-  (set-face-attribute 'hel-normal-state-main-cursor nil
-                      :background color
-                      :foreground (face-background 'default))
-  (hel-draw-cursor))
-
-(hel-advice-add 'set-cursor-color :after #'hel--update-main-cursor-color)
-
-(defun hel--on-theme-change (_theme)
-  (hel--update-main-cursor-color (face-background 'cursor)))
-
 ;;; Make a window own the selection
 ;;
 ;; `Point' belongs to the window, while `mark' belongs to the buffer.
@@ -1399,6 +1504,61 @@ extend, but the mark stays where it is."
     (setf (hel--window-selection-buffer saved) nil)
     (set-marker (hel--window-selection-point saved) nil)
     (set-marker (hel--window-selection-mark saved) nil)))
+
+;;; Whitelists
+
+(defun hel--prompt-for-unknown-command (command)
+  "Ask the user whether the COMMAND should be executed for all cursors or not,
+and remember the choice.
+
+Return t if COMMMAND should be executed for all cursors."
+  (let ((for-all? (ignore-error quit ;; treat "C-g" as answer "no"
+                    (y-or-n-p (format "Do %S for all cursors?" command)))))
+    (put command 'multiple-cursors for-all?)
+    (if for-all?
+        (push command hel-commands-to-run-for-all-cursors)
+      (push command hel-commands-to-run-once))
+    (hel-save-whitelists-into-file)
+    for-all?))
+
+(defun hel-load-whitelists ()
+  "Load `hel-whitelist-file' file if not yet."
+  (unless hel--whitelist-file-loaded
+    (load hel-whitelist-file 'noerror 'nomessage)
+    (setq hel--whitelist-file-loaded t)
+    (-each hel-commands-to-run-for-all-cursors #'hel-set-multiple-cursors-command)
+    (-each hel-commands-to-run-once #'hel-set-single-cursor-command)))
+
+(defun hel--dump-whitelist (list-symbol)
+  "Insert (setq \\='LIST-SYMBOL LIST-VALUE) into current buffer."
+  (cl-symbol-macrolet ((value (symbol-value list-symbol)))
+    (insert "(setq " (symbol-name list-symbol) "\n"
+            "      '(")
+    (newline-and-indent)
+    (set list-symbol (-> value (sort (lambda (x y)
+                                       (string< (symbol-name x)
+                                                (symbol-name y))))))
+    (-each value (lambda (cmd)
+                   (insert (format "%S" cmd))
+                   (newline-and-indent)))
+    (insert "))")
+    (newline)))
+
+(defun hel-save-whitelists-into-file ()
+  "Save users preferences which commands to execute for one cursor
+and which for all to `hel-whitelist-file' file."
+  (with-temp-file hel-whitelist-file
+    (emacs-lisp-mode)
+    (insert ";; -*- mode: emacs-lisp; lexical-binding: t -*-")
+    (newline)
+    (insert ";; This file is automatically generated by Hel.")
+    (newline)
+    (insert ";; It keeps track of your preferences for running commands with multiple cursors.")
+    (newline)
+    (newline)
+    (hel--dump-whitelist 'hel-commands-to-run-for-all-cursors)
+    (newline)
+    (hel--dump-whitelist 'hel-commands-to-run-once)))
 
 ;;; .
 (provide 'hel-core)

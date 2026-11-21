@@ -332,6 +332,16 @@ secondary cursors, whose state lives in overlays.
   positions. A new secondary cursor is a save of the main cursor, so it
   takes the kill ring and the other variables from it, and then gets its
   own selection the same way.
+- *A cursor where the command fails is deleted, and the other cursors go
+  on.* A cursor that the command did not change differs from the cursors
+  that it did change, and the next command would act on it as on a result:
+  after =]f=, =d= would delete a function at every cursor but this one. The
+  kind of error does not matter, so a cursor without a function is deleted
+  in the same way as a cursor on read-only text. When the main cursor fails,
+  the nearest secondary cursor becomes the main one. When the command fails
+  at every cursor, it has no result to keep, so every cursor stays and the
+  user sees the error. Before the deletion Hel saves the cursors for =gv=,
+  which brings the deleted ones back.
 - *During a command for a secondary cursor its drawing is off the buffer*,
   so that the command does not see the cursor it runs for. A command that
   asks whether a secondary cursor stands at point means another cursor.
@@ -427,7 +437,9 @@ A command chooses its producer each time it runs, at the cursor:
   or later.
   ~function~ lists its query, then ~hel-function-motion~; ~argument~ lists
   its query, then the syntax table. Class and entry have only a query, and
-  without it their commands keep the selection and show a message.
+  without it their commands signal a user error, such as "No class here".
+  The selection stays, and with several cursors this cursor is deleted
+  (see "Cursors").
 
 Each cursor makes its own choice, because Hel runs a command once per
 cursor. In HTML with a =<script>= block, a cursor in the script uses the
@@ -1661,7 +1673,7 @@ brackets from the buffer-local ~hel-word-rules~.
 ** Things and sources
 
 A thing that has no source in a mode does not exist there: in Org mode,
-=mit= reports that no class is here. ~function~, ~comment~ and ~argument~
+=mit= signals that no class is here. ~function~, ~comment~ and ~argument~
 have two sources each.
 
 A node is not a thing, because no operation dispatches on a kind of node.

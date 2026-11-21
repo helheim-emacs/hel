@@ -40,9 +40,10 @@
 (require 'dash)
 (require 'pcre2el)
 (require 'thingatpt)
+(require 'rect)
 (require 'hel-vars)
 (require 'hel-lib)
-(require 'hel-multiple-cursors-core)
+(require 'hel-cursors)
 (require 'hel-core)
 (require 'hel-search)
 (require 'hel-text-objects)
@@ -735,9 +736,22 @@ in the kill ring."
           (funcall kill-fun (filter-buffer-substring begin end))))
       (hel-extend-selection -1))
     (message "Copied into kill-ring"))
-  (hel-maybe-set-killed-rectangle)
+  (hel--maybe-set-killed-rectangle)
   (when (called-interactively-p 'interactive)
     (hel-pulse-main-selection)))
+
+(defun hel--maybe-set-killed-rectangle ()
+  "Add the latest `kill-ring' entry of each cursor to `killed-rectangle',
+unless they all are equal. You can paste them later with `yank-rectangle'."
+  (when hel-multiple-cursors-mode
+    (let ((entries (-map (-lambda ((id))
+                           (car-safe (if (eql id 0)
+                                         kill-ring
+                                       (-> (gethash id hel--cursors-table)
+                                           (overlay-get 'kill-ring)))))
+                         (hel-selections))))
+      (unless (hel-all-elements-are-the-same-p entries)
+        (setq killed-rectangle entries)))))
 
 ;; p
 (hel-define-command hel-paste-after (arg)

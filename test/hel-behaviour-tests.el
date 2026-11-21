@@ -374,7 +374,7 @@ is the last character typed.  One typed character is a bare cursor on it."
   (:mode emacs-lisp-mode "(a) foo|" "M-o" "(a) |foo^")
   ("foo bar|" "miw" "foo ^bar|")
   (:mode emacs-lisp-mode "foo\n|" "M-o" "foo\n|")
-  ("foo\n|" "miw" "foo\n|"))
+  ("foo\n|" "miw" "foo\n|" :error "No word here"))
 
 (ert-deftest hel-behaviour-cursor-char-shrink-to-bare-cursor ()
   "M-i back to the oldest entry of a chain of M-o that started at a bare
@@ -2510,8 +2510,8 @@ In this test the question is the guard of the test setup, which fails on it."
   ("|" "e" "|")
   ("|" "x" "|")
   ("|" "%" "|")
-  ("|" "miw" "|")
-  ("|" "mip" "|")
+  ("|" "miw" "|" :error "No word here")
+  ("|" "mip" "|" :error "No paragraph here")
   ("|" "mm" "|")
   ("|" "gg" "|")
   ("|" "G" "|")
