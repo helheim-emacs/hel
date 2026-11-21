@@ -634,7 +634,9 @@ run in Normal state. The nested Hel keymaps of minor modes come first in
     node that it starts or ends, such as a bracket, and under a node without
     children that holds it, such as a letter of a symbol or a space in
     a string. No node is under a character between the children of a node,
-    such as the space or the comma between two arguments.
+    such as the space or the comma between two arguments. The whitespace at
+    the edges does not count here either, so no node is under a region that
+    holds the comma between two arguments and a space on each side of it.
 
     - =M-n= and =M-p= select the sibling after and before the node under
       the selection, as Helix does. Selecting that node first would take

@@ -527,7 +527,7 @@ goes to the edge where they were added.
 KIND is:
 - `:inner' for what `mi' selects;
 - `:around' for what `ma' selects."
-  (if-let* ((head (hel-trimmed-selection-head))
+  (if-let* ((head (-some-> (hel-trimmed-selection) (hel-selection-head)))
             (producer (hel-thing-producer thing head)))
       (progn
         (hel--sync-selection-history)
@@ -585,8 +585,8 @@ it is."
             (producer (hel-thing-producer thing (hel-selection-head selection))))
       (cl-flet ((reach (pos count)
                   ;; The range in the order of the motion: (START . END).
-                  (-when-let ((begin . end) (hel-thing-reach thing producer pos
-                                                             count edge skip-gap?))
+                  (-when-let ((begin . end)
+                              (hel-thing-reach thing producer pos count edge skip-gap?))
                     (if (< 0 count) (cons begin end) (cons end begin)))))
         (let ((anchor (and extend
                            (hel-selection-anchor selection (hel-sign count)))))
@@ -597,11 +597,11 @@ it is."
                                    count)
                           ;; NEAR and FAR are the edges of the head character
                           ;; behind and ahead of the motion.
-                          (let* ((begin (hel-selection-head selection))
-                                 (end  (min (1+ begin) (point-max)))
-                                 (near (if (< 0 count) begin end))
-                                 (far  (if (< 0 count) end begin))
-                                 (step (reach near (hel-sign count))))
+                          (-let* (((begin . end) (-> (hel-selection-head selection)
+                                                     (hel-char-range)))
+                                  (near (if (< 0 count) begin end))
+                                  (far  (if (< 0 count) end begin))
+                                  (step (reach near (hel-sign count))))
                             (cond ((= (point) (if (< count 0)
                                                   (point-min)
                                                 (point-max)))

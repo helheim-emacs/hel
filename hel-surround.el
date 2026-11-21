@@ -921,7 +921,9 @@ grows outward also from a pair text of one character.
 When no pair holds the selection, as for quotes, which do not nest, take
 the pair at the cursor: so `ma\"' then `mi\"' selects the inside of the
 same string."
-  (if-let* ((head (hel-trimmed-selection-head))
+  (if-let* ((selection (hel-selection))
+            (trimmed (hel-trimmed-selection selection))
+            (head (hel-selection-head trimmed))
             (producer (hel-pair-producer char head)))
       (progn
         (hel--sync-selection-history)
@@ -930,9 +932,9 @@ same string."
                         (hel-pair-text-bounds producer pair)
                       (hel-pair-outer-bounds pair))))
           (let* ((before (hel--selection-entry))
-                 (bounds (and (or (not (hel-bare-cursor-p))
+                 (bounds (and (or (not (hel-bare-cursor-p selection))
                                   hel-selection-history)
-                              (hel-trimmed-selection-bounds)))
+                              (hel-selection-bounds trimmed)))
                  (pair (or (when bounds
                              (cl-loop for pair = (hel-pair-at producer (car bounds))
                                       then (hel-pair-parent producer pair)

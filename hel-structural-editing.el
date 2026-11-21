@@ -464,27 +464,30 @@ Return nil when POS lies in none of them."
 
 (defun hel--node-on-selection (producer)
   "Return the node that covers the selection, or nil.
-The whitespace at the edges of the selection does not count. A selection
-of one character inside a node without children, such as a space in
-a string, gives that node."
-  (-when-let ((begin . end) (hel-trimmed-selection-bounds))
-    (or (and (= 1 (- end begin))
-             (hel-node-enclosing-leaf producer begin))
-        (hel-node-on producer (cons begin end)))))
+The whitespace at the edges of the selection does not count. A bare
+cursor inside a node without children, such as on a space in a string,
+gives that node."
+  (when-let* ((selection (hel-trimmed-selection)))
+    (or (when (hel-bare-cursor-p selection)
+          (hel-node-enclosing-leaf producer (hel-selection-head selection)))
+        (hel-node-on producer (hel-selection-bounds selection)))))
 
 (defun hel--selection-between-nodes-p (producer)
   "Return non-nil when no node is under the selection.
-This is a selection of one character between the children of a node,
-such as the space or the comma between two arguments. A character at the
-edge of a node, such as its bracket, is under that node, and so is
-a character inside a node without children, such as a space in a string.
-The tree commands start from the nodes around a selection between nodes."
-  (-let [(begin . end) (hel-selection-bounds)]
-    (and (= 1 (- end begin))
+This is a bare cursor between the children of a node, such as on the
+space or the comma between two arguments. A character at the edge of
+a node, such as its bracket, is under that node, and so is a character
+inside a node without children, such as a space in a string. The
+whitespace at the edges of the selection does not count, as in
+`hel--node-on-selection', so the two agree on which node is under the
+selection. The tree commands start from the nodes around a selection
+between nodes."
+  (-when-let ((selection &as (begin . end)) (hel-trimmed-selection))
+    (and (hel-bare-cursor-p selection)
          (not (hel-node-enclosing-leaf producer begin))
          (not (hel-node-enclosing-leaf producer end))
          (-let [(node-begin . node-end)
-                (-some->> (hel-node-on producer (cons begin end))
+                (-some->> (hel-node-on producer (hel-selection-bounds selection))
                   (hel-node-bounds producer))]
            (or (null node-begin)
                (and (< node-begin begin)
@@ -611,13 +614,14 @@ goes: 1 for its end, -1 for its beginning."
   (let* ((before (hel--selection-entry))
          (chain-start (or (-last-item hel-selection-history) before)))
     (when-let*
-        ((range (hel--start-bounds (car before)))
+        ((range (hel-selection-nonempty-bounds (car before)))
          (new-range
           ;; The steps come from the selection where this chain of
           ;; expands began, so the inside of an outer bracket pair
           ;; never becomes a step.
           (-> (hel-node-expand-steps producer
-                                     (hel--start-bounds (car chain-start)))
+                                     (hel-selection-nonempty-bounds
+                                      (car chain-start)))
               (hel--smallest-larger-range range))))
       (hel-select new-range side)
       (hel--record-selection before)
@@ -626,10 +630,11 @@ goes: 1 for its end, -1 for its beginning."
 (defun hel--node-under-cursor (producer)
   "Return the largest node inside the selection that holds its head.
 The head and the selection leave out the whitespace at the edges of the
-selection, see `hel-trimmed-selection-head'."
-  (-when-let* ((head (hel-trimmed-selection-head))
-               ((begin . end) (hel-trimmed-selection-bounds))
-               (node (hel-node-on producer (cons head (1+ head)))))
+selection, see `hel-trimmed-selection'."
+  (-when-let* (((selection &as (begin . end)) (hel-trimmed-selection))
+               (head (hel-selection-head selection))
+
+               (node (hel-node-on producer (hel-char-range head))))
     (while-let ((node)
                 (parent (hel-node-parent producer node))
                 ((-let [(parent-begin . parent-end)

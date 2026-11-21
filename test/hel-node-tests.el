@@ -384,6 +384,26 @@ The comma is not a node, so the nodes around it are the parameters."
     (hel-select-all-siblings)
     (should (equal (hel-node-tests--all-selections) '("a" "b" "f")))))
 
+(ert-deftest hel-trimmed-region-between-nodes ()
+  "Section \"Selection rules\", rule 10: the whitespace at the edges of
+a region does not count, so a region of a comma between two parameters
+and the spaces around it has no node under it, and `M-n' selects the
+next parameter."
+  (skip-unless (treesit-language-available-p 'python))
+  (hel-test-with #'python-ts-mode (hel-test-mark "def g(a: int , b: str): pass\n" "")
+    (hel-test-select " , ")
+    (hel-test-run #'hel-select-next-sibling)
+    (should (equal (hel-test-selection) "b: str"))))
+
+(ert-deftest hel-end-of-buffer-between-nodes ()
+  "Section \"Selection rules\", rule 10: at the end of the buffer the tree
+commands start from the character before point.  A space after the last
+node has no node under it, so `M-p' selects that node."
+  (hel-test-with #'emacs-lisp-mode (hel-test-mark "(f a) (g b) " "")
+    (hel-set-cursor (point-max))
+    (hel-test-run #'hel-select-previous-sibling)
+    (should (equal (hel-test-selection) "(g b)"))))
+
 (ert-deftest hel-bare-point-text-object-tie ()
   "When point touches two objects, `mi' takes the one under the cursor
 character.  Without a mark, that is the character after point."

@@ -687,17 +687,16 @@ stay as they are."
 (defun hel-selection ()
   "Return the selection as (RANGE DIRECTION).
 The selection is the active region, or the cursor character when the
-region is inactive or empty.  RANGE is a (BEGIN . END) pair, and
+region is inactive or empty. RANGE is a (BEGIN . END) pair, and
 DIRECTION is the way from mark to point: 1 forward, -1 backward.
-A selection of at most one character, such as a bare cursor, has no
-direction, and DIRECTION is nil.  RANGE is empty only at the end of the
-buffer.
+A selection of one character, such as a bare cursor, has no direction,
+and DIRECTION is nil. RANGE is empty only at the end of the buffer.
 
-The value may have a third element, a private flag.  Never read it: ask
+The value may have a third element, a private flag. Never read it: ask
 `hel-line-selection-p' whether the selection is whole lines, and
-`hel-bare-cursor-p' whether it is a bare cursor.  On an empty line the
+`hel-bare-cursor-p' whether it is a bare cursor. On an empty line the
 bare cursor and the line selection cover the same range, the newline,
-and the flag tells them apart.  Destructuring with `-let' ignores the
+and the flag tells them apart. Destructuring with `-let' ignores the
 flag, and `apply' of `hel-select' to the value restores the selection
 with it."
   (hel--selection-from (point) (mark t) (region-active-p)))
@@ -705,27 +704,25 @@ with it."
 (defun hel--selection-from (point mark region-active?)
   "Return the Hel selection for POINT, MARK and REGION-ACTIVE?.
 Emacs selects the text from MARK to POINT. Hel keeps the same text as
-\(RANGE DIRECTION): RANGE is a (BEGIN . END) pair, and DIRECTION is
-the way from MARK to POINT: 1 forward, -1 backward.
+\(RANGE DIRECTION): RANGE is a (BEGIN . END) pair, and DIRECTION is the
+way from MARK to POINT: 1 forward, -1 backward.
 
-A selection of at most one character has no direction: DIRECTION is
-nil.  So every stored form of one character gives the same value.
+A selection of at most one character has no direction: DIRECTION is nil.
+So every stored form of one character gives the same value.
 
-On an empty line the bare cursor and the line selection cover the same
-range: the newline.  An active region over that newline is the line
-selection, so its value has a third element, the private flag, which
-is t: (RANGE nil t).  Every other value leaves the flag out, so each
-selection has one form.
+On an empty line the bare cursor and the line selection cover the same range:
+the newline. An active region over that newline is the line selection, so its
+value has a third element, the private flag, which is t: (RANGE nil t).
+Every other value leaves the flag out, so each selection has one form.
 
-Without an active region, or with an empty one, the selection is the
-cursor character, the one after POINT:
+Without an active region, or with an empty one, the selection is the cursor
+character, the one after POINT:
 
   ((POINT . POINT+1) nil)
 
 At the end of the buffer this selection is empty.
 
-POINT and MARK are buffer positions. MARK may be nil when
-REGION-ACTIVE? is nil."
+POINT and MARK are buffer positions. MARK may be nil when REGION-ACTIVE? is nil."
   (cond ((and region-active? (< 1 (abs (- point mark))))
          (if (< point mark)
              (list (cons point mark) -1)
@@ -790,28 +787,6 @@ cursor.  SELECTION has the form that `hel-selection' returns, and is
 the selection by default."
   (-second-item selection))
 
-(cl-defun hel-line-selection-p (&optional (selection (hel-selection)))
-  "Return non-nil if SELECTION consists of whole lines.
-Both bounds of the selection are at the start of a line, because a line
-holds its newline character:
-
-   |first line
-    second line
-   |
-
-On an empty line the bare cursor and the line selection cover the same
-range: the newline.  Only the line selection is whole lines there,
-because the user sees a selected line, and with the bare cursor only
-the cursor.  The private flag of the selection tells the two apart.
-
-SELECTION has the form that `hel-selection' returns, and is the
-selection by default."
-  (-let [((begin . end)) selection]
-    (and (not (hel-bare-cursor-p selection))
-         (save-excursion
-           (and (progn (goto-char begin) (bolp))
-                (progn (goto-char end) (bolp)))))))
-
 (cl-defun hel-selection-head (&optional (selection (hel-selection)))
   "Return the position of the head character of SELECTION.
 The head character is the character that the cursor covers: the last
@@ -836,6 +811,34 @@ SELECTION is ((BEGIN . END) DIRECTION), as `hel-selection' returns it."
           ((< 0 side) begin)
           (t end))))
 
+(cl-defun hel-trimmed-selection (&optional (selection (hel-selection)))
+  "Return SELECTION without the whitespace at its edges.
+The commands that act on structure, text objects and pairs start from this
+selection, so whitespace at the edges does not count. A selection of whitespace
+alone stays as it is, because trimming would leave nothing. At the end of the
+buffer, where the selection is empty, return a selection of the character before
+point, or nil when that character is a newline or when there is none.
+
+The result keeps the direction of SELECTION. When it is one character long it
+has no direction, like every selection of one character. SELECTION has the form
+that `hel-selection' returns."
+  (-when-let* ((bounds (hel-selection-nonempty-bounds selection))
+               (trimmed (or (hel-trim-whitespace-from-range bounds)
+                            bounds)))
+    (list trimmed (and (< 1 (hel-range-length trimmed))
+                       (hel-selection-direction selection)))))
+
+(cl-defun hel-selection-nonempty-bounds (&optional (selection (hel-selection)))
+  "Return the bounds of SELECTION, or of the character before it when empty.
+The selection is empty only at the end of the buffer, where no character
+follows point. There a command that needs a character starts from the one
+before point. Return nil when that character is a newline, or when there
+is none. SELECTION has the form that `hel-selection' returns."
+  (-let [((bounds &as begin . end)) selection]
+    (cond ((< begin end) bounds)
+          ((-some->> (char-before begin) (/= ?\n))
+           (cons (1- begin) begin)))))
+
 (cl-defun hel-bare-cursor-p (&optional (selection (hel-selection)))
   "Return non-nil if SELECTION is a bare cursor, which shows only the cursor.
 A bare cursor covers at most its cursor character.  On an empty line the
@@ -846,6 +849,28 @@ selection tells the two apart.  SELECTION has the form that
   (-let [(range _ line?) selection]
     (and (not line?)
          (<= (hel-range-length range) 1))))
+
+(cl-defun hel-line-selection-p (&optional (selection (hel-selection)))
+  "Return non-nil if SELECTION consists of whole lines.
+Both bounds of the selection are at the start of a line, because a line
+holds its newline character:
+
+   |first line
+    second line
+   |
+
+On an empty line the bare cursor and the line selection cover the same
+range: the newline.  Only the line selection is whole lines there,
+because the user sees a selected line, and with the bare cursor only
+the cursor.  The private flag of the selection tells the two apart.
+
+SELECTION has the form that `hel-selection' returns, and is the
+selection by default."
+  (-let [((begin . end)) selection]
+    (and (not (hel-bare-cursor-p selection))
+         (save-excursion
+           (and (progn (goto-char begin) (bolp))
+                (progn (goto-char end) (bolp)))))))
 
 (defun hel-set-cursor (pos)
   "Leave a bare cursor at POS: point there, and no active region.
@@ -864,42 +889,6 @@ The cursor character is the character after POS."
        (use-region-p)
        (= (region-beginning) (hel-line-begin (region-beginning)))
        (= (region-end) (hel-line-begin (region-end)))))
-
-;;; The start of a command
-;;
-;; The commands that act on structure, text objects and pairs look at the
-;; selection without the whitespace at its edges, and at the end of the
-;; buffer, where the selection is empty, at the character before point.
-
-(defun hel-trimmed-selection-head ()
-  "Return the head of the selection without the whitespace at its edges.
-The commands that act on structure, text objects and pairs start from
-this position, so whitespace at the head of a selection does not count.
-At a bare cursor it is the cursor character.  At the end of the buffer,
-where the selection is empty, it is the character before point.  Return
-nil when that character is a newline, or when there is none."
-  (-when-let (bounds (hel-trimmed-selection-bounds))
-    (hel-selection-head (list bounds (hel-selection-direction)))))
-
-(defun hel-trimmed-selection-bounds ()
-  "Return the bounds of the selection without the whitespace at its edges.
-A selection of whitespace alone keeps its bounds.  At the end of the
-buffer the selection is empty, so return the bounds of the character
-before point, or nil when that character is a newline."
-  (-when-let (bounds (hel--start-bounds (hel-selection-bounds)))
-    (or (hel-trim-whitespace-from-range bounds)
-        bounds)))
-
-(defun hel--start-bounds (bounds)
-  "Return BOUNDS, or the bounds of the character before them when empty.
-The selection is empty only at the end of the buffer, where no character
-follows point. There a command that needs a character starts from the one
-before point. Return nil when that character is a newline, or when there
-is none."
-  (-let [(begin . end) bounds]
-    (cond ((< begin end) bounds)
-          ((-some->> (char-before begin) (/= ?\n))
-           (cons (1- begin) begin)))))
 
 ;;; Mark ring
 
