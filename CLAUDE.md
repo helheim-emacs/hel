@@ -146,6 +146,20 @@ command.
 - A function that takes one step takes `dir`. A function that goes over
   COUNT things takes a signed `count`, as Emacs motions do, and computes
   `dir` inside: `hel-thing-reach`
+- A name says `selection` or `cursor` by what its caller asks for. A
+  function that takes ranges and selects them, or reads them, says
+  `selection`, even when it creates or deletes cursors to hold them:
+  `hel-select-ranges`, `hel-create-secondary-selection`. A function that
+  handles a cursor that its caller holds, or runs code in the context of
+  a cursor, says `cursor`: `hel-with-each-cursor`, `hel-make-cursor-main`.
+  The names of the look say `cursor` too: faces, drawing, "bare cursor",
+  "cursor character". See "Cursors" in the specification
+- The selections are main and secondary, never primary: in Emacs
+  "primary" names an X selection
+- The feature keeps the name "multiple cursors", which users know:
+  `hel-multiple-cursors-mode`, `:multiple-cursors`,
+  `hel-cursor-variables`. `hel--node-under-cursor` keeps `cursor` too,
+  because "head" alone does not say whose head
 - `hel-secondary-cursor-*` for cursor manipulation functions
 - Only commands read the variable `hel-extend-selection`, in their
   `interactive` form, and pass it on as the argument `extend`, optional in

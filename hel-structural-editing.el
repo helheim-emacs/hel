@@ -725,7 +725,7 @@ FN takes no arguments and runs at each cursor with its selection."
     (hel-extend-selection -1)
     (when-let* ((ranges (funcall fn)))
       (hel-select-ranges ranges (or (hel-selection-direction) 1))))
-  (hel-draw-cursor))
+  (hel-set-emacs-cursor))
 
 (defun hel--tree-select-all-siblings (producer)
   "Put a cursor on the node at each cursor and on its siblings.

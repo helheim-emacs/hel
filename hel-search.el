@@ -556,7 +556,7 @@ index in `hel-search-counter' depends on point.")
                               hel-search--session pos dir)))
             (-let [(_ start end closed-overlays) match]
               (when extend
-                (hel-create-secondary-cursor))
+                (hel-create-secondary-selection))
               (hel-select (cons start end) region-dir)
               (-each closed-overlays #'hel-open-overlay))))))))
 

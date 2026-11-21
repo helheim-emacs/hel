@@ -1022,7 +1022,7 @@ stays selected.  A selection of one line has the cursor at its start."
                                collect (cons start line-end)
                                until (<= end (1+ line-end)))))
           (-each (-butlast ranges)
-            (lambda (range) (hel-create-secondary-cursor range 1)))
+            (lambda (range) (hel-create-secondary-selection range 1)))
           (hel-select (-last-item ranges) 1))))))
 
 ;; _
@@ -1109,7 +1109,7 @@ The copy goes to the nearest line that reaches that column."
                           return (point)))))
     (when (and pos (not (hel-secondary-cursor-at pos)))
       (unless (hel-secondary-cursor-at begin)
-        (hel-create-secondary-cursor (cons begin end)))
+        (hel-create-secondary-selection (cons begin end)))
       (hel-set-cursor pos))))
 
 (defun hel--copy-selection (direction)
@@ -1131,7 +1131,7 @@ selection.  Nothing happens when a secondary cursor already holds the copy."
         (unless (equal copy (-some-> (hel-secondary-cursor-at copy-point)
                               (hel--secondary-cursor-value)
                               (cdr)))
-          (hel-create-secondary-cursor)
+          (hel-create-secondary-selection)
           (apply #'hel-select copy))))))
 
 (defun hel--bounds-of-following-range ( start-column end-column
@@ -1205,7 +1205,7 @@ of the last one."
   (interactive)
   (when hel-multiple-cursors-mode
     (hel-recenter-point-on-jump
-      (hel-create-secondary-cursor)
+      (hel-create-secondary-selection)
       (hel-make-cursor-main (hel-first-secondary-cursor)))))
 
 ;; G
@@ -1215,7 +1215,7 @@ of the last one."
   (interactive)
   (when hel-multiple-cursors-mode
     (hel-recenter-point-on-jump
-      (hel-create-secondary-cursor)
+      (hel-create-secondary-selection)
       (hel-make-cursor-main (hel-last-secondary-cursor)))))
 
 ;; )
@@ -1228,7 +1228,7 @@ of the last one."
       (dotimes (_ count)
         (let ((cursor (or (hel-next-secondary-cursor (point))
                           (hel-first-secondary-cursor))))
-          (hel-create-secondary-cursor)
+          (hel-create-secondary-selection)
           (hel-make-cursor-main cursor))))))
 
 ;; (
@@ -1241,7 +1241,7 @@ of the last one."
       (dotimes (_ count)
         (let ((cursor (or (hel-previous-secondary-cursor (point))
                           (hel-last-secondary-cursor))))
-          (hel-create-secondary-cursor)
+          (hel-create-secondary-selection)
           (hel-make-cursor-main cursor))))))
 
 ;; M-)
@@ -1324,7 +1324,7 @@ Return the text that was there."
                 ((numberp pos)))
       (if-let* ((cursor (hel-secondary-cursor-at pos)))
           (hel-delete-secondary-cursor cursor)
-        (hel-create-secondary-cursor (hel-char-range pos))))))
+        (hel-create-secondary-selection (hel-char-range pos))))))
 
 ;;;; Digit arguments
 

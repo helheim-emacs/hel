@@ -178,7 +178,7 @@ Return the buffer, which is current and shown in the selected window."
       (save-excursion
         (forward-line 1)
         (while (not (eobp))
-          (hel-create-secondary-cursor (cons (point) (1+ (point))) -1 nil)
+          (hel-create-secondary-selection (cons (point) (1+ (point))) -1 nil)
           (forward-line 1)))
       (hel-auto-multiple-cursors-mode))
     (setq buffer-undo-list nil

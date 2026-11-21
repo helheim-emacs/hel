@@ -478,7 +478,7 @@ the user lands in gets back its own selection."
                    '(3 3 nil hel-normal-state-main-cursor)))
     (should (get-text-property
              0 'cursor
-             (overlay-get (window-parameter nil 'hel--main-cursor-overlay)
+             (overlay-get (alist-get (selected-window) hel--main-cursor-overlays)
                           'after-string)))))
 
 (ert-deftest hel-cursor-char-drawn-at-the-end-of-buffer ()
@@ -532,8 +532,7 @@ the face `hel-other-window-cursor'.  Each window has its own overlay."
                      '(3 4 hel-normal-state-main-cursor nil)))
       (should (equal (hel-test-drawn-cursor-char second)
                      '(1 2 hel-other-window-cursor nil)))
-      (should (eq second (overlay-get (window-parameter
-                                       second 'hel--main-cursor-overlay)
+      (should (eq second (overlay-get (alist-get second hel--main-cursor-overlays)
                                       'window)))
       (select-window second)
       (hel-test-redisplay)
@@ -565,7 +564,7 @@ window it lies above that highlight."
            (match (make-overlay 1 3)))
       (overlay-put match 'priority 2)
       (cl-flet ((box-priority (window)
-                  (overlay-get (window-parameter window 'hel--main-cursor-overlay)
+                  (overlay-get (alist-get window hel--main-cursor-overlays)
                                'priority)))
         (hel-test-redisplay)
         (should (< (box-priority second) 2 (box-priority first)))
@@ -581,7 +580,7 @@ inside the line keeps the face alone.  So do the secondary cursors."
   (hel-test-with #'fundamental-mode "a b| \t\nc"
     (setq-local show-trailing-whitespace t)
     (cl-flet ((display ()
-                (overlay-get (window-parameter nil 'hel--main-cursor-overlay)
+                (overlay-get (alist-get (selected-window) hel--main-cursor-overlays)
                              'display)))
       (hel-test-redisplay)
       (should (equal (display) " "))
@@ -618,30 +617,77 @@ windows, and a new window draws a box of its own."
                          (-map (lambda (overlay) (overlay-get overlay 'window))
                                (boxes)))))))))
 
-(ert-deftest hel-hybrid-cursor-draws-a-bar-and-a-faint-box ()
+(ert-deftest hel-hybrid-cursor-draws-a-bar-and-a-box-on-a-bare-cursor ()
   "With the `hybrid' cursor type the main cursor is a bar at point on a graphic
-display, and its box has the face `hel-cursor-highlight'.  The secondary
-cursors keep their boxes, and a text terminal keeps its own cursor."
+display.  A bare cursor also has a box with the face `hel-cursor-highlight',
+and any other selection has no box.  The secondary cursors keep their boxes,
+and a text terminal keeps its own cursor."
   (hel-test-with #'fundamental-mode "ab|cd"
     (let ((hel-cursor-type 'hybrid))
       (cl-letf (((symbol-function 'display-graphic-p) #'always))
-        (should (equal (hel--cursor-look t)
-                       '(bar hel-normal-state-main-cursor
-                             hel-cursor-highlight)))
-        (should (equal (hel--cursor-look nil)
-                       '(box hel-normal-state-secondary-cursor
-                             hel-normal-state-secondary-cursor))))
+        (should (equal (hel--cursor-look 'main t)
+                       '(:cursor-type bar :color hel-normal-state-main-cursor
+                         :shape box :face hel-cursor-highlight)))
+        (should (equal (hel--cursor-look 'main nil)
+                       '(:cursor-type bar :color hel-normal-state-main-cursor
+                         :shape nil :face hel-cursor-highlight)))
+        (should (equal (hel--cursor-look 'secondary)
+                       '(:shape box :face hel-normal-state-secondary-cursor))))
       (cl-letf (((symbol-function 'display-graphic-p) #'ignore))
-        (should (equal (hel--cursor-look t)
-                       '(box hel-normal-state-main-cursor
-                             hel-cursor-highlight))))
+        (should (equal (plist-get (hel--cursor-look 'main t) :cursor-type)
+                       'box)))
       (hel-test-redisplay)
       (should (equal (hel-test-drawn-cursor-char)
-                     '(3 4 hel-cursor-highlight nil))))
+                     '(3 4 hel-cursor-highlight nil)))
+      (hel-select (cons 1 3))
+      (hel-test-redisplay)
+      (should-not (hel-test-drawn-cursor-char))
+      ;; The line selection of an empty line is not a bare cursor, and the
+      ;; paint of the line stays.
+      (erase-buffer)
+      (insert "a\n\nb")
+      (hel-select (cons 3 4) nil t)
+      (hel-test-redisplay)
+      (should-not (hel-test-drawn-cursor-char))
+      (should (overlay-buffer hel--main-line-overlay)))
     (cl-letf (((symbol-function 'display-graphic-p) #'always))
-      (should (equal (hel--cursor-look t)
-                     '(nil hel-normal-state-main-cursor
-                           hel-normal-state-main-cursor))))))
+      (should (equal (hel--cursor-look 'main t)
+                     '(:cursor-type nil :color hel-normal-state-main-cursor
+                       :shape box :face hel-normal-state-main-cursor))))))
+
+(ert-deftest hel-hidden-cursor-hides-every-cursor ()
+  "A major mode that hides the cursor hides the main and the secondary
+cursors.  The region of a secondary cursor stays."
+  (hel-test-with #'fundamental-mode "|abcdef"
+    (setq-local cursor-type nil)
+    (hel--check-if-cursor-is-hidden)
+    (should-not (hel--cursor-look 'main t))
+    (should-not (hel--cursor-look 'secondary))
+    (hel-test-redisplay)
+    (should-not (hel-test-drawn-cursor-char))
+    (let ((cursor (hel-create-secondary-selection '(3 . 6) 1)))
+      (should (equal (hel-test--drawing cursor) '(6 6 nil nil)))
+      (should (overlay-buffer (overlay-get cursor 'secondary-region))))))
+
+(ert-deftest hel-paint-cursor ()
+  "The painter draws a box over the head character, a cell with the cursor
+of Emacs on it at a newline, a bar at point, or nothing."
+  (hel-test-with #'fundamental-mode "|ab\ncd"
+    (let ((overlay (make-overlay 1 1))
+          (box '(:shape box :face bold)))
+      (hel--paint-cursor overlay box (hel-selection))
+      (should (equal (hel-test--drawing overlay) '(1 2 bold nil)))
+      (hel--paint-cursor overlay box (hel--selection-from 3 3 nil))
+      (should (equal (hel-test--drawing overlay) '(3 3 nil bold)))
+      (should (get-text-property 0 'cursor (overlay-get overlay 'after-string)))
+      (hel--paint-cursor overlay '(:shape bar :face bold)
+                               (hel--selection-from 4 4 nil))
+      (should (equal (hel-test--drawing overlay) '(4 4 nil nil)))
+      (should (overlay-get overlay 'before-string))
+      (hel--paint-cursor overlay nil (hel--selection-from 5 5 nil))
+      (should (equal (hel-test--drawing overlay) '(5 5 nil nil)))
+      (should-not (overlay-get overlay 'before-string))
+      (delete-overlay overlay))))
 
 (ert-deftest hel-secondary-cursor-follows-edits ()
   "Point and the mark of a secondary cursor move with edits as markers do.
@@ -681,49 +727,57 @@ The head character is the character of the selection at point, inside
 the selection."
   ;; a=1 b=2 c=4 d=5 e=7 f=8, and the end is 9.
   (hel-test-with #'fundamental-mode "|ab\ncd\nef"
-    (hel-create-secondary-cursor '(1 . 5) 1)      ; "ab\nc" forward: "c"
+    (hel-create-secondary-selection '(1 . 5) 1)      ; "ab\nc" forward: "c"
     (should (equal (hel-test-drawn-secondary-cursors)
                    '((4 5 hel-normal-state-secondary-cursor nil))))
     (hel-disable-multiple-cursors-mode)
-    (hel-create-secondary-cursor '(7 . 9) -1)     ; "ef" backward: "e"
+    (hel-create-secondary-selection '(7 . 9) -1)     ; "ef" backward: "e"
     (should (equal (hel-test-drawn-secondary-cursors)
                    '((7 8 hel-normal-state-secondary-cursor nil))))
     (hel-disable-multiple-cursors-mode)
-    (hel-create-secondary-cursor '(4 . 7) 1)      ; "cd\n" forward: a cell
+    (hel-create-secondary-selection '(4 . 7) 1)      ; "cd\n" forward: a cell
     (should (equal (hel-test-drawn-secondary-cursors)
                    '((6 6 nil hel-normal-state-secondary-cursor))))))
 
 (ert-deftest hel-cursor-look-for-each-state ()
-  "The shape of a cursor follows from the state and the kind of display."
+  "The shape of a cursor follows from the state, the role and the kind of
+display.  The cursor of Emacs belongs to the main cursor only."
   (hel-test-with #'fundamental-mode "|ab"
-    (pcase-dolist (`(,state ,graphic ,main ,secondary)
-                   '((normal t   nil  box)
-                     (normal nil box  box)
-                     (insert t   bar  bar)
-                     (insert nil box  box)
-                     (emacs  t   hbar nil)
-                     (emacs  nil hbar nil)))
+    (pcase-dolist (`(,state ,graphic ,main-type ,main ,secondary ,other)
+                   '((normal t   nil       box box box)
+                     (normal nil box       box box box)
+                     (insert t   bar       nil bar nil)
+                     (insert nil box       nil box nil)
+                     (emacs  t   (hbar . 4) nil nil nil)
+                     (emacs  nil (hbar . 4) nil nil nil)))
       (funcall (hel-state-property state :function) 1)
       (cl-letf (((symbol-function 'display-graphic-p)
                  (lambda (&rest _) graphic)))
         (should (equal (list state graphic
-                             (car (hel--cursor-look t))
-                             (car (hel--cursor-look nil)))
-                       (list state graphic main secondary)))))))
+                             (plist-get (hel--cursor-look 'main t) :cursor-type)
+                             (plist-get (hel--cursor-look 'main t) :shape)
+                             (plist-get (hel--cursor-look 'secondary) :shape)
+                             (plist-get (hel--cursor-look 'other t) :shape))
+                       (list state graphic main-type main secondary other)))
+        (should-not (plist-get (hel--cursor-look 'secondary) :cursor-type))
+        (should-not (plist-get (hel--cursor-look 'other t) :cursor-type))))))
 
 (ert-deftest hel-cursor-look-faces ()
-  "The faces come from the state, and extending gives its own face."
+  "The faces come from the state, and extending gives its own face.
+Another window keeps the face `hel-other-window-cursor'."
   (hel-test-with #'fundamental-mode "|ab"
-    (should (equal (cadr (hel--cursor-look t)) 'hel-normal-state-main-cursor))
-    (should (equal (cadr (hel--cursor-look nil))
-                   'hel-normal-state-secondary-cursor))
-    (hel-extend-selection 1)
-    (should (equal (cadr (hel--cursor-look t)) 'hel-extend-selection-cursor))
-    (should (equal (cadr (hel--cursor-look nil)) 'hel-extend-selection-cursor))
-    (hel-insert-state 1)
-    (should (equal (cadr (hel--cursor-look t)) 'hel-insert-state-main-cursor))
-    (should (equal (cadr (hel--cursor-look nil))
-                   'hel-insert-state-secondary-cursor))))
+    (cl-flet ((face (role) (plist-get (hel--cursor-look role t) :face)))
+      (should (equal (face 'main) 'hel-normal-state-main-cursor))
+      (should (equal (face 'secondary) 'hel-normal-state-secondary-cursor))
+      (should (equal (face 'other) 'hel-other-window-cursor))
+      (hel-extend-selection 1)
+      (should (equal (face 'main) 'hel-extend-selection-cursor))
+      (should (equal (face 'secondary) 'hel-extend-selection-cursor))
+      (should (equal (face 'other) 'hel-other-window-cursor))
+      (hel-insert-state 1)
+      (should (equal (plist-get (hel--cursor-look 'main) :color)
+                     'hel-insert-state-main-cursor))
+      (should (equal (face 'secondary) 'hel-insert-state-secondary-cursor)))))
 
 (ert-deftest hel-main-cursor-drawn-by-state ()
   "The cursor of Emacs is hidden in Normal state on a graphic display,
@@ -737,7 +791,7 @@ underscore in Emacs state."
       (cl-letf (((symbol-function 'display-graphic-p)
                  (lambda (&rest _) graphic)))
         (funcall (hel-state-property state :function) 1)
-        (hel-draw-cursor)
+        (hel-set-emacs-cursor)
         (should (equal (list state graphic cursor-type)
                        (list state graphic type)))))))
 
@@ -888,7 +942,7 @@ cursor and when it moves one."
                         ((10 . 12) -1)        ; region "gh" backward
                         ((15 . 15) nil))))    ; the end of the buffer
       (dolist (selection selections)
-        (let ((cursor (apply #'hel-create-secondary-cursor selection)))
+        (let ((cursor (apply #'hel-create-secondary-selection selection)))
           (should (equal (cdr (hel--secondary-cursor-value cursor))
                          selection))
           (apply #'hel--set-secondary-selection cursor (car selections))
@@ -924,7 +978,7 @@ cursor and when it moves one."
         (should (gethash id hel--cursors-table))
         (should (equal (hel-test-cursor-chars) '(("b" nil) ("e" nil))))))))
 
-(ert-deftest hel-merge-overlapping-cursors-keeps-main-state ()
+(ert-deftest hel-merge-overlapping-selections-keeps-main-state ()
   "A merge keeps the main cursor with its own state and deletes the others."
   (hel-test-with #'fundamental-mode "|abcdefgh"
     (setq kill-ring '("main"))
@@ -932,7 +986,7 @@ cursor and when it moves one."
     (overlay-put (hel-selection-tests--secondary-cursor 4 1 t)
                  'kill-ring '("secondary"))
     (hel-selection-tests--secondary-cursor 7 8 nil)   ; "g", apart
-    (hel-merge-overlapping-cursors)
+    (hel-merge-overlapping-selections)
     (should (equal (hel-test-render) "|abcde^f¦gh"))
     (should (equal kill-ring '("main")))
     (should (= 1 (length (hel-all-secondary-cursors))))))
@@ -1102,7 +1156,7 @@ character, which reads as a bare cursor."
   "Section Cursors: the writer gives each cursor its LINE?."
   (hel-test-with #'fundamental-mode "|a\n\nb\n\nc"
     ;; The empty lines are at 3 and 6.
-    (let ((cursor (hel-create-secondary-cursor '(6 . 7) nil)))
+    (let ((cursor (hel-create-secondary-selection '(6 . 7) nil)))
       (hel-set-selections `((0 (3 . 4) nil t)
                             (,(overlay-get cursor 'id) (6 . 7) nil t)))
       (should (equal (mapcar #'cdr (hel-selections))
@@ -1116,7 +1170,7 @@ character, which reads as a bare cursor."
 (ert-deftest hel-secondary-cursor-line-selection-writer-and-reader ()
   "Section Cursors: a secondary cursor keeps the line selection of its line."
   (hel-test-with #'fundamental-mode "|a\n\nb"
-    (let ((cursor (hel-create-secondary-cursor '(3 . 4) nil t)))
+    (let ((cursor (hel-create-secondary-selection '(3 . 4) nil t)))
       (should (equal (cdr (hel--secondary-cursor-value cursor))
                      '((3 . 4) nil t)))
       (hel--set-secondary-selection cursor '(3 . 4) nil)
@@ -1174,7 +1228,7 @@ the selected window, and it goes when the selection goes."
 (ert-deftest hel-line-selection-drawn-for-a-secondary-cursor ()
   "Section Drawing: a secondary cursor paints the line of its line selection."
   (hel-test-with 'text-mode "|a\n\nb\n"
-    (let ((cursor (hel-create-secondary-cursor '(3 . 4) nil t)))
+    (let ((cursor (hel-create-secondary-selection '(3 . 4) nil t)))
       (should (equal (mapcar (lambda (overlay)
                                (list (overlay-start overlay)
                                      (overlay-end overlay)))

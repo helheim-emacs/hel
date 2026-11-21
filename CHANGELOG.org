@@ -151,7 +151,7 @@
   ~hel-emacs-state-cursor-type~, ~hel-match-fake-cursor-style~ and
   ~hel-cursor-is-bar-p~ are removed. The =:cursor= property of a state lists
   two faces, for the main and the secondary cursors. ~hel-update-cursor~ is
-  renamed to ~hel-draw-cursor~, and ~hel-bar-fake-cursor~ to
+  renamed to ~hel-set-emacs-cursor~, and ~hel-bar-fake-cursor~ to
   ~hel-bar-secondary-cursor~.
 
 - ~hel-cursor-type~ chooses how the main cursor looks. ~helix~, the

@@ -57,7 +57,7 @@ state, also one that no command leaves, such as a far inactive mark."
       (goto-char point)
       (set-marker (mark-marker) (or mark point))
       (setq mark-active active)
-      (hel-create-secondary-cursor))))
+      (hel-create-secondary-selection))))
 
 (defun hel-test-secondary-cursors ()
   "Return the secondary cursors as a list of (POINT . MARK), sorted by POINT.
@@ -129,7 +129,8 @@ nil when it draws no cell."
 (defun hel-test-drawn-cursor-char (&optional window)
   "Return the cursor character that WINDOW shows, as `hel-test--drawing' does.
 WINDOW is the selected window by default."
-  (hel-test--drawing (window-parameter window 'hel--main-cursor-overlay)))
+  (hel-test--drawing (alist-get (or window (selected-window))
+                                hel--main-cursor-overlays)))
 
 (defun hel-test-drawn-secondary-cursors ()
   "Return the drawing of every secondary cursor, as `hel-test--drawing' does.
@@ -219,8 +220,11 @@ Compiling a query takes much longer than a test.")
 (defun hel-test-call-with-buffer (mode input function)
   "Call FUNCTION in a fresh buffer in major MODE with the marked text INPUT.
 The buffer is shown in the only window, and the windows come back
-afterwards.  A tree-sitter MODE without its grammar skips the test."
+afterwards.  A tree-sitter MODE without its grammar skips the test.
+The cursor type is `helix', whatever its default is, and a test of the
+`hybrid' look binds it."
   (let ((buffer (generate-new-buffer "*hel-test*"))
+        (hel-cursor-type 'helix)
         (kill-ring nil)
         (kill-ring-yank-pointer nil)
         (killed-rectangle nil)

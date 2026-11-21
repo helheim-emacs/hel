@@ -310,9 +310,18 @@ parent scans every enclosing level, 2 ms at depth 16.
 
 * Cursors
 
-A Hel cursor is point, the cursor character and the selection around it.
-A buffer has one main cursor, whose state lives in Emacs, and any number of
-secondary cursors, whose state lives in overlays.
+A /selection/ is what a command changes: a range with a direction. The
+user works only with selections. A buffer has one main selection and any
+number of secondary selections. A selection of one character looks like
+a cursor on the screen, a bare cursor, but that is a difference in the
+look, not a second kind of object.
+
+A /cursor/ is the object that carries a selection with its state: point,
+the cursor character, the mark, the kill ring, the variables of
+~hel-cursor-variables~ and an ID. The main cursor keeps its state in
+Emacs, and each secondary cursor keeps it in an overlay. Code reaches the
+cursors when it must run at a selection with all of that state, as
+a command does.
 
 - *Two functions move the state of a cursor*: /save/ copies point, the mark
   and the variables of each cursor from Emacs into an overlay, and /load/
@@ -360,10 +369,14 @@ secondary cursors, whose state lives in overlays.
   of the main cursor too, so the cursor of Emacs is hidden on a graphic
   display; a text terminal shows it anyway, at point. One setting,
   ~hel-cursor-type~, chooses between this look of Helix and a /hybrid/ one,
-  which shows point as a bar and gives the box of the main cursor a faint
-  face. A box changes its width from character to
+  which shows point as a bar. A box changes its width from character to
   character with a proportional font, and the bar does not; the bar also
-  shows where Emacs commands act. Every cursor lies above the region of
+  shows where Emacs commands act. In the hybrid look the main cursor has
+  a box only when it is a bare cursor, because the box then shows the one
+  character that the bare cursor selects, and by default it looks like the
+  region. The region shows any other selection, and a box there would only
+  add a cell of region colour on a newline and cover the highlight of
+  ~show-paren-mode~ on a bracket. Every cursor lies above the region of
   Emacs and above the highlight of ~show-paren-mode~, so a cursor on
   a bracket stays visible and only the matching bracket is highlighted.
   The background of the main cursor is the cursor color of the theme, and
@@ -382,25 +395,43 @@ secondary cursors, whose state lives in overlays.
   every face of buffer text and leaves the text of a display string alone.
   In Insert state every cursor is a position: a bar on a graphic display, and
   in a text terminal a box over the character after point, because a bar
-  string there would push the line one cell to the right. The display is
+  string there would push the line one cell to the right. A box on
+  a newline or at the end of the buffer is a cell of one space, and the
+  cursor of Emacs stands on that cell, inside the box. A major mode that
+  hides the cursor hides every cursor, because a cursor means nothing in
+  its buffer; the regions stay. The display is
   the frame of the selected window when Hel draws. Emacs state uses an
   underscore and names a face only for its main cursor. Normal and Insert
   state name the faces of their main and secondary cursors, and =v= gives
-  both one face. One function answers the shape and the face for both
-  kinds, and one the bounds of the box; a renderer for each medium applies
-  them, because the set of kinds is closed.
+  both one face. One function answers the whole look of a cursor for its
+  role: the main cursor, the main cursor in another window, or a secondary
+  cursor. One painter puts the shape on an overlay for every role, and
+  the cursor of Emacs takes the rest, because the set of roles is closed.
 - *The names are main and secondary.* Helix says primary and secondary,
   but in Emacs "primary" names the X selection that
   ~select-active-regions~ fills, and Hel's window switch binds that
-  variable. A secondary cursor is a full cursor that waits in a container,
-  so no name calls it fake. Its selection is its /region/, because Emacs
-  says "secondary selection" for the text of =M-mouse-1=.
-- *Each window has one overlay of the main cursor*, in its window
-  parameter, and only the function that draws it writes that parameter and the
-  record of the window that showed it last. A deleted window leaves its
-  overlay in its buffer, and Emacs gives no hook for the deletion, so
-  a change of the window configuration deletes the overlays of dead
-  windows in the buffers that the frame shows.
+  variable. "Secondary selection" also names a facility of X, but few
+  programs use it today, so Hel takes the name. A secondary cursor is
+  a full cursor that waits in a container, so no name calls it fake.
+- *A name says "selection" or "cursor" by what its caller asks for.*
+  A function that takes ranges and selects them, or reads them, says
+  "selection", even when it creates or deletes cursors to hold them:
+  ~hel-select-ranges~, ~hel-create-secondary-selection~ and
+  ~hel-merge-overlapping-selections~. A function that handles a cursor
+  that its caller holds, or runs code in the context of a cursor, says
+  "cursor": ~hel-with-each-cursor~, ~hel-make-cursor-main~. So the reader
+  sees from the name whether a call touches only ranges or the whole
+  state. The names of the look say "cursor" too, because a selection
+  looks like a cursor on the screen.
+- *The feature keeps the name "multiple cursors".* Users know the feature
+  by this name, so its mode, options and dispatch keep it, and so does
+  ~hel-cursor-variables~.
+- *Each window has one overlay of the main cursor*, in one list of these
+  overlays for all windows, and only the function that draws it writes
+  that list and the record of the window that showed it last. A deleted
+  window leaves its overlay in its buffer, and Emacs gives no hook for the
+  deletion, so a change of the window configuration deletes the overlays
+  of dead windows, in every frame.
 - *Emacs state has no secondary cursors.* Emacs commands know nothing of
   them, so the change to Emacs state removes them itself. Every road into
   Emacs state, such as =magit-blame-mode= or the end of a wdired edit, keeps

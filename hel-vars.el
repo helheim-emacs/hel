@@ -59,15 +59,17 @@ is one of:
 - `helix'   Cursor match the one in Helix.
 
 - `hybrid'  The cursor of Emacs is a bar at point with the color of the
-          main cursor, and the box has the faint face `hel-cursor-highlight'.
+          main cursor.  A bare cursor also has a box with the face
+          `hel-cursor-highlight', which shows the one character that it
+          selects.  Any other selection is shown by the region alone.
           The bar shows where Emacs commands act, and it keeps its width with
           a proportional font, where the width of a box changes from character
           to character.
 
-A text terminal always shows its own cursor at point, so there only the
-face of the box changes."
+A text terminal always shows its own cursor at point, so there the
+terminal cursor takes the place of the bar."
   :type '(choice (const :tag "Helix: a box" helix)
-                 (const :tag "Hybrid: a bar at point and a faint box" hybrid))
+                 (const :tag "Hybrid: a bar at point" hybrid))
   :group 'hel)
 
 (defcustom hel-bar-secondary-cursor ?\u2000
@@ -139,19 +141,21 @@ Hel is in Emacs state. All other attributes are ignored."
   :group 'hel)
 
 (defface hel-cursor-highlight
+  '((t :inherit region))
+  "Face of the box of a bare main cursor when `hel-cursor-type' is `hybrid'.
+The box covers the one character that the bare cursor selects, so by
+default it looks like the region."
+  :group 'hel)
+
+(defface hel-other-window-cursor
   '((((class color) (min-colors 88) (background light))
      :background "gray85")
     (((class color) (min-colors 88) (background dark))
      :background "gray30")
     (t :inverse-video t))
-  "Face of the box of the main cursor when `hel-cursor-type' is `hybrid'.
-The box covers the character that a command acts on when no region is
-active, and the head character of an active region."
-  :group 'hel)
-
-(defface hel-other-window-cursor
-  '((t :inherit hel-cursor-highlight))
-  "Face of the box of the cursor in a window that is not selected."
+  "Face of the box of the main cursor in a window that is not selected.
+The selected window of a frame without focus uses it too.  The box only
+shows where point is in that window, so it has a faded colour of its own."
   :group 'hel)
 
 (defface hel-search-highlight '((t :inherit lazy-highlight))
@@ -454,7 +458,10 @@ use `hel-state-property' function.
 `:keymap'        Symbol `hel-STATE-state-map' with keymap in its variable cell
                that will be active while Hel is in STATE.
 
-`:cursor'        The faces of the cursors in STATE: a list (MAIN SECONDARY).
+`:main-cursor'   The face of the main cursor in STATE.
+
+`:secondary-cursor'
+               The face of the secondary cursors in STATE.
 
 `:input-method'  When non-nil Hell will activate the enabled input method
                in STATE.

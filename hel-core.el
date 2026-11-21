@@ -115,12 +115,11 @@
           (add-hook 'minibuffer-setup-hook #'hel-local-mode))
         (add-hook 'window-buffer-change-functions #'hel--fundamental-mode-hack)
         (add-hook 'change-major-mode-after-body-hook #'hel--check-if-cursor-is-hidden)
-        (add-hook 'window-configuration-change-hook #'hel-draw-cursor)
-        (add-hook 'window-configuration-change-hook
-                  #'hel--delete-dead-main-cursor-overlays)
+        (add-hook 'window-configuration-change-hook #'hel-set-emacs-cursor)
+        (add-hook 'window-configuration-change-hook #'hel--delete-dead-main-cursor-overlays)
         (add-hook 'enable-theme-functions  #'hel--on-theme-change)
         (add-hook 'disable-theme-functions #'hel--on-theme-change)
-        (add-function :after pre-redisplay-function #'hel--draw-main-cursor-overlay)
+        (add-function :after pre-redisplay-function #'hel--draw-main-cursor)
         ;; A change of focus may redraw only the cursor of Emacs, without
         ;; `pre-redisplay-function', so the box would keep its face.
         (add-function :after after-focus-change-function #'force-window-update)
@@ -138,16 +137,15 @@
     (remove-hook 'minibuffer-setup-hook #'hel-local-mode)
     (remove-hook 'window-buffer-change-functions #'hel--fundamental-mode-hack)
     (remove-hook 'change-major-mode-after-body-hook #'hel--check-if-cursor-is-hidden)
-    (remove-hook 'window-configuration-change-hook #'hel-draw-cursor)
+    (remove-hook 'window-configuration-change-hook #'hel-set-emacs-cursor)
     (remove-hook 'window-configuration-change-hook #'hel--delete-dead-main-cursor-overlays)
     (remove-hook 'enable-theme-functions  #'hel--on-theme-change)
     (remove-hook 'disable-theme-functions #'hel--on-theme-change)
-    (remove-function pre-redisplay-function #'hel--draw-main-cursor-overlay)
+    (remove-function pre-redisplay-function #'hel--draw-main-cursor)
     (remove-function after-focus-change-function #'force-window-update)
     (remove-function show-paren-data-function #'hel--show-paren-data)
     (remove-function command-error-function #'hel--record-main-cursor-error)
-    (hel--delete-main-cursor-overlays)
-    (hel--delete-dead-main-cursor-overlays)
+    (hel--delete-all-main-cursor-overlays)
     (hel-setup-mode-line :remove)))
 
 (defun hel--initialize ()
@@ -169,7 +167,7 @@ ensures `hel-local-mode' is activated in such cases."
     (hel-local-mode 1)))
 
 (hel-define-advice select-window (:after (&rest _))
-  (hel-draw-cursor))
+  (hel-set-emacs-cursor))
 
 (hel-advice-add 'use-global-map :after #'hel-update-active-keymaps-a)
 (hel-advice-add 'use-local-map  :after #'hel-update-active-keymaps-a)
@@ -238,10 +236,10 @@ Optional KEY keyword arguments:
                Can be accessed later via `hel-STATE-state-map' variable
                or `hel-state-property' function.
 
-`:cursor'        The faces of the cursors when Hel is in STATE: a list
-               (MAIN SECONDARY).  The `:background' of MAIN is the colour
-               of the main cursor, and SECONDARY is the face of the
-               secondary cursors.
+`:main-cursor'   The face of the main cursor when Hel is in STATE.
+
+`:secondary-cursor'
+               The faces of the secondary cursors when Hel is in STATE.
 
 `:input-method'  When non-nil Hel will activate the enabled input method
                on switching to STATE.
@@ -274,7 +272,8 @@ Also two hooks are defined which are run each time Hel enter or exit STATE:
           ;; collect keywords
           ((kwargs . body) (hel-split-keyword-args body))
           ((&plist :keymap keymap-value
-                   :cursor :input-method :modes :tag) kwargs))
+                   :main-cursor :secondary-cursor :input-method :modes :tag)
+           kwargs))
     ;; macro expansion
     `(progn
        ;; State variable
@@ -291,7 +290,8 @@ Also two hooks are defined which are run each time Hel enter or exit STATE:
                    :variable     ',variable
                    :function     ',symbol
                    :keymap       ,keymap
-                   :cursor       ,cursor
+                   :main-cursor  ,main-cursor
+                   :secondary-cursor ,secondary-cursor
                    :input-method ,input-method
                    :modes        ,modes
                    :tag          ,tag))
@@ -323,7 +323,7 @@ When ARG is non-positive integer and Hel is in %s — disable it.\n\n%s"
            ;; Switch color and shape of all cursors.
            ;; main cursor
            (setq hel-extend-selection nil)
-           (hel-draw-cursor)
+           (hel-set-emacs-cursor)
            ;; secondary cursors
            (when hel-multiple-cursors-mode
              (hel-save-window-scroll
@@ -344,7 +344,7 @@ When ARG is non-positive integer and Hel is in %s — disable it.\n\n%s"
   (if (eq state hel-state)
       (progn
         (hel-update-active-keymaps)
-        (hel-draw-cursor))
+        (hel-set-emacs-cursor))
     ;; else
     (-> (hel-state-property state :function)
         (funcall 1))))
@@ -470,14 +470,14 @@ MODE and STATE should be symbols."
   "Normal state."
   :tag " NORMAL"
   :keymap (define-keymap :full t :suppress t)
-  :cursor '(hel-normal-state-main-cursor
-            hel-normal-state-secondary-cursor))
+  :main-cursor 'hel-normal-state-main-cursor
+  :secondary-cursor 'hel-normal-state-secondary-cursor)
 
 (hel-define-state insert
   "Insert state."
   :tag " INSERT"
-  :cursor '(hel-insert-state-main-cursor
-            hel-insert-state-secondary-cursor)
+  :main-cursor 'hel-insert-state-main-cursor
+  :secondary-cursor 'hel-insert-state-secondary-cursor
   :input-method t
   ;; The text typed in Insert state becomes the selection.  The mark of
   ;; each cursor keeps the place where the typing started.
@@ -506,7 +506,7 @@ MODE and STATE should be symbols."
 
 (hel-define-state emacs
   "Emacs state."
-  :cursor '(hel-emacs-state-main-cursor nil)
+  :main-cursor 'hel-emacs-state-main-cursor
   (setq hel-extend-selection nil)
   (deactivate-mark)
   ;; Emacs commands know nothing of secondary cursors, so a buffer in
@@ -536,7 +536,7 @@ enable otherwise, also when ARG is nil."
                                  (not hel-extend-selection)
                                (not (and (numberp arg) (< arg 1)))))
   (unless hel-executing-command-for-secondary-cursor
-    (hel-draw-cursor)))
+    (hel-set-emacs-cursor)))
 
 ;;; Keymaps
 
@@ -797,7 +797,8 @@ a Hel modal state. Can be a symbol or list of symbols.
   "Hook run before each command is executed. See `pre-command-hook'."
   (unless hel-executing-command-for-secondary-cursor
     (setq hel-this-command this-command
-          hel--main-cursor-error nil)
+          hel--main-cursor-error nil
+          hel--default-font-height nil)
     (setq hel--selection-record (list (current-buffer) (mark t) mark-active
                                       hel-extend-selection))
     (cond (hel-normal-state
@@ -823,7 +824,7 @@ a Hel modal state. Can be a symbol or list of symbols.
               (->> (hel--execute-command-for-all-secondary-cursors hel-this-command)
                    (hel--handle-command-errors (hel--main-cursor-error))))
             (when (hel--merge-cursors-p hel-this-command)
-              (hel-merge-overlapping-cursors)))
+              (hel-merge-overlapping-selections)))
         (error
          (message "[Hel] error while executing command for secondary cursor: %s"
                   (error-message-string err)))
@@ -868,7 +869,7 @@ reports it."
     (->> (hel--execute-command-for-all-secondary-cursors command)
          (hel--handle-command-errors (hel--main-cursor-error))))
   (when (hel--merge-cursors-p command)
-    (hel-merge-overlapping-cursors))
+    (hel-merge-overlapping-selections))
   (setq hel--input-cache nil)
   (-when-let ((condition . data) (hel--main-cursor-error))
     (signal condition data)))
@@ -1494,7 +1495,7 @@ extend, but the mark stays where it is."
         (activate-mark)))
     ;; The color of the cursor shows whether motions extend.
     (unless (eq was-extending? hel-extend-selection)
-      (hel-draw-cursor))))
+      (hel-set-emacs-cursor))))
 
 (defun hel--forget-window-selection (window)
   "Forget the selection saved in WINDOW."

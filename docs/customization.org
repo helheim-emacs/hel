@@ -116,9 +116,11 @@ colours, see [[*Faces][Faces]].
 
 - ~hel-cursor-type~ ::
   How the main cursor looks in Normal state. With ~helix~, the default,
-  only the box shows, as in Helix. With ~hybrid~, Normal state also shows
-  point as a bar next to the box of the main cursor, and the box gets the
-  faint face ~hel-cursor-highlight~. Use ~hybrid~ with a proportional font,
+  only the box shows, as in Helix. With ~hybrid~, Normal state shows point
+  as a bar. A bare cursor also has a box with the face
+  ~hel-cursor-highlight~, which shows the one character that it selects,
+  and any other selection is shown by the region alone. Use ~hybrid~ with
+  a proportional font,
   where the width of a box changes from character to character, or to see
   where Emacs commands act.
 
@@ -191,10 +193,13 @@ colours, see [[*Faces][Faces]].
   Face used for all cursors when extending selection (=v= key) is active.
 
 - ~hel-cursor-highlight~ ::
-  Face of the box of the main cursor when ~hel-cursor-type~ is ~hybrid~.
+  Face of the box of a bare main cursor when ~hel-cursor-type~ is
+  ~hybrid~. It inherits ~region~ by default, because the box shows the
+  one character that the bare cursor selects.
 
 - ~hel-other-window-cursor~ ::
-  Face of the box of the cursor in a window that is not selected.
+  Face of the box of the main cursor in a window that is not selected,
+  and in the selected window of a frame without focus.
 
 - ~hel-search-highlight~ ::
   Face for highlighting matches during interactive search with =/=, =?=, =*=, =M-*=, =n=, =N=.
