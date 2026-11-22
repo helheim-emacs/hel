@@ -1298,7 +1298,8 @@ which runs last, pastes into its line."
   ("foo b|ar baz" "miw" "foo ^bar| baz")
   ("foo b|ar baz" "mw" "foo ^bar| baz")
   ("foo |bar baz" "miw" "foo ^bar| baz")
-  ("foo bar| baz" "miw" "foo ^bar| baz")
+  ;; The cursor character is the space, a gap before baz.
+  ("foo bar| baz" "miw" "foo bar ^baz|")
   ("foo b|ar baz" "maw" "foo ^bar |baz")
   ;; At the end of a line `maw' takes the space before the word.
   ("foo b|ar" "maw" "foo^ bar|")
@@ -1307,8 +1308,8 @@ which runs last, pastes into its line."
   ;; Punctuation is a separate word.
   ("foo.b|ar.baz" "miw" "foo.^bar|.baz")
   ("foo-b|ar baz" "miw" "foo-^bar| baz")
-  ;; On the blanks after a word `miw' takes that word.
-  ("foo |  bar" "miw" "^foo|   bar")
+  ;; On the blanks between two words `miw' takes the word after them.
+  ("foo |  bar" "miw" "foo   ^bar|")
   ;; A selected character right after a comment finds that comment, as
   ;; a cursor without a selection does.
   (:mode emacs-lisp-mode ";; note\n|foo" "mic" "|;; note\n^foo")

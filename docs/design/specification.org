@@ -984,8 +984,9 @@ The kinds differ in three properties:
   expression prefix in front of an opening fence, such as the quote of
   ='(a b)= in Lisp, belongs to the fence, so =W= selects =a=. A cursor on a
   fence belongs to the word or the WORD behind the fence, so =miW= and =miw=
-  on the =(= of =(bar baz)= select =bar=. On blanks that no WORD owns, the
-  WORD after the cursor wins.
+  on the =(= of =(bar baz)= select =bar=. The blanks between two fences, as
+  in =((foo a)  (bar b))=, hold no WORD and no gap of a WORD, so =miW= there
+  selects nothing.
 - *The rules depend on the major mode.* The buffer-local value
   ~hel-word-rules~ holds the brackets that can be fences, the pairs that
   =miW= leaves out besides them, and the separators. =miW= leaves out every
@@ -1104,7 +1105,8 @@ For both kinds of piece:
   so =mic= works from the end of any of its lines.
 - An unterminated =/* open= runs to the end of the buffer, and so does
   =;; a= on a last line without a line end.
-- A cursor on a blank line finds the comment whose =mac= takes that line.
+- A cursor on a blank line finds the comment after it, or the comment before
+  it when no comment follows, as for every object.
 
 Code outside the comment producer asks for a whole comment with
 ~hel-bounds-of-comment-at~, which uses the producer of ~comment~ at the
@@ -1184,12 +1186,10 @@ nothing when that character is a newline. Only =M-o= looks at the whole
 selection. When the object is the cursor character itself, the command
 still selects it, because a selection that was not active changes.
 
-The producer gives candidates and the driver, ~hel-thing-owning~, chooses.
+The producer gives candidates and the driver, ~hel-thing-nearest~, chooses.
 
 ~hel-thing-at~ returns the innermost object that holds the character under
-the cursor, or, when none does, the innermost object that ends at the
-cursor. ~hel-thing-under~ returns only the first of these two answers, for
-the character on either side of the cursor. ~hel-thing-next~ returns the nearest object in a direction
+the cursor. ~hel-thing-next~ returns the nearest object in a direction
 ([[*Moving to the edge of an object][Moving to the edge of an object]]). By default the candidates are these
 three: the object at the cursor and its two neighbours. The query producer
 gives its own candidates instead: one query over the whitespace, the
@@ -1199,37 +1199,56 @@ three searches: inside a long function the search for a neighbour grows
 large, and a measurement there showed the default five times slower. The
 query never runs over the whole buffer, as evil-textobj-tree-sitter does.
 
+*A gap belongs to the object after it.* The user sees the cursor as a box on
+a character, and on a gap the box stands before the next object. So each
+object takes its body, its header comment and the gap before it. The last
+object of its parent takes the gap after it too, because no object follows
+to take it:
+
+#+begin_example
+(defun a ()        ◄── a
+  ...)             ◄── a
+                   ◄── b    the gap before b
+;; Header of b.    ◄── b    the header comment of b
+(defun b ()        ◄── b
+  ...)             ◄── b
+                   ◄── b    b is the last object: the gap after it
+#+end_example
+
+The gaps are those of ~hel-thing-after-gap~. Where a gap may end, the rule
+of the around range, plays no part: the cursor on the blanks at the end of
+a line stands in the gap after the last word, although =maw= may not take
+that gap.
+
 The driver chooses in three steps:
 
-1. It keeps the candidates whose object or around range holds the cursor.
+1. It keeps the candidates whose body, gap before or gap after holds the
+   cursor.
 2. It drops every candidate that contains another kept one, so of nested
    objects the innermost stays.
-3. It takes the candidate whose object holds the cursor. When none does, the
-   cursor is in a gap or on a header comment, and it takes the candidate
-   that ends last before the cursor, or else the first one after it.
+3. It takes the candidate whose body holds the cursor character. When none
+   does, it takes the one whose gap before holds the cursor, and then the
+   one whose gap after holds it.
 
-Size cannot decide between neighbours: on a blank line between a long
-function and a short one after it, both around ranges hold the cursor, and
-the rules below want the function above. What this means for the user:
+What this means for the user:
 
-- *A cursor in a gap* finds the object that owns the gap. On the comma in
-  =f(a, b)=, =mia= selects =a=; on a blank line between two functions, =mif=
-  selects the one above; on the space between two words, =miw= selects the
-  word before. On the indentation of a line no word owns the blanks, so
-  =miw= selects nothing, as in Helix.
+- *A cursor in a gap* finds the object after the gap. On the comma in
+  =f(a, b)=, =mia= selects =b=; on a blank line between two functions, =mif=
+  selects the one below; on the space between two words, =miw= selects the
+  word after; on the indentation of a line, the first word of the line.
+- *A word gap stays on its line*, so after the last word of a line =miw=
+  selects that word, and on an empty line =miw= and =miW= select nothing.
 - *A cursor on a header comment* finds the function under it. =mic= there
   still selects the comment.
-- *When two around ranges hold the cursor, the object before wins*: on the
-  comma after =b= in =f(a, b, c)=, =mia= selects =b=.
 - *When point touches two objects, the cursor character decides*: in
   =foo|.=, =miw= selects the period when the cursor character is the
   period, and =foo= after =h= has moved it onto =o=.
 - *On the =def= line* of a Python function, =mif= selects the function.
   Helix selects the smallest capture that contains the cursor, the body,
   and does nothing there.
-- *On the blank line after a function whose last statement is a nested
-  function*, =maf= selects the nested one: both end at that line, and the
-  innermost wins.
+- *At the end of the buffer, after a function whose last statement is
+  a nested function*, =mif= selects the nested one: both gaps after hold the
+  cursor, and the innermost wins.
 
 Then the driver applies the same rules to every producer:
 
@@ -1606,12 +1625,11 @@ primitives and gets every command.
 | ~hel-thing-parent~            | rule      | nil: all things are siblings                  |
 | ~hel-thing-after-gap~         | rule      | the whitespace after a position               |
 | ~hel-thing-gap-end-allowed-p~ | rule      | anywhere but the buffer edges and brackets    |
-| ~hel-thing-under~             | algorithm | a function built from =at=                    |
 | ~hel-thing-candidates~        | algorithm | built from =at= and =next= in both directions |
 | ~hel-thing-sibling~           | algorithm | built from =next= and =parent=                |
 | ~hel-thing-around~            | algorithm | built from =after-gap=, =gap-end-allowed-p=   |
 |                               |           | and the header comment                        |
-| ~hel-thing-owning~            | algorithm | built from =candidates= and =around=          |
+| ~hel-thing-nearest~           | algorithm | built from =candidates= and =after-gap=       |
 | ~hel-thing-reach~             | algorithm | built from =under= and =next=                 |
 
 =at= and =next= are the minimum, because neither one gives the other. They
@@ -1684,7 +1702,7 @@ specializes the argument that its answer depends on:
 | ~hel-thing-parent~                            | thing and producer | a sentence stays in its paragraph                |
 | ~hel-thing-reach~                             | producer           | a word motion does not cross a fence             |
 | ~hel-thing-apply-rules~                       | thing              | a WORD leaves out the punctuation around it      |
-| ~hel-thing-owning~                            | thing and producer | =miW= on a fence selects the WORD that owns it   |
+| ~hel-thing-nearest~                           | thing and producer | =miW= on a fence selects the WORD behind it      |
 
 A fixed fact of a kind is a symbol property; a rule that computes is
 a method with an ~(eql 'SYMBOL)~ specializer. The finding operations take
@@ -1736,8 +1754,8 @@ kind before any instance exists.
 
 #+begin_example
 ┌────────────────────────────────────────────────────────────────────┐
-│ Run    at, under, candidates, next, sibling, after-gap,            │
-│        gap-end-allowed-p, parent, around, edge, owning             │
+│ Run    at, candidates, next, sibling, after-gap,                   │
+│        gap-end-allowed-p, parent, around, edge, nearest            │
 │        value:      hel-thing-instance, the same for every producer │
 │        producers:  motion, query, comment, syntax argument         │
 │        things:     word, WORD, sentence, paragraph, function,      │
@@ -1772,13 +1790,15 @@ C++.
 
 The laws of the primitives, checked on every model:
 
-- ~hel-thing-at~ returns an object R with =begin(R) <= POS <= end(R)=, and
-  it holds the character at POS whenever some object does.
+- ~hel-thing-at~ returns an object R that holds the character at POS:
+  =begin(R) <= POS < end(R)=.
 - ~hel-thing-next~ forward returns an object that starts after POS, and
   backward one that ends at or before POS.
 - The backward sibling of the forward sibling is the object itself.
 - ~hel-thing-after-gap~ moves in its direction or stays, and a second call
   from its own result returns that result.
+- At the start of an object, ~hel-thing-nearest~ returns an object that
+  starts there too.
 
 Two producers replace a default algorithm by a rule of their own:
 

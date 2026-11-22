@@ -220,23 +220,8 @@ opening bracket.")
 ;;;; The finding operations
 
 (cl-defgeneric hel-thing-at (thing producer pos)
-  "Return the THING under the cursor at POS, or nil.
-This is the THING that holds the character at POS. When no THING holds
-it, it is the THING that ends at POS. Of nested THINGs, return the
-innermost one. For the THING on one side of POS only, see
-`hel-thing-under'. PRODUCER finds the things.")
-
-(defun hel-thing-under (thing producer pos side)
-  "Return the THING that holds the character on SIDE of POS, or nil.
-SIDE 1 is the character after POS, and SIDE -1 the character before it.
-Of nested THINGs, return the innermost one. For SIDE 1 this is the
-result of `hel-thing-at' without its second case: a THING that only
-ends at POS does not count. PRODUCER finds the things."
-  (let ((char (if (< side 0) (1- pos) pos)))
-    (when (and (<= (point-min) char) (< char (point-max)))
-      (when-let* ((instance (hel-thing-at thing producer char))
-                  ((< char (hel-thing-instance-end instance))))
-        instance))))
+  "Return the THING that holds the character at POS, or nil.
+Of nested THINGs, return the innermost one. PRODUCER finds the things.")
 
 (cl-defgeneric hel-thing-next (thing producer pos dir)
   "Return the nearest THING from POS in direction DIR, or nil.
@@ -246,7 +231,8 @@ return the larger one. PRODUCER finds the things.")
 
 (cl-defgeneric hel-thing-candidates (thing producer pos)
   "Return the THINGs that a text object command can select at POS.
-PRODUCER finds the things.
+They include every THING whose body holds POS, and the nearest THINGs
+whose gaps hold POS, see `hel-thing-nearest'. PRODUCER finds the things.
 
 By default, the candidates are the THING at POS, see `hel-thing-at',
 and the nearest THING on each side of POS, see `hel-thing-next'."
@@ -265,43 +251,49 @@ INSTANCE, defined by `hel-thing-parent'."
                       (hel-thing-parent thing producer next))))
     next))
 
-(cl-defgeneric hel-thing-owning (thing producer pos)
-  "Return the THING that owns the position POS, or nil.
-A thing owns its body, its header comment and the gap next to it.
+(cl-defgeneric hel-thing-nearest (thing producer pos)
+  "Return the THING at POS, or the nearest THING across a gap, or nil.
+A THING takes its body, its header comment and the gap before it, so on
+a gap or a header comment the THING after it wins. The last THING of its
+parent takes the gap after it too, because no THING follows to take that
+gap. Of nested THINGs, the innermost one wins.
 
-Of nested things, the innermost one wins. When POS is on the boundary
-between two things, the one after wins. PRODUCER finds the things."
-  (cl-flet* ((contains-p (outer)
-               (<= (car outer) pos (cdr outer)))
-             (inside-p (inner outer)
-               (and (not (equal inner outer))
-                    (<= (car outer) (car inner) (cdr inner) (cdr outer)))))
-    (let* ((candidates
-            (->> (hel-thing-candidates thing producer pos)
-                 ;; Keep one thing of each range.
-                 (-group-by #'hel-thing-instance-bounds)
-                 (-map #'-second-item)
-                 (-filter (lambda (instance)
-                            (or (contains-p (hel-thing-instance-bounds instance))
-                                (contains-p (hel-thing-around thing producer
-                                                              instance instance)))))))
+The candidates come from `hel-thing-candidates', and the gaps from
+`hel-thing-after-gap'. PRODUCER finds the things."
+  (cl-flet* ((body-holds-p (instance)
+               (and (<= (hel-thing-instance-begin instance) pos)
+                    (< pos (hel-thing-instance-end instance))))
+             (gap-before-holds-p (instance)
+               (let* ((begin (hel-thing-instance-begin instance))
+                      (header-begin (if (hel-thing-owns-header-comment-p thing)
+                                        (hel--header-comment-begin begin)
+                                      begin)))
+                 (and (<= (hel-thing-after-gap thing producer header-begin -1)
+                          pos)
+                      (< pos begin))))
+             (gap-after-holds-p (instance)
+               (let ((end (hel-thing-instance-end instance)))
+                 (<= end pos (hel-thing-after-gap thing producer end 1))))
+             (holds-p (instance)
+               (or (body-holds-p instance)
+                   (gap-before-holds-p instance)
+                   (gap-after-holds-p instance))))
+    (let* ((candidates (->> (hel-thing-candidates thing producer pos)
+                            ;; Keep one thing of each range.
+                            (-group-by #'hel-thing-instance-bounds)
+                            (-map #'-second-item)
+                            (-filter #'holds-p)))
            (innermost
             (->> candidates
                  (-remove (lambda (instance)
                             (->> candidates
                                  (-any? (lambda (other)
-                                          (inside-p (hel-thing-instance-bounds other)
-                                                    (hel-thing-instance-bounds instance))))))))))
-      (or (-some->> innermost
-            (-filter (lambda (instance)
-                       (contains-p (hel-thing-instance-bounds instance))))
-            (-max-by (-on #'> #'hel-thing-instance-begin)))
-          (-some->> innermost
-            (-filter (lambda (instance)
-                       (<= (hel-thing-instance-end instance) pos)))
-            (-max-by (-on #'> #'hel-thing-instance-end)))
-          (-some->> innermost
-            (-min-by (-on #'> #'hel-thing-instance-begin)))))))
+                                          (hel-range-strictly-inside-p
+                                           (hel-thing-instance-bounds other)
+                                           (hel-thing-instance-bounds instance))))))))))
+      (or (-first #'body-holds-p innermost)
+          (-first #'gap-before-holds-p innermost)
+          (-first #'gap-after-holds-p innermost)))))
 
 (cl-defgeneric hel-thing-around (thing producer first last)
   "Return the range that `ma' selects of the run of THINGs from FIRST to LAST.
@@ -359,7 +351,10 @@ of the buffer returns nil only when POS is already there. EDGE is
                       (if (< dir 0)
                           (< target pos)
                         (< pos target)))))
-         (here (when-let* ((instance (hel-thing-under thing producer pos dir))
+         (here (when-let* ((char (if (< dir 0) (1- pos) pos))
+                           ((<= (point-min) char))
+                           ((< char (point-max)))
+                           (instance (hel-thing-at thing producer char))
                            ((funcall ahead-p instance)))
                  instance))
          (first (or here
@@ -538,7 +533,7 @@ KIND is:
             ((first . last)
              (if extend?
                  (hel--extend-things thing producer run-first run-last count)
-               (when-let* ((instance (hel-thing-owning thing producer head)))
+               (when-let* ((instance (hel-thing-nearest thing producer head)))
                  (hel--extend-things thing producer instance nil (- count dir))))))
       (when-let* ((first)
                   (range (pcase kind
@@ -676,18 +671,12 @@ trailing blanks, so the query covers the whitespace on both sides."
                  thing
                  (max (point-min) (1- (hel-after-whitespace pos -1)))
                  (min (point-max) (1+ (hel-after-whitespace pos 1))))))
-    (cl-flet ((innermost (pred)
-                (-some->> things
-                  (-filter pred)
-                  (-min-by (-on #'> (-compose #'hel-range-length
-                                              #'hel-thing-instance-bounds))))))
-      ;; Two things can touch at POS. The one that holds the character
-      ;; under the cursor wins, whatever the size of the other one.
-      (or (innermost (lambda (instance)
-                       (and (<= (hel-thing-instance-begin instance) pos)
-                            (< pos (hel-thing-instance-end instance)))))
-          (innermost (lambda (instance)
-                       (= pos (hel-thing-instance-end instance))))))))
+    (-some->> things
+      (-filter (lambda (instance)
+                 (and (<= (hel-thing-instance-begin instance) pos)
+                      (< pos (hel-thing-instance-end instance)))))
+      (-min-by (-on #'> (-compose #'hel-range-length
+                                  #'hel-thing-instance-bounds))))))
 
 (cl-defmethod hel-thing-candidates (thing (producer hel-treesit-query-producer) pos)
   "Return the things that hold POS, and the things next to it.
@@ -984,7 +973,8 @@ before it."
                                (-some->> (hel-range (point) end)
                                  (hel-trim-whitespace-from-range)
                                  (hel-thing-apply-rules thing))))))
-              ((<= (car bounds) pos (cdr bounds))))
+              ((<= (car bounds) pos))
+              ((< pos (cdr bounds))))
     (hel-thing-instance-create bounds)))
 
 (cl-defmethod hel-thing-next (thing (producer hel-motion-producer) pos dir)
@@ -1188,21 +1178,17 @@ point over the body of one word."
                (funcall word-motion count)))
         (hel-range start (point))))))
 
-(cl-defmethod hel-thing-owning ((_thing (eql 'word))
-                                (_producer hel-word-motion-producer) pos)
+(cl-defmethod hel-thing-nearest ((_thing (eql 'word))
+                                 (_producer hel-word-motion-producer) pos)
   "On a fence at the edge of a word, return that word."
-  (or (hel--word-owning-fence 'word pos)
+  (or (hel--word-behind-fence 'word pos)
       (cl-call-next-method)))
 
-(cl-defmethod hel-thing-owning ((_thing (eql 'WORD))
-                                (producer hel-word-motion-producer) pos)
-  "On a fence at the edge of a WORD, return that WORD.
-When POS belongs to no WORD, return the nearest one: the WORD after POS
-wins over the WORD before it."
-  (or (hel--word-owning-fence 'WORD pos)
-      (cl-call-next-method)
-      (hel-thing-next 'WORD producer pos 1)
-      (hel-thing-next 'WORD producer pos -1)))
+(cl-defmethod hel-thing-nearest ((_thing (eql 'WORD))
+                                 (_producer hel-word-motion-producer) pos)
+  "On a fence at the edge of a WORD, return that WORD."
+  (or (hel--word-behind-fence 'WORD pos)
+      (cl-call-next-method)))
 
 (cl-defmethod hel-thing-after-gap (_thing (_producer hel-word-motion-producer)
                                           pos dir)
@@ -1260,8 +1246,8 @@ must belong to the run."
                  body)))
       (list begin body-begin body-end end))))
 
-(defun hel--word-owning-fence (word-thing pos)
-  "Return the WORD-THING (`word' or `WORD') that owns the fence at POS, or nil.
+(defun hel--word-behind-fence (word-thing pos)
+  "Return the WORD-THING (`word' or `WORD') behind the fence at POS, or nil.
 The fence is a bracket at the edge of a run of non-blank characters, see
 `hel-word-motion-producer'."
   (when (hel--word-bracket-p (char-after pos))
@@ -1565,15 +1551,11 @@ finds the pieces."
 
 (cl-defmethod hel-thing-at ((_thing (eql 'comment))
                             (producer hel-comment-producer) pos)
-  "Look for the comment at POS, then for the comment before POS.
-The second one can end at POS."
-  (->> (list pos
-             (max (1- pos) (point-min)))
-       (-some (lambda (from)
-                (when-let* ((bounds (-some->> (hel--comment-run-at producer from)
-                                      (hel-thing-apply-rules 'comment)))
-                            ((<= (car bounds) pos (cdr bounds))))
-                  (hel-thing-instance-create bounds))))))
+  (when-let* ((bounds (-some->> (hel--comment-run-at producer pos)
+                        (hel-thing-apply-rules 'comment)))
+              ((<= (car bounds) pos))
+              ((< pos (cdr bounds))))
+    (hel-thing-instance-create bounds)))
 
 (cl-defmethod hel-thing-sibling ((_thing (eql 'comment)) _producer _instance _dir)
   "Return nil: a comment has no siblings."
@@ -1780,13 +1762,12 @@ The arguments of inner parentheses lie inside an argument of the outer
 ones, so the first argument found is the innermost."
   (let ((runs (-map (-partial #'hel--paren-arguments thing)
                     (hel--parens-around pos))))
-    (cl-flet ((find (pred)
-                (->> runs (-some (lambda (run) (-first pred run))))))
-      (or (find (lambda (instance)
-                  (and (<= (hel-thing-instance-begin instance) pos)
-                       (< pos (hel-thing-instance-end instance)))))
-          (find (lambda (instance)
-                  (= pos (hel-thing-instance-end instance))))))))
+    (->> runs
+         (-some (lambda (run)
+                  (-first (lambda (instance)
+                            (and (<= (hel-thing-instance-begin instance) pos)
+                                 (< pos (hel-thing-instance-end instance))))
+                          run))))))
 
 (cl-defmethod hel-thing-next (thing (_producer hel-syntax-argument-producer)
                                     pos dir)

@@ -446,6 +446,19 @@
   ~hel-thing-instance-bounds~ returns its range, and
   ~hel-thing-instance-edge~ returns its ~:begin~ or ~:end~ edge.
 
+- On a gap, the text objects select the object after the gap. =miw= on the
+  blanks between two words selects the word after them, =mif= on the blank
+  lines between two functions selects the function below, and =mia= on the
+  comma in =f(a, b)= selects =b=. The last object before a closing bracket
+  or the end of the buffer keeps the gap after it, so =miw= after the last
+  word of a line still selects that word. On an empty line =miW= selects
+  nothing, as =miw= does.
+
+- ~hel-thing-owning~ is renamed to ~hel-thing-nearest~. ~hel-thing-at~
+  returns only a thing that holds the character at the position, and
+  ~hel-thing-under~ is removed: call ~hel-thing-at~ at the position, or at
+  the one before it.
+
 ** Fixed
 - =C-p= with several cursors gives each cursor the shape of its own paste.
   It took the shape of the last cursor, so a line pasted at the main

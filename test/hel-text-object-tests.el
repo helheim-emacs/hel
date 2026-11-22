@@ -120,11 +120,11 @@ object, also when the outer function is decorated."
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b)\n" ", b")
     (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-argument 1)
-    (should (equal (hel-test-selection) "a")))
+    (should (equal (hel-test-selection) "b")))
   (hel-test-with #'python-ts-mode (hel-test-mark "f(a, b, c)\n" ", c")
     (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-argument 1)
-    (should (equal (hel-test-selection) "b")))
+    (should (equal (hel-test-selection) "c")))
   (hel-test-with #'python-ts-mode (hel-test-mark hel-to--objects "\n\n    def h")
     (skip-unless (hel-treesit-text-objects-p (point)))
     (hel-mark-function 1)
@@ -215,9 +215,12 @@ object, also when the outer function is decorated."
                    ;; The blank lines between a comment and code.
                    (emacs-lisp-mode ";; a\n\n\n(c)\n" (6 7)
                                     ";; a\n" ";; a\n\n\n")
-                   ;; The blank lines of the gap between two runs.
-                   (emacs-lisp-mode ";; a\n\n\n;; c\n" (5 6 7)
+                   ;; The blank lines of the gap between two runs belong to
+                   ;; the run after them.
+                   (emacs-lisp-mode ";; a\n\n\n;; c\n" (5)
                                     ";; a\n" ";; a\n\n\n")
+                   (emacs-lisp-mode ";; a\n\n\n;; c\n" (6 7)
+                                    ";; c\n" "\n\n;; c\n")
                    ;; The blanks after a comment.
                    (emacs-lisp-mode ";; a  \n(c)\n" (5 6 7)
                                     ";; a  \n" ";; a  \n")
@@ -773,7 +776,7 @@ arguments, with the same around ranges."
           (syntax (hel-syntax-argument-producer--create)))
       (cl-flet ((ranges (producer)
                   (cl-loop for pos from (point-min) below (point-max)
-                           for instance = (hel-thing-owning 'argument producer pos)
+                           for instance = (hel-thing-nearest 'argument producer pos)
                            collect (and instance
                                         (list (hel-thing-instance-bounds instance)
                                               (hel-thing-around 'argument producer
@@ -1176,14 +1179,15 @@ only brackets is a WORD."
     (should (equal (hel-test-render) "(^foo a)\n\f\n(b bar|)"))))
 
 (ert-deftest hel-WORD-object-on-a-fence ()
-  "On a bracket at the edge of a WORD, miW selects that WORD. Where no
-WORD owns the cursor, the WORD after it wins."
+  "On a bracket at the edge of a WORD, miW selects that WORD. On the
+blanks between two fences, no WORD gap holds the cursor, so miW selects
+nothing."
   (hel-test-with #'emacs-lisp-mode "(foo |(bar baz))"
     (hel-mark-WORD 1)
     (should (equal (hel-test-render) "(foo (^bar| baz))")))
   (hel-test-with #'emacs-lisp-mode "((foo a)|  (bar b))"
     (hel-mark-WORD 1)
-    (should (equal (hel-test-render) "((foo a)  (^bar| b))"))))
+    (should (equal (hel-test-render) "((foo a)|  (bar b))"))))
 
 (ert-deftest hel-WORD-in-brackets ()
   "Brackets around one WORD belong to it. Brackets around several WORDs
@@ -1677,14 +1681,6 @@ Return the objects that the check used."
     ;; An object has a non-empty range.
     (dolist (object objects)
       (should (< (hel-thing-instance-begin object) (hel-thing-instance-end object))))
-    ;; `hel-thing-at' is the object that holds the character after POS, or
-    ;; else the one that holds the character before it, see `hel-thing-under'.
-    (dolist (pos positions)
-      (should (equal (list pos (-some-> (hel-thing-at thing producer pos)
-                                 hel-to--key))
-                     (list pos (-some-> (or (hel-thing-under thing producer pos 1)
-                                            (hel-thing-under thing producer pos -1))
-                                 hel-to--key)))))
     ;; Forward, `hel-thing-next' returns an object that starts after POS.
     ;; Backward, it returns an object that ends at or before POS. Of the
     ;; candidates, it returns the nearest one.
@@ -1704,8 +1700,7 @@ Return the objects that the check used."
                          (list pos dir (-some-> (hel-to--nearest objects pos dir)
                                          hel-to--key)))))))
     ;; `hel-thing-at' returns the innermost object that holds the character
-    ;; at POS, and when none holds it, the innermost object that ends at POS.
-    ;; Objects of the same size that overlap are equally innermost.
+    ;; at POS. Objects of the same size that overlap are equally innermost.
     (dolist (pos positions)
       (cl-flet ((innermost (pred)
                   (when-let* ((matching (-filter pred objects))
@@ -1719,16 +1714,21 @@ Return the objects that the check used."
                                              (hel-thing-instance-bounds object)))))
                          (-map #'hel-to--key)))))
         (let ((expected
-               (or (innermost (lambda (object)
-                                (and (<= (hel-thing-instance-begin object) pos)
-                                     (< pos (hel-thing-instance-end object)))))
-                   (innermost (lambda (object)
-                                (= pos (hel-thing-instance-end object))))))
+               (innermost (lambda (object)
+                            (and (<= (hel-thing-instance-begin object) pos)
+                                 (< pos (hel-thing-instance-end object))))))
               (at (-some-> (hel-thing-at thing producer pos) hel-to--key)))
           (should (equal (list pos (if expected
                                        (and (member at expected) t)
                                      (null at)))
                          (list pos t))))))
+    ;; At the start of an object, `hel-thing-nearest' returns an object
+    ;; that starts there too: the gap before it does not reach past it.
+    (dolist (object objects)
+      (let ((begin (hel-thing-instance-begin object)))
+        (should (equal (list begin begin)
+                       (list begin (-some-> (hel-thing-nearest thing producer begin)
+                                     (hel-thing-instance-begin)))))))
     ;; Siblings are inverse in the two directions.
     (dolist (object objects)
       (when-let* ((sibling (hel-thing-sibling thing producer object 1)))
@@ -2044,16 +2044,15 @@ Return the objects that the check used."
     (delete-region (region-beginning) (region-end))
     (should (equal (buffer-string) "A.\n\nC.\n"))))
 
-;; Section "Selecting an object": "A cursor in a gap finds the object that
-;; the gap belongs to", and "when two around ranges contain the cursor, the
-;; object before the cursor wins". Section "Several objects": N objects run
+;; Section "Selecting an object": a gap belongs to the object after it.
+;; Section "Several objects": N objects run
 ;; from the start of the first to the end of the last, with everything
 ;; between them.
 (ert-deftest hel-to-paragraph-in-gap-and-count ()
   (hel-test-with #'text-mode (hel-test-mark "A.\n\nB.\n" "A.")
     (hel-to--goto-blank-line "B.")
     (hel-mark-paragraph 1)
-    (should (equal (hel-test-selection) "A.\n"))
+    (should (equal (hel-test-selection) "B.\n"))
     (hel-test-goto "A.")
     (hel-mark-paragraph 2)
     (should (equal (hel-test-selection) "A.\n\nB.\n"))))
@@ -2558,17 +2557,33 @@ With NEEDLE2, also put MARKER2 before it.  NEEDLE2 must come after NEEDLE."
         (should (equal (hel-test-render) input))))))
 
 (ert-deftest hel-miw-on-indentation ()
-  "On the indentation of a line, `miw' selects nothing."
-  (dolist (input '("foo\n|  bar baz\n" "foo\n |  bar baz\n" "|  bar baz\n"))
+  "On the indentation of a line, `miw' selects the first word of the line."
+  (pcase-dolist (`(,input ,output)
+                 '(("foo\n|  bar baz\n" "foo\n  ^bar| baz\n")
+                   ("foo\n |  bar baz\n" "foo\n   ^bar| baz\n")
+                   ("|  bar baz\n" "  ^bar| baz\n")))
     (hel-test-with #'text-mode input
       (hel-test-run #'hel-mark-word)
-      (should (equal (hel-test-render) input)))))
+      (should (equal (hel-test-render) output)))))
 
 (ert-deftest hel-miw-on-blanks-in-line ()
-  "On the blanks between two words, `miw' selects the word before them."
+  "On the blanks between two words, `miw' selects the word after them.
+After the last word of a line, it selects that word, because a word gap
+stays on its line."
   (hel-test-with #'text-mode "foo |  bar"
     (hel-test-run #'hel-mark-word)
-    (should (equal (hel-test-render) "^foo|   bar"))))
+    (should (equal (hel-test-render) "foo   ^bar|")))
+  (hel-test-with #'text-mode "foo | \nbar"
+    (hel-test-run #'hel-mark-word)
+    (should (equal (hel-test-render) "^foo|  \nbar"))))
+
+(ert-deftest hel-miw-on-empty-line ()
+  "On an empty line, `miw' and `miW' select nothing: no word gap reaches
+the line."
+  (dolist (command (list #'hel-mark-word #'hel-mark-WORD))
+    (hel-test-with #'text-mode "foo\n|\nbar\n"
+      (hel-test-run command)
+      (should (equal (hel-test-render) "foo\n|\nbar\n")))))
 
 (ert-deftest hel-negative-count-point-at-start ()
   "A negative count puts point at the start for every text object."
@@ -2844,13 +2859,13 @@ with its line end."
 
 (ert-deftest hel-mif-on-blank-line ()
   "Mif on a blank line between two functions selects the function
-above it."
+below it: a gap belongs to the object after it."
   (hel-test-need 'python)
   (hel-test-with #'python-ts-mode (hel-to--headers-at '("1\n\n" "|" 3))
     (hel-test-run #'hel-mark-function)
     (should (equal (hel-test-render)
-                   (hel-to--headers-at '("def f" "|" 0)
-                                       '("1\n" "^" 2))))))
+                   (hel-to--headers-at '("def g" "|" 0)
+                                       '("2\n" "^" 2))))))
 
 (ert-deftest hel-maf-decorated-function ()
   "Maf on a decorated function selects its header comment, its
@@ -2895,20 +2910,20 @@ is decorated (the replacement compares nodes, not positions)."
 ;;; Arguments
 
 (ert-deftest hel-mia-on-comma ()
-  "On the comma in f(a, b), mia selects a (a cursor in a gap finds
-the object that the gap belongs to)."
+  "On the comma in f(a, b), mia selects b: a gap belongs to the object
+after it."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(a|, b)\n"
     (hel-test-run #'hel-mark-argument)
-    (should (equal (hel-test-render) "f(|a, b)\n"))))
+    (should (equal (hel-test-render) "f(a, |b)\n"))))
 
 (ert-deftest hel-mia-on-comma-after-b ()
-  "On the comma after b in f(a, b, c), mia selects b (when two
-around ranges contain the cursor, the object before it wins)."
+  "On the comma after b in f(a, b, c), mia selects c: a gap belongs to
+the object after it."
   (hel-test-need-queries 'python)
   (hel-test-with #'python-ts-mode "f(a, b|, c)\n"
     (hel-test-run #'hel-mark-argument)
-    (should (equal (hel-test-render) "f(a, |b, c)\n"))))
+    (should (equal (hel-test-render) "f(a, b, |c)\n"))))
 
 (ert-deftest hel-mia-nothing-here ()
   "Mia with no argument around the cursor leaves the selection and
@@ -3304,10 +3319,10 @@ the line end."
 
 (ert-deftest hel-miw-in-gap ()
   "Section Selecting an object: on the space between two words, miw
-selects the word before it."
+selects the word after it."
   (hel-test-with #'text-mode "foo | bar\n"
     (hel-test-run #'hel-mark-word)
-    (should (equal (hel-test-render) "^foo|  bar\n"))))
+    (should (equal (hel-test-render) "foo  ^bar|\n"))))
 
 (ert-deftest hel-miw-bare-point-touches-two ()
   "Section Selecting an object: when a bare point touches two objects, the
@@ -3317,11 +3332,11 @@ object after point wins.  In `foo|.' miw selects the period."
     (should (equal (hel-test-render) "foo|.\n"))))
 
 (ert-deftest hel-miw-bare-point-before-space ()
-  "Section Selecting an object: in `foo| bar' miw selects foo, because
-nothing else touches point."
+  "Section Selecting an object: in `foo| bar' the cursor character is
+the space, and miw selects bar, the word after the gap."
   (hel-test-with #'text-mode "foo| bar\n"
     (hel-test-run #'hel-mark-word)
-    (should (equal (hel-test-render) "^foo| bar\n"))))
+    (should (equal (hel-test-render) "foo ^bar|\n"))))
 
 (ert-deftest hel-miw-repeated ()
   "Section Selecting an object: a repeated key adds the next objects."
