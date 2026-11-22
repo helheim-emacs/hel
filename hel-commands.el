@@ -1008,7 +1008,7 @@ stays selected.  A selection of one line has the cursor at its start."
 
 ;; M-s
 (hel-define-command hel-split-selection-on-newline ()
-  "Split selections on line boundaries."
+  "Split each selection into its lines, at the newline characters."
   :multiple-cursors nil
   (interactive)
   (hel-with-each-cursor
@@ -1018,7 +1018,9 @@ stays selected.  A selection of one line has the cursor at its start."
         ;; Each line of the selection becomes a forward selection without
         ;; its newline. The cursor keeps the last line.
         (let ((ranges (cl-loop for start = begin then (1+ line-end)
-                               for line-end = (min (hel-line-end start) end)
+                               for line-end = (save-excursion
+                                                (goto-char start)
+                                                (min (pos-eol) end))
                                collect (cons start line-end)
                                until (<= end (1+ line-end)))))
           (-each (-butlast ranges)

@@ -682,6 +682,15 @@ bare cursor on that character: the two are the same selection."
    (hel-test-expect "/more RET" "* a\nbody\n^more|\n* b\nbody b\n")
    (should-not (invisible-p (+ (point-min) 8)))))
 
+(ert-deftest hel-behaviour-fold-split-lines-on-newlines ()
+  "`M-s' splits a closed section on its newlines too."
+  (hel-test-with 'text-mode "^* a\nbody\n* b|\n"
+    (outline-minor-mode 1)
+    (save-excursion
+      (goto-char (point-min))
+      (outline-hide-subtree))
+    (hel-test-expect "M-s" "¬* a¦\n¬body¦\n^* b|\n")))
+
 (ert-deftest hel-behaviour-fold-next-opens-the-fold ()
   "`n' to a match in a closed section opens the section."
   (hel-test-with 'text-mode "^more|\n* a\nbody\nmore\n* b\n"
