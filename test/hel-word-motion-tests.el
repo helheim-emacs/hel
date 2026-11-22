@@ -420,11 +420,11 @@ Both modes give the same answer."
                  (lambda (&rest _)
                    (goto-char (if (< (point) 9) 1 9)))))
         (hel-select (cons 1 9))
-        (should (hel-visual-lines-p))
+        (should (hel-visual-line-selection-p))
         (hel-select (cons 2 9))
-        (should-not (hel-visual-lines-p))
+        (should-not (hel-visual-line-selection-p))
         (hel-select (cons 1 12))
-        (should-not (hel-visual-lines-p))))))
+        (should-not (hel-visual-line-selection-p))))))
 
 ;;; The cases of Helix
 

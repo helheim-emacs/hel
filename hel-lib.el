@@ -873,12 +873,7 @@ stay as they are."
         (save-excursion (goto-char end) (insert ?\n) (point)))
     end))
 
-;;; The region of Emacs
-;;
-;; Some code reads the region itself, below the level of the selection
-;; value: it asks how the region lies on the visual lines.
-
-(defun hel-visual-lines-p ()
+(defun hel-visual-line-selection-p ()
   "Return t if active region spawns visual lines."
   (and visual-line-mode
        (use-region-p)
