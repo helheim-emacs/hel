@@ -153,14 +153,13 @@ alternatives in Emacs.
   a selection of one character in their own way, because there you work
   with a character rather than with text:
 
-  - =d= / =D= remove the selection from the buffer, and the cursor goes onto
-    the character before it. =d= copies the deleted text to the clipboard,
-    =D= does not (Vim taught me that you don't always want to copy deleted
-    text to the clipboard). On a single character neither of them touches
-    the clipboard, since it makes no sense to copy one character into it.
-    Then =d= works like =Delete=: the cursor stays on the character
-    after. =D= works like =Backspace=: the cursor moves onto the character
-    before.
+  - =d= / =D= remove the selection from the buffer, and the cursor stays in
+    place. =d= copies the deleted text to the clipboard, =D= does not (Vim
+    taught me that you don't always want to copy deleted text to the
+    clipboard). On a single character neither of them touches the
+    clipboard, since it makes no sense to copy one character into it.
+    Then =d= works like =Delete=, and =D= works like =Backspace=: the
+    cursor moves onto the character before.
 
   - =c= on a single character does not copy it to the clipboard either.
 

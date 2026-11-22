@@ -641,10 +641,9 @@ so does a bare cursor on an empty line."
 ;; d
 (hel-define-command hel-cut ()
   "Kill (cut) the selection: delete it and put it in the `kill-ring'.
-The cursor goes onto the character before the deleted text.  A bare
-cursor is the exception: its character stays out of the `kill-ring',
-where a single character only clutters it, and the cursor goes onto the
-character after it, so `d' works like Delete."
+The cursor stays in place, on the character after the deleted text, as
+in Helix and Vim.  A bare cursor is the exception for the `kill-ring':
+its character stays out of it, where a single character only clutters it."
   :multiple-cursors t
   :merge-selections t
   (interactive "*")
@@ -653,27 +652,28 @@ character after it, so `d' works like Delete."
     ;; nothing to delete, and the cursor stays.
     (when (< begin end)
       (if (hel-bare-cursor-p selection)
-          (progn
-            (delete-region begin end)
-            (hel-set-cursor begin))
+          (delete-region begin end)
         ;; `region-extract-function' handles a region that is not
         ;; contiguous, such as one of `rectangle-mark-mode'.
-        (kill-region nil nil t)
-        (hel-set-cursor (max (1- begin) (point-min))))))
+        (kill-region nil nil t))
+      (hel-set-cursor begin)))
   (hel-extend-selection -1))
 
 ;; D
 (hel-define-command hel-delete ()
   "Delete the selection, without modifying the `kill-ring'.
-The cursor goes onto the character before the deleted text, so on
-a bare cursor `D' works like Backspace."
+The cursor stays in place, on the character after the deleted text, as
+in Helix and Vim.  A bare cursor is the exception: the cursor goes onto
+the character before the deleted one, so `D' works like Backspace."
   :multiple-cursors t
   :merge-selections t
   (interactive "*")
-  (-let [(begin . end) (hel-selection-bounds)]
+  (-let [(selection &as (begin . end)) (hel-selection)]
     (when (< begin end)
       (delete-region begin end)
-      (hel-set-cursor (max (1- begin) (point-min)))))
+      (hel-set-cursor (if (hel-bare-cursor-p selection)
+                          (max (1- begin) (point-min))
+                        begin))))
   (hel-extend-selection -1))
 
 ;; C-w in insert state

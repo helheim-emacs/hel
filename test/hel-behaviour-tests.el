@@ -864,11 +864,10 @@ cursor character, so extending goes on."
 (hel-test-table edit-cut
   ("^foo| bar" "d" "| bar" :kill "foo")
   ("|foo^ bar" "d" "| bar" :kill "foo")
-  ;; The cursor goes onto the character before the deleted text.
-  ("x ^foo| bar" "d" "x|  bar" :kill "foo")
-  ("a\nb|ar\nc\n" "xd" "a|\nc\n" :kill "bar\n")
-  ;; One character, such as a bare cursor, stays out of the kill ring, and
-  ;; `d' works like Delete: the cursor goes onto the character after it.
+  ;; The cursor stays in place, on the character after the deleted text.
+  ("x ^foo| bar" "d" "x | bar" :kill "foo")
+  ("a\nb|ar\nc\n" "xd" "a\n|c\n" :kill "bar\n")
+  ;; One character, such as a bare cursor, stays out of the kill ring.
   ("foo| bar" "d" "foo|bar" :yank "kept" :kill "kept")
   ("foo| bar" "hd" "fo| bar" :yank "kept" :kill "kept")
   ("^f|oo" "d" "|oo" :yank "kept" :kill "kept")
@@ -887,9 +886,10 @@ cursor character, so extending goes on."
 (hel-test-table edit-delete
   ("^foo| bar" "D" "| bar" :yank "kept" :kill "kept")
   ("|foo^ bar" "D" "| bar" :yank "kept" :kill "kept")
-  ;; The cursor goes onto the character before the deleted text.
-  ("x ^foo| bar" "D" "x|  bar" :yank "kept" :kill "kept")
-  ;; On one character, such as a bare cursor, `D' works like Backspace.
+  ;; The cursor stays in place, on the character after the deleted text.
+  ("x ^foo| bar" "D" "x | bar" :yank "kept" :kill "kept")
+  ;; On one character, such as a bare cursor, `D' works like Backspace:
+  ;; the cursor goes onto the character before the deleted one.
   ("foo| bar" "D" "fo|obar" :yank "kept" :kill "kept")
   ("foo| bar" "hD" "f|o bar" :yank "kept" :kill "kept")
   ("ab|cd" "DD" "|ad" :yank "kept" :kill "kept")
@@ -1196,13 +1196,12 @@ which runs last, pastes into its line."
   ("a\n|\n^b\n" "o <escape>" "a\n\n|\nb\n")
   ("a\n|\nb\n" "] SPC" "a\n|\n\nb\n")
   ("a\n|\n^b\n" "] SPC" "a\n|\n^\nb\n")
-  ;; The line selection is a line: `d' and `c' put it in the kill ring,
-  ;; and `D' leaves the cursor before it, as for any line.  A bare cursor
-  ;; deletes a character.
+  ;; The line selection is a line: `d' and `c' put it in the kill ring.
+  ;; A bare cursor deletes a character, and `D' then works like Backspace.
   ("a\n|\nb\n" "d" "a\n|b\n" :kill "")
-  ("a\n|\n^b\n" "d" "a|\nb\n" :kill "\n")
+  ("a\n|\n^b\n" "d" "a\n|b\n" :kill "\n")
   ("a\n|\nb\n" "D" "a|\nb\n")
-  ("a\n|\n^b\n" "D" "a|\nb\n")
+  ("a\n|\n^b\n" "D" "a\n|b\n")
   ;; `;' collapses the line selection to a bare cursor.
   ("a\n|\n^b\n" ";" "a\n|\nb\n")
   ;; A motion that lands on the newline of an empty line selects
@@ -1867,11 +1866,11 @@ a bare cursor disappears."
 
 (hel-test-table cursors-edit
   ("|foo\nbar" "CD" "¦oo|\nar")
-  ("^fo|o\nbar" "Cd" "¦o|\nr")
+  ("^fo|o\nbar" "Cd" "¦o\n|r")
   ("fo|o\nbar" "Cd" "fo¦\nba|")
   ("fo|o\nbar" "Chd" "f¦o\nb|r")
   ("fo|o\nbar" "ChrX" "f¦Xo\nb|Xr")
-  ("^fo|o\nbar" "CD" "¦o|\nr")
+  ("^fo|o\nbar" "CD" "¦o\n|r")
   ("^fo|o\nbar" "Cc" "¦o\n|r" :state insert)
   ("|foo\nbar" "Cix<escape>" "¦xfoo\n|xbar")
   ("|foo\nbar" "Cax<escape>" "f¦xoo\nb|xar")
@@ -1940,9 +1939,9 @@ a bare cursor disappears."
   "One undo reverts the change of all cursors and brings back their selections."
   (hel-test-with 'text-mode "^afoo bfoo|"
     (hel-test-expect "sfoo RET" "a^foo| b¬foo¦")
-    (hel-test-expect "d" "|a ¦b")
+    (hel-test-expect "d" "a| b¦")
     (hel-test-expect "u" "a^foo| b¬foo¦")
-    (hel-test-expect "U" "|a ¦b")))
+    (hel-test-expect "U" "a| b¦")))
 
 (ert-deftest hel-behaviour-cursors-undo-restores-cursor-chars ()
   "Undo brings back the cursor character of each cursor."
