@@ -704,12 +704,9 @@ comments may be its header comment."
       (hel-treesit--capture-things thing from to))))
 
 (cl-defmethod hel-thing-next (thing (_producer hel-treesit-query-producer) pos dir)
-  (when (if (< dir 0)
-            (< (point-min) pos)
-          (< pos (point-max)))
-    (let ((start (if (< dir 0) pos (1+ pos))))
-      (hel--find-nearest (-partial #'hel-treesit--capture-things thing)
-                         start dir :key #'hel-thing-instance-bounds))))
+  (hel--find-nearest (-partial #'hel-treesit--capture-things thing)
+                     (if (< dir 0) pos (min (1+ pos) (point-max)))
+                     dir :key #'hel-thing-instance-bounds))
 
 (cl-defmethod hel-thing-parent ( _thing (_producer hel-treesit-query-producer)
                                  instance)
@@ -970,7 +967,7 @@ a header comment, `beginning-of-defun' goes back to the function
 before it."
   (when-let* ((motion (hel-motion-producer-function producer))
               (bounds (save-excursion
-                        (goto-char (min (1+ pos) (point-max)))
+                        (goto-char (cdr (hel-char-range pos)))
                         (and (zerop (funcall motion -1))
                              (zerop (funcall motion 1))
                              (let ((end (point)))
@@ -1117,15 +1114,15 @@ characters that are neither word characters nor whitespace."
 A fence and the blanks before it are each a step of their own, see
 `hel-word-motion-producer'. SKIP-BODY is a function of DIR that moves
 point over the body of one word."
-  (let ((origin (point)))
+  (let ((origin (point))
+        blanks)
     (hel--word-skip-fence dir)
-    (cond ((and (= 0 (hel-skip-blanks dir))
-                (if (< dir 0) (bobp) (eobp)))
-           ;; Only a fence is left: no step.
-           (goto-char origin))
-          ((if (< dir 0) (bobp) (eobp))
-           ;; Blanks at the edge of the buffer are a step, as in Helix.
-           nil)
+    (setq blanks (hel-skip-blanks dir))
+    (cond ((if (< dir 0) (bobp) (eobp))
+           ;; Only a fence is left: no step. Blanks at the edge of the
+           ;; buffer are a step, as in Helix.
+           (when (= 0 blanks)
+             (goto-char origin)))
           ((or (hel-line-boundary-p dir)
                ;; A fence comes next: the blanks were a step of their own.
                (let ((next (if (< dir 0) (preceding-char) (following-char))))
@@ -1207,7 +1204,7 @@ A separator is a character such as `|' in an Org table, see `hel-word-rules'."
   (and (cl-call-next-method)
        (not (save-excursion
               (goto-char pos)
-              (if (< dir 0) (bolp) (eolp))))
+              (hel-line-boundary-p dir)))
        (not (memq (if (< dir 0) (char-before pos) (char-after pos))
                   (hel-word-rules-separators hel-word-rules)))))
 
@@ -1408,11 +1405,10 @@ Return the part of COUNT that is left to move, with the sign of COUNT.
 
 The variable `forward-sentence-function' defines what a sentence is."
   (save-restriction
-    ;; Narrow to string or comment, since sentence can never extend beyond them.
+    ;; Inside a string or a comment the motion is constrained by them,
+    ;; because a sentence never goes out of them.
     (when-let* ((ppss (syntax-ppss))
                 (begin (nth 8 ppss))
-                ;; Inside a string or a comment the motion constrained by them,
-                ;; because a sentence never goes out from them.
                 (bounds (if (nth 3 ppss) ; inside string
                             (when-let* ((end (ignore-errors
                                                (scan-sexps begin 1))))
@@ -1440,13 +1436,12 @@ The variable `forward-sentence-function' defines what a sentence is."
   (and (cl-call-next-method)
        (not (save-excursion
               (goto-char pos)
-              (if (< dir 0) (bolp) (eolp))))))
+              (hel-line-boundary-p dir)))))
 
 (cl-defmethod hel-thing-parent ((_thing (eql 'sentence)) _producer sentence)
   "Return the start of the paragraph that SENTENCE belongs to."
   (save-excursion
-    (goto-char (min (1+ (hel-thing-instance-begin sentence))
-                    (point-max)))
+    (goto-char (cdr (hel-char-range (hel-thing-instance-begin sentence))))
     (hel-paragraph-motion -1)
     (point)))
 
@@ -1587,7 +1582,7 @@ finds the pieces."
 (cl-defmethod hel--comment-piece-under ((_producer hel-treesit-comment-producer)
                                         pos)
   ;; The smallest comment node that holds the character at POS.
-  (-some->> (hel-treesit--comment-nodes pos (min (1+ pos) (point-max)))
+  (-some->> (hel-treesit--comment-nodes pos (cdr (hel-char-range pos)))
     (-filter (lambda (node)
                (and (<= (treesit-node-start node) pos)
                     (< pos (treesit-node-end node)))))
@@ -1616,31 +1611,31 @@ finds the pieces."
 (cl-defmethod hel--comment-piece-under ((_producer hel-syntax-comment-producer)
                                         pos)
   "Find the piece with `forward-comment', which needs the comment start.
-Try three starts: the comment start that `syntax-ppss' reports when POS
-is inside a comment; POS itself, when POS is on the first character of the
-comment delimiter, such as the first `/' of `//'; and the position before
-POS, when POS is on its second character. A comment that has no end of
-its own ends at the end of the buffer."
+Try three starts: the comment start that `syntax-ppss' reports when POS is
+inside a comment; POS itself, when POS is on the first character of the comment
+delimiter, such as the first `/' of `//'; and the position before POS, when POS
+is on its second character. A comment that has no end of its own ends at the end
+of the buffer."
   (save-excursion
-    (cl-loop
-     for begin in (list (if-let* ((ppss (syntax-ppss pos))
-                                  ((nth 4 ppss)))
-                            (nth 8 ppss))
-                        pos
-                        (1- pos))
-     thereis
-     (when-let* ((begin)
-                 ((<= (point-min) begin pos))
-                 ((not (memq (char-after begin) '(nil ?\s ?\t ?\n ?\r))))
-                 ((not (nth 3 (syntax-ppss begin))))
-                 ;; A comment that the buffer end closes moves point to the
-                 ;; end, but `forward-comment' returns nil.
-                 ((progn (goto-char begin)
-                         (or (forward-comment 1)
-                             (eobp))))
-                 (end (cdr (hel-trim-whitespace-from-range (cons begin (point)))))
-                 ((< pos end)))
-       (cons begin end)))))
+    (->> (list (if-let* ((ppss (syntax-ppss pos))
+                         ((nth 4 ppss)))
+                   (nth 8 ppss))
+               pos
+               (1- pos))
+         (-some (lambda (begin)
+                  (when-let* ((begin)
+                              ((<= (point-min) begin pos))
+                              ((not (memq (char-after begin) '(nil ?\s ?\t ?\n ?\r))))
+                              ((not (nth 3 (syntax-ppss begin))))
+                              ;; A comment that the buffer end closes moves point
+                              ;; to the end, but `forward-comment' returns nil.
+                              ((progn (goto-char begin)
+                                      (or (forward-comment 1)
+                                          (eobp))))
+                              (end (cdr (hel-trim-whitespace-from-range
+                                         (cons begin (point)))))
+                              ((< pos end)))
+                    (cons begin end)))))))
 
 (cl-defmethod hel--comment-piece-next ((producer hel-syntax-comment-producer)
                                        pos dir)
@@ -1764,23 +1759,18 @@ in a buffer derived from `lisp-data-mode' this source returns nil."
   "Look in each pair of parentheses around POS, the innermost first.
 The arguments of inner parentheses lie inside an argument of the outer
 ones, so the first argument found is the innermost."
-  (let ((runs (-map (-partial #'hel--paren-arguments thing)
-                    (hel--parens-around pos))))
-    (->> runs
-         (-some (lambda (run)
-                  (-first (lambda (instance)
-                            (and (<= (hel-thing-instance-begin instance) pos)
-                                 (< pos (hel-thing-instance-end instance))))
-                          run))))))
+  (->> (hel--parens-around pos)
+       (-some (lambda (open)
+                (-first (lambda (instance)
+                          (and (<= (hel-thing-instance-begin instance) pos)
+                               (< pos (hel-thing-instance-end instance))))
+                        (hel--paren-arguments thing open))))))
 
 (cl-defmethod hel-thing-next (thing (_producer hel-syntax-argument-producer)
                                     pos dir)
-  (when (if (< dir 0)
-            (< (point-min) pos)
-          (< pos (point-max)))
-    (let ((start (if (< dir 0) pos (1+ pos))))
-      (hel--find-nearest (-partial #'hel--syntax-arguments-in thing)
-                         start dir :key #'hel-thing-instance-bounds))))
+  (hel--find-nearest (-partial #'hel--syntax-arguments-in thing)
+                     (if (< dir 0) pos (min (1+ pos) (point-max)))
+                     dir :key #'hel-thing-instance-bounds))
 
 (cl-defmethod hel-thing-parent ( _thing (_producer hel-syntax-argument-producer)
                                  instance)
