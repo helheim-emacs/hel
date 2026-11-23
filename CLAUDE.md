@@ -149,7 +149,7 @@ command.
   goes: `hel-node-touching`, `hel--tree-expand`
 - A function that takes one step takes `dir`. A function that goes over
   COUNT things takes a signed `count`, as Emacs motions do, and computes
-  `dir` inside: `hel-thing-reach`
+  `dir` inside: `hel-thing-motion-range`
 - A name says `selection` or `cursor` by what its caller asks for. A
   function that takes ranges and selects them, or reads them, says
   `selection`, even when it creates or deletes cursors to hold them:
@@ -191,7 +191,9 @@ steps, for a list that would otherwise come after a long lambda, or in
 place of a `nil` check before the next call. Leave a simple `(f (g x))` as
 it is. Never use the anaphoric `--` forms or `-->`: they bind `it`
 implicitly. Fix the first arguments with `-partial`, or write a lambda.
-Dash works on lists only: keep `aref` and `seq-*` for vectors. The
+For two cases written out in the code, spell out both calls with `or` or
+`and` instead of mapping over a literal list such as `'(:begin :end)`: the
+reader sees both calls at once. Dash works on lists only: keep `aref` and `seq-*` for vectors. The
 installed dash has no `-uniq-by`.
 
 **Structure:**

@@ -174,10 +174,10 @@ the next method so that the other rules apply too."
 (cl-defgeneric hel-thing-parent (thing producer instance)
   "Return the parent of INSTANCE, a THING that PRODUCER found.
 Two things with `equal' parents are siblings, also when both parents are nil.
-A text object with a count, such as `2 maf', selects only siblings: it stops at
-the last sibling and never takes a thing with another parent. The parent can be
-any value, such as a tree-sitter node or the start of the parentheses around
-an argument.")
+A text object with a count, such as `2 maf', selects only siblings: it stops
+at the last sibling and never takes a thing with another parent. The parent
+can be any value, such as a tree-sitter node or the start of the parentheses
+around an argument.")
 
 (cl-defmethod hel-thing-parent (_thing _producer _instance)
   "By default, the parent is nil, so all the THINGs in the buffer are siblings."
@@ -187,8 +187,8 @@ an argument.")
   "Return the far edge of the gap after THING in direction DIR.
 The gap separates THING from the next thing of any kind: the comma and the
 blanks after a function argument, or the blank lines between a comment and
-a function. When no gap follows THING, return POS. Called at its own result, the
-function returns that result again. POS is the edge of THING on the side DIR.
+a function. When no gap follows THING, return POS. Called at its own result,
+the function returns that result again. POS is the edge of THING on the side DIR.
 PRODUCER finds the things.
 
 By default, the gap is the whitespace.")
