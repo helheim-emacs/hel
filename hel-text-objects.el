@@ -704,8 +704,8 @@ comments may be its header comment."
       (hel--find-nearest (-partial #'hel-treesit--capture-things thing)
                          start dir :key #'hel-thing-instance-bounds))))
 
-(cl-defmethod hel-thing-parent (_thing (_producer hel-treesit-query-producer)
-                                instance)
+(cl-defmethod hel-thing-parent ( _thing (_producer hel-treesit-query-producer)
+                                 instance)
   "Return the nearest node above all the nodes of INSTANCE.
 This is the common ancestor of their parents: the parent of a single
 node, the parent of siblings, and the parent of the outer node when the
@@ -1135,8 +1135,8 @@ point over the body of one word."
                                 (max (point) body-begin)
                               (min (point) body-end))))))))))
 
-(cl-defmethod hel-thing-motion-range (_thing (producer hel-word-motion-producer)
-                                             pos count edge _skip-gap?)
+(cl-defmethod hel-thing-motion-range ( _thing (producer hel-word-motion-producer)
+                                       pos count edge _skip-gap?)
   "Step over a fence and over the indentation of a line one at a time."
   (save-excursion
     (goto-char pos)
@@ -1188,8 +1188,8 @@ point over the body of one word."
   (or (hel--word-behind-fence 'WORD pos)
       (cl-call-next-method)))
 
-(cl-defmethod hel-thing-after-gap (_thing (_producer hel-word-motion-producer)
-                                          pos dir)
+(cl-defmethod hel-thing-after-gap ( _thing (_producer hel-word-motion-producer)
+                                    pos dir)
   "The gap between words is the blanks."
   (hel-after-blanks pos dir))
 
@@ -1661,8 +1661,7 @@ the same line, keeping the comment attached to its code line."
       (hel-after-whitespace pos dir)
     (hel-after-blanks pos dir)))
 
-(cl-defmethod hel-thing-gap-end-allowed-p
-  ((_thing (eql 'comment)) _producer pos dir)
+(cl-defmethod hel-thing-gap-end-allowed-p ((_thing (eql 'comment)) _producer pos dir)
   "Backward, a gap that ends inside a line may end anywhere.
 Such a gap lies between code and an inline comment after it, as in
 `{ // comment', and `mac' takes it even after an opening bracket. The
@@ -1776,13 +1775,13 @@ ones, so the first argument found is the innermost."
       (hel--find-nearest (-partial #'hel--syntax-arguments-in thing)
                          start dir :key #'hel-thing-instance-bounds))))
 
-(cl-defmethod hel-thing-parent (_thing (_producer hel-syntax-argument-producer)
-                                instance)
+(cl-defmethod hel-thing-parent ( _thing (_producer hel-syntax-argument-producer)
+                                 instance)
   "Return the start of the parentheses around INSTANCE."
   (hel-thing-instance-data instance))
 
-(cl-defmethod hel-thing-after-gap (_thing (_producer hel-syntax-argument-producer)
-                                   pos dir)
+(cl-defmethod hel-thing-after-gap ( _thing (_producer hel-syntax-argument-producer)
+                                    pos dir)
   "Return the end of the whitespace and the commas from POS in DIR."
   (cl-flet ((after-comma (pos dir)
               (let ((next-char (if (< dir 0) (char-before pos) (char-after pos))))
