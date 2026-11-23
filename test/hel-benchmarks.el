@@ -137,6 +137,35 @@ The WORD leaves out the punctuation around itself."
   :mode python-ts-mode
   :line "x = %d  # a comment")
 
+;; A search for the nearest thing starts with a small window and doubles
+;; it.  The busy scenarios hold a thing near every cursor and many other
+;; things around it; the sparse ones hold no thing at all, so the search
+;; runs to the edge of the buffer.
+
+(hel-bench-define argument-syntax-busy
+  "Select an argument with the syntax table, among many other things."
+  :keys "l l l l l l l l l l m i a"
+  :mode python-mode
+  :line "x%d = [f(\"s\", 'u'), lambda: g(1), {\"k\": \"v\"}]  # comment")
+
+(hel-bench-define argument-treesit-busy
+  "Select an argument with the tree-sitter query, among many other things."
+  :keys "l l l l l l l l l l m i a"
+  :mode python-ts-mode
+  :line "x%d = [f(\"s\", 'u'), lambda: g(1), {\"k\": \"v\"}]  # comment")
+
+(hel-bench-define argument-syntax-sparse
+  "Look for an argument with the syntax table in a buffer that has none."
+  :keys "m i a"
+  :mode python-mode
+  :line "# %d c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c")
+
+(hel-bench-define motion-function-sparse
+  "Look for the next function in a buffer that has none."
+  :keys "] f"
+  :mode python-ts-mode
+  :line "# %d c c c c c c c c c c c c c c c c c c c c c c c c c c c c c c")
+
 (hel-bench-define select-matches
   "Start with one cursor and put a cursor on every match of a regexp.
 Each line has two matches, so the scenario ends with twice as many cursors
