@@ -36,6 +36,13 @@
 (require 'profiler)
 (require 'hel)
 
+;; Hel finds its queries next to the file that it loads from, and the
+;; compiled files lie in build/, which has no queries.  Without them every
+;; tree-sitter scenario would time a fallback source instead.
+(setq hel-treesit-queries-directory
+      (expand-file-name "../queries/"
+                        (file-name-directory (or load-file-name buffer-file-name))))
+
 ;;; Scenarios
 
 (defvar hel-bench-scenarios nil
