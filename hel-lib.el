@@ -641,15 +641,14 @@ distance traveled, with the sign of DIRECTION."
       (skip-chars-forward chars)
     (skip-chars-backward chars)))
 
-(defun hel-move-to-pos (from to extend)
-  "Move the cursor to the position TO, as a motion that passes over text.
-Without EXTEND, select the text from FROM to TO, with point at TO; when
-FROM is nil, leave a bare cursor at TO, on the character after it.  With
-EXTEND, ignore FROM: the selection keeps its other end and extends to
-TO.  A selection of one character keeps that character."
-  (cond (extend
+(defun hel-move-to-pos (from to extend?)
+  "Select the region FROM..TO.
+When EXTEND? is non-nil, select from `hel-selection-anchor' to TO, FROM
+is ignored. When FROM is nil, nothing is selected, just a bare cursor
+moved at TO."
+  (cond (extend?
          (let ((anchor (hel-selection-anchor (hel-selection)
-                                              (hel-sign (- to (point))))))
+                                             (hel-sign (- to (point))))))
            (hel-select (hel-range anchor to)
                        (if (< to anchor) -1 1))))
         (from
@@ -687,18 +686,16 @@ TO.  A selection of one character keeps that character."
 ;; This is also why ranges are half-open, [BEGIN, END): the ruler always
 ;; has one more mark than it has spaces, so a range of N characters is
 ;; (BEGIN . BEGIN+N), and an empty range is (P . P).
-(defun hel-move-onto-char (char extend)
-  "Move the cursor onto the character CHAR.
-Without EXTEND, CHAR becomes the cursor character: point goes before
-it.  With EXTEND, the selection keeps the character at its other end and
-stretches to CHAR.  When CHAR is that character, the selection becomes
-a bare cursor on it."
-  (if extend
+(defun hel-move-onto-char (pos extend?)
+  "Move the cursor onto the character at POS.
+When EXTEND? is non-nil, the selection stretches from `hel-selection-anchor'
+to POS."
+  (if extend?
       (-let* ((((begin . end) dir) (hel-selection))
               (anchor (if (and dir (< 0 dir)) begin (1- end))))
-        (hel-select (cons (min char anchor) (1+ (max char anchor)))
-                    (if (< char anchor) -1 1)))
-    (hel-set-cursor char)))
+        (hel-select (cons (min pos anchor) (1+ (max pos anchor)))
+                    (if (< pos anchor) -1 1)))
+    (hel-set-cursor pos)))
 
 ;;; Blanks and whitespace
 
@@ -776,10 +773,10 @@ key selects a folded section as one line."
 
 ;; Adopted from `move-end-of-line'.
 (defun hel-forward-line (&optional count)
-  "Goto COUNT visible logical lines forward (backward if COUNT is negative).
-The difference from `forward-line' is that this function ignores invisible parts
-of the buffer (lines folded by `outline-minor-mode' for example) and always
-moves only over visible lines."
+  "Move point COUNT visible lines forward, or backward when COUNT is negative.
+Unlike `forward-line', the motion skips the lines that are invisible, such as
+the lines that `outline-minor-mode' folds, and always moves only over visible
+lines. Point goes to the start of the line."
   (or count (setq count 1))
   (let ((goal-column 0)
         (line-move-visual nil)
@@ -792,8 +789,9 @@ moves only over visible lines."
                        (point) 'invisible))))))
 
 (defun hel-beginning-of-visible-line ()
-  "Move point to the beginning of the current visible logical line.
-This is actually refactored `move-beginning-of-line' command."
+  "Move point to the beginning of the current line as the screen shows it.
+The beginning is the first visible character of the line: hidden lines before
+it and hidden text at its start do not count, as with `move-beginning-of-line'."
   (let ((init-point (point)))
     ;; Move to beginning-of-line, ignoring fields and invisible text.
     (let ((inhibit-field-text-motion t))
@@ -867,23 +865,24 @@ cursor, which has none, becomes forward."
                   t)
       t)))
 
-(defun hel--add-final-newline (end)
-  "Add a newline at the end of the buffer when END is there on a line
-without one, so that the last line is a whole line.  Return END, past
-the newline when one was added.  A read-only buffer and the minibuffer
-stay as they are."
-  (if (and (= end (point-max))
+(defun hel--add-final-newline (pos)
+  "When POS is at the end of the buffer add last line doesn't finishes with
+a newline, then add it. Return POS, moved past the newline when one was
+inserted. A read-only buffer and the minibuffer stay as they are."
+  (if (and (= pos (point-max))
            (not buffer-read-only)
            (not (minibufferp))
-           (/= end (save-excursion (goto-char end) (line-beginning-position))))
+           (/= pos (save-excursion (goto-char pos) (line-beginning-position))))
       ;; The newline is a part of the selection that the caller writes,
       ;; so it must not deactivate the mark.
       (let ((deactivate-mark nil))
-        (save-excursion (goto-char end) (insert ?\n) (point)))
-    end))
+        (save-excursion (goto-char pos) (insert ?\n) (point)))
+    pos))
 
 (defun hel-visual-line-selection-p ()
-  "Return t if active region spawns visual lines."
+  "Return non-nil if the active region covers whole visual lines.
+Both ends of the region are at the start of a visual line.
+Without `visual-line-mode' the answer is always nil."
   (and visual-line-mode
        (use-region-p)
        (= (region-beginning) (hel-line-begin (region-beginning)))
@@ -892,7 +891,10 @@ stay as they are."
 ;;; Mark-ring
 
 (cl-defun hel-push-point (&optional (position (point)))
-  "Push POSITION (point by default) on the `mark-ring'."
+  "Push POSITION on the `mark-ring' and the `global-mark-ring'.
+POSITION is point by default. The mark ring skips POSITION when its top
+is POSITION already. The global ring takes POSITION only when its top is
+in another buffer."
   ;; Don't store POSITION into mark ring if it equals to the last stored one.
   (unless (and mark-ring
                (= position (car mark-ring)))
@@ -916,21 +918,21 @@ stay as they are."
         (set-marker old nil))))
   nil)
 
-(defun hel--jump-over-mark-ring (backward? extend)
-  "Jump to the top position on `mark-ring'.
-If point is already there, rotate `mark-ring' forward (or BACKWARD)
-and jump to the new top position.  EXTEND is as in `hel-move-to-pos'."
+(defun hel--jump-over-mark-ring (backward? extend?)
+  "Jump to the top position of `mark-ring'.
+When point is already there, rotate the ring first, backward when BACKWARD?
+is non-nil, and jump to the new top. EXTEND? is as in `hel-move-to-pos'."
   (when mark-ring
     (when (= (point) (car mark-ring))
       (cl-callf hel-rotate-ring mark-ring backward?))
     (hel-recenter-point-on-jump
-      (hel-move-to-pos nil (car mark-ring) extend))))
+      (hel-move-to-pos nil (car mark-ring) extend?))))
 
 (defun hel--jump-over-global-mark-ring (&optional backward?)
   "Jump to the top location on the `global-mark-ring'.
-If current buffer is the same as the target one, rotate `global-mark-ring'
-forward (or BACKWARD) and jump to new top location.  The jump removes the
-secondary cursors, because they have no place in the target buffer."
+When the top is in the current buffer, rotate the ring first, backward when
+BACKWARD? is non-nil, and jump to the new top. The jump removes the secondary
+cursors, because they have no place in the target buffer."
   ;; Delete entries that refer to non-existent buffers.
   (when (setq global-mark-ring (-filter #'marker-buffer global-mark-ring))
     (when (eq (marker-buffer (car global-mark-ring))
@@ -954,12 +956,13 @@ secondary cursors, because they have no place in the target buffer."
         (deactivate-mark)))))
 
 (defun hel-rotate-ring (ring &optional backward?)
-  "Rotate the RING elements.
-This function destructively modify RING and should be used the following way:
-`(setq RING (hel-rotate-ring RING))'
+  "Rotate the list RING by one element, and return it.
+The first element goes to the end, or with BACKWARD? the last element goes
+to the front. The function changes RING in place, so store the result:
 
-RING should be a list like `mark-ring', not the ring structure from
-`ring.el'."
+  \(setq RING (hel-rotate-ring RING))
+
+RING should be a list like `mark-ring', not the ring structure from `ring.el'."
   (if backward?
       (nconc (last ring) (nbutlast ring))
     (nconc (cdr ring) (list (car ring)))))
@@ -986,8 +989,10 @@ has the form that `hel-selection' returns."
                   (< begin (line-beginning-position))))))))
 
 (cl-defun hel-push-mark (&optional (position (point)) nomsg activate)
-  "Set mark to the POSITION and push it on the `mark-ring'.
-If NOMSG is nil show `Mark set' message in echo area."
+  "Set mark to POSITION, and push POSITION on the `mark-rings'.
+POSITION is point by default.
+If NOMSG is nil show `Mark set' message in echo area.
+With ACTIVATE, activate the mark."
   (hel-push-point position)
   (set-marker (mark-marker) position (current-buffer))
   (or nomsg executing-kbd-macro (< 0 (minibuffer-depth))
@@ -1080,7 +1085,9 @@ of only newlines becomes empty."
                 (concat text "\n")))))))
 
 (defun hel--copy-append (string)
-  "Append STRING to the end of the latest kill in the kill ring."
+  "Append STRING to the end of the latest kill in the kill ring.
+The separator is a newline when the kill ends with one or STRING starts
+with one, and a space otherwise."
   (let* ((left (or (car kill-ring) ""))
          (right string)
          (separator (if (or (string-suffix-p "\n" left)
@@ -1131,7 +1138,7 @@ the end of the text to indent, as `indent-rigidly-left' does."
 (cl-defun hel-range-visible-p ((begin . end))
   "Test whether the text in the range BEGIN..END can be shown to the user.
 
-Return values:
+Return how to show the text in BEGIN..END:
 
   nil     The range is truly-invisible — i.e. it is fully hidden by
           an `invisible' text property or by a non-openable overlay.
@@ -1175,7 +1182,7 @@ Return values:
           visible?)))))
 
 (defun hel-open-overlay (ov)
-  "Permanently open folded OVERLAY.
+  "Permanently open folded overlay OV.
 See `isearch-open-necessary-overlays'."
   (when (invisible-p (overlay-get ov 'invisible))
     (if-let* ((fun (overlay-get ov 'isearch-open-invisible)))
@@ -1203,7 +1210,7 @@ See `isearch-open-necessary-overlays'."
     (overlay-put ov 'isearch-invisible nil)))
 
 (defun hel-reveal-position (pos)
-  "Permanently open fold at POS."
+  "Permanently open folds at POS."
   (-each (overlays-at pos) #'hel-open-overlay))
 
 ;;; Tree-sitter
@@ -1246,24 +1253,30 @@ The result is a (BEGIN . END) pair."
 (declare-function hel-insert-state "hel-core" (&optional arg) t)
 
 (defun hel-keep-selection-a (command &rest args)
-  "Keep region active, disable extending selection (`v' key)."
+  "Run COMMAND with ARGS, and keep its selection.
+The region stays active after COMMAND, and extending the selection, (`v' key),
+turns off.  Use this function as `:around' advice."
   (prog1 (let ((deactivate-mark nil))
            (apply command args))
     (hel-extend-selection -1)))
 
 (defun hel-deactivate-mark-a (&rest _)
-  "Deactivate mark. This function can be used as advice."
+  "Deactivate the mark. Use this function as advice."
   (deactivate-mark))
 
 (defun hel-maybe-deactivate-mark-a (&rest _)
-  "Deactivate mark unless extending selection is active. Can be used as advice."
+  "Deactivate the mark, unless the selection is being extended (`v' key).
+Use this function as advice."
   (or hel-extend-selection
       (deactivate-mark)))
 
 (declare-function hel-disable-multiple-cursors-mode "hel-cursors")
 
 (defun hel-jump-command-a (command &rest args)
-  "Aroung advice for COMMAND that moves point."
+  "Aroung advice for COMMAND that jump inside the buffer.
+A jump drops the secondary cursors and the selection, and leaves a bare
+cursor at its target. Any folds at the tartge are opened. Use this
+function as `:around' advice."
   (hel-disable-multiple-cursors-mode)
   (deactivate-mark)
   (hel-recenter-point-on-jump
@@ -1273,12 +1286,14 @@ The result is a (BEGIN . END) pair."
       (-each (overlays-at (point)) #'hel-open-overlay))))
 
 (defun hel-switch-to-insert-state-a (&rest _)
-  "Switch Hel into Insert state.
-Can be used as advice."
+  "Switch Hel into Insert state. Use this function as advice."
   (hel-insert-state 1))
 
 (defun hel--execute-for-all-cursors-a (&rest _)
-  "Execute selected command for all cursors."
+  "Let the secondary cursors repeat the command that `M-x' runs.
+`M-x' itself runs only for the main cursor, so without this advice the
+secondary cursors would do nothing. Use this function as `:after' advice
+of `execute-extended-command'."
   (setq hel-this-command this-command))
 
 ;;; .
