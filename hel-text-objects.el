@@ -419,7 +419,7 @@ When fewer things exist, add the ones that exist. Return (FIRST . LAST)."
                   (setq first next))))
   (cons first last))
 
-(defvar hel--search-range-size 4096
+(defvar hel--search-range-size 64
   "The size in characters of the first range of a text object search.")
 
 (cl-defun hel--find-nearest
