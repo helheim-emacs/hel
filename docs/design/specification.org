@@ -1636,7 +1636,7 @@ primitives and gets every command.
 | ~hel-thing-around~            | algorithm | built from =after-gap=, =gap-end-allowed-p=   |
 |                               |           | and the header comment                        |
 | ~hel-thing-nearest~           | algorithm | built from =candidates= and =after-gap=       |
-| ~hel-thing-reach~             | algorithm | built from =under= and =next=                 |
+| ~hel-thing-motion-range~      | algorithm | built from =under= and =next=                 |
 
 =at= and =next= are the minimum, because neither one gives the other. They
 split the text around a position into three answers that do not overlap:
@@ -1706,7 +1706,7 @@ specializes the argument that its answer depends on:
 | ~hel-thing-jump-p~                            | property of thing  | a word motion does not push the mark ring        |
 | ~hel-thing-selection-direction~               | property of thing  | =mif= puts point at the start of the function    |
 | ~hel-thing-parent~                            | thing and producer | a sentence stays in its paragraph                |
-| ~hel-thing-reach~                             | producer           | a word motion does not cross a fence             |
+| ~hel-thing-motion-range~                      | producer           | a word motion does not cross a fence             |
 | ~hel-thing-apply-rules~                       | thing              | a WORD leaves out the punctuation around it      |
 | ~hel-thing-nearest~                           | thing and producer | =miW= on a fence selects the WORD behind it      |
 

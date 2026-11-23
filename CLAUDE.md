@@ -134,8 +134,12 @@ command.
   - `under`: holds the character at the position
   - `on`: covers a range
   - `after`: returns a position and does not move point; `skip` moves point
-  - `bounds`: the two positions of something that a function returns; `range`
-    is the form of a value, a (BEGIN . END) pair, and the name of an argument
+  - `bounds`: the two ends of an object that a function returns, such as
+    a node, a pair or a line: `hel-node-bounds`
+  - `range`: the form of a value, a (BEGIN . END) pair, and the name of an
+    argument. A function that returns a stretch of text that no single
+    object owns, such as the text that a motion passes over, also says
+    `range`: `hel-thing-motion-range`
 - The `hel-node-*` operations always take a position. The private helpers named
   `-at-point` or `-point` always use point and never take it
 - `pos` and `dir` are the argument names, not `position` and `direction`

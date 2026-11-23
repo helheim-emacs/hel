@@ -3551,26 +3551,26 @@ table."
       (hel-test-run #'hel-mark-argument)
       (should (equal (hel-test-selection) "a")))))
 
-;;; `hel-thing-reach'
+;;; `hel-thing-motion-range'
 
-(ert-deftest hel-thing-reach-of-words ()
+(ert-deftest hel-thing-motion-range-of-words ()
   "A backward edge gives a range with its begin before its end."
   (hel-test-with #'fundamental-mode "one two three|"
     (let ((word (hel-thing-producer 'word (point))))
-      (should (equal (hel-thing-reach 'word word 9 1 :begin nil)
+      (should (equal (hel-thing-motion-range 'word word 9 1 :begin nil)
                      (cons 9 14)))
-      (should (equal (hel-thing-reach 'word word 9 -1 :begin nil)
+      (should (equal (hel-thing-motion-range 'word word 9 -1 :begin nil)
                      (cons 5 9)))
-      (should (equal (hel-thing-reach 'word word 9 -1 :end nil)
+      (should (equal (hel-thing-motion-range 'word word 9 -1 :end nil)
                      (cons 8 9))))))
 
-(ert-deftest hel-thing-reach-default-method ()
+(ert-deftest hel-thing-motion-range-default-method ()
   (hel-test-with #'fundamental-mode "One. Two. Three.|"
     (let ((sentence-end-double-space nil)
           (sentence (hel-thing-producer 'sentence (point))))
-      (should (equal (hel-thing-reach 'sentence sentence 7 1 :end nil)
+      (should (equal (hel-thing-motion-range 'sentence sentence 7 1 :end nil)
                      (cons 7 10)))
-      (should (equal (hel-thing-reach 'sentence sentence 7 -1 :begin nil)
+      (should (equal (hel-thing-motion-range 'sentence sentence 7 -1 :begin nil)
                      (cons 6 7))))))
 
 ;;; hel-text-object-tests.el ends here

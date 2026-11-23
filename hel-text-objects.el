@@ -328,15 +328,15 @@ where a gap may end. PRODUCER finds the things."
         (cons (or (after-gap begin -1) begin)
               end)))))
 
-(cl-defgeneric hel-thing-reach (thing producer pos count edge skip-gap?)
-  "Return the range that a motion from POS over COUNT THINGs reaches.
-The range runs from POS to the EDGE of the COUNT-th THING, and a negative
+(cl-defgeneric hel-thing-motion-range (thing producer pos count edge skip-gap?)
+  "Return the range of a motion from POS over COUNT THINGs.
+The motion runs from POS to the EDGE of the COUNT-th THING, and a negative
 COUNT moves backward.
 
-When SKIP-GAP? is non-nil and POS lies between things, the range starts at
+When SKIP-GAP? is non-nil and POS lies between things, the motion starts at
 the first THING and leaves out the gap before it.
 
-When fewer than COUNT things exist, the range ends at the last of them.
+When fewer than COUNT things exist, the motion ends at the last of them.
 A motion that keeps the gaps and goes to the starts of things goes on to
 the edge of the buffer instead, because the gap after the last thing runs
 up to there.
@@ -559,7 +559,7 @@ KIND is:
 (defun hel-mark-to-thing-edge (thing count edge skip-gap? extend)
   "Select from the cursor to the EDGE of the COUNT-th THING.
 A negative COUNT goes backward. EDGE and SKIP-GAP? are as in
-`hel-thing-reach'.
+`hel-thing-motion-range'.
 
 The motion starts at the head character of the selection, the
 character under the cursor, which counts as passed, as in Helix: the
@@ -580,7 +580,8 @@ it is."
     (cl-flet ((reach (pos count)
                 ;; The range in the order of the motion: (START . END).
                 (-when-let ((begin . end)
-                            (hel-thing-reach thing producer pos count edge skip-gap?))
+                            (hel-thing-motion-range thing producer pos count
+                                                    edge skip-gap?))
                   (if (< 0 count) (cons begin end) (cons end begin)))))
       (let ((anchor (and extend
                          (hel-selection-anchor selection (hel-sign count)))))
@@ -1137,8 +1138,8 @@ point over the body of one word."
                                 (max (point) body-begin)
                               (min (point) body-end))))))))))
 
-(cl-defmethod hel-thing-reach (_thing (producer hel-word-motion-producer)
-                                      pos count edge _skip-gap?)
+(cl-defmethod hel-thing-motion-range (_thing (producer hel-word-motion-producer)
+                                             pos count edge _skip-gap?)
   "Step over a fence and over the indentation of a line one at a time."
   (save-excursion
     (goto-char pos)
