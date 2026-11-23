@@ -1665,6 +1665,16 @@ from the primitives: things have no parent, and the gap after a thing is
 whitespace. A thing or a producer with another fact gives a method: the
 parent of a sentence is its paragraph, and a query skips commas in a gap.
 
+=motion-range= returns nil when no thing lies ahead, in every producer:
+a motion that cannot move has no range, and an empty range would be a
+second way to say the same thing. The rule of
+[[*Moving to the edge of an object][Moving to the edge of an object]] asks
+=motion-range= itself whether an edge lies right past the head character:
+it does when a motion of one step that keeps the gaps, to the begin or to
+the end of a thing, passes over exactly that character. So the motion
+alone decides where its stops are, the ends of gaps included, and a
+producer that changes its stops changes that rule with them.
+
 *The tree level* walks a syntax tree:
 
 | Operation                 | Kind      | Default method                                  |

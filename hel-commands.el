@@ -304,17 +304,12 @@ With EXTEND, extend the selection as `hel-move-to-pos' does. Return the place."
   (-let* ((head (hel-selection-head (hel-selection)))
           (to   (funcall target-fun head))
           (dir  (if (< head to) 1 -1))
-          ((head-range &as begin . end) (hel-char-range head))
+          ((begin . end) (hel-char-range head))
           (near (if (< 0 dir) begin end))
           (far  (if (< 0 dir) end begin))
-          (producer (hel-thing-producer 'word head))
           (from (if (and (/= far to)
-                         ;; The motion over words to either edge stops right
-                         ;; past the head character.
-                         (or (equal (hel-thing-motion-range 'word producer near dir :begin nil)
-                                    head-range)
-                             (equal (hel-thing-motion-range 'word producer near dir :end nil)
-                                    head-range)))
+                         (hel--thing-motion-stop-at-p
+                          'word (hel-thing-producer 'word head) far dir))
                     far
                   near)))
     (hel-move-to-pos from to extend)

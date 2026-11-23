@@ -188,8 +188,8 @@ around an argument.")
 The gap separates THING from the next thing of any kind: the comma and the
 blanks after a function argument, or the blank lines between a comment and
 a function. When no gap follows THING, return POS. Called at its own result,
-the function returns that result again. POS is the edge of THING on the side DIR.
-PRODUCER finds the things.
+the function returns that result again. POS is the edge of THING on the side
+DIR. PRODUCER finds the things.
 
 By default, the gap is the whitespace.")
 
@@ -384,6 +384,20 @@ of the buffer returns nil only when POS is already there. EDGE is
                           (hel-thing-instance-edge first (if (< dir 0) :end :begin))
                         pos)
                       (hel-thing-instance-edge last edge))))))
+
+(defun hel--thing-motion-stop-at-p (thing producer pos dir)
+  "Return non-nil if a motion over THINGs in direction DIR stops at POS.
+The motion stops at each edge of a THING and at each end of a gap, so
+whether POS is a stop depends on the side that the motion comes from.
+The test runs the motion over the char behind POS, to either edge of
+a THING, and keeps the gap. PRODUCER finds the things."
+  (let* ((from (- pos dir))
+         (char (hel-range from pos)))
+    (and (<= (point-min) from (point-max))
+         (or (equal char (hel-thing-motion-range thing producer from dir
+                                                 :begin nil))
+             (equal char (hel-thing-motion-range thing producer from dir
+                                                 :end nil))))))
 
 (defun hel--thing-past (thing producer instance dir)
   "Return the nearest THING past INSTANCE in direction DIR, or nil."
@@ -603,24 +617,12 @@ it is."
                      (near (if (< 0 dir) begin end))
                      (far  (if (< 0 dir) end begin))
                      (step (motion near dir)))
-               (cond ((and step (/= near far)
-                           (or (eql (cdr step) far)
-                               ;; A motion that skips the gap leaves out a head
-                               ;; character in the gap by itself, and STEP finds
-                               ;; one at the edge of an object.
-                               (and (not skip-gap?)
-                                    (equal (cons begin end)
-                                           (hel-thing-motion-range
-                                            thing producer near dir
-                                            (if (eq edge :begin) :end :begin)
-                                            nil)))))
-                      ;; At the edge of the buffer the motion from FAR gives an
-                      ;; empty range. Then a bare cursor selects its character,
-                      ;; and a selection stays.
-                      (-let [(start . end) (motion far count)]
-                        (cond ((and start (/= start end))
-                               (cons start end))
-                              ((hel-bare-cursor-p selection) step))))
+               (cond ((and step
+                           (hel--thing-motion-stop-at-p thing producer far dir))
+                      ;; When no thing lies past FAR, a bare cursor selects
+                      ;; its character, and a selection stays.
+                      (or (motion far count)
+                          (and (hel-bare-cursor-p selection) step)))
                      ((= 1 (abs count)) step)
                      (t (motion near count))))))
         (when (hel-thing-jump-p thing) (hel-push-point))
@@ -1178,7 +1180,8 @@ point over the body of one word."
                (hel-skip-blanks 1))
               (t
                (funcall word-motion count)))
-        (hel-range start (point))))))
+        (unless (= start (point))
+          (hel-range start (point)))))))
 
 (cl-defmethod hel-thing-nearest ((_thing (eql 'word))
                                  (_producer hel-word-motion-producer) pos)

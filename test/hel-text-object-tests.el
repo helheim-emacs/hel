@@ -1113,7 +1113,7 @@ both sides of it and never selected, and the indentation stays a step."
     (should (equal (hel-test--selection-steps
                     #'fundamental-mode (hel-test-mark text "foo") "w"
                     #'hel-test--table-rules)
-                   '("foo " "bar " "  " "a   " "b   " "")))
+                   '("foo " "bar " "  " "a   " "b   ")))
     (should (equal (hel-test--selection-steps
                     #'fundamental-mode (hel-test-mark text "foo") "e"
                     #'hel-test--table-rules)
@@ -1143,13 +1143,13 @@ word of a cell, and no gap when the word fills its cell."
 (ert-deftest hel-word-rules-in-an-org-table ()
   "In Org, `|' separates the words, so `w' goes from cell to cell."
   (should (equal (hel-test--table-words #'org-mode)
-                 '("foo " "bar " "a   " "b   " ""))))
+                 '("foo " "bar " "a   " "b   "))))
 
 (ert-deftest hel-word-rules-in-a-markdown-table ()
   "In Markdown, `|' separates the words, so `w' goes from cell to cell."
   (skip-unless (require 'markdown-mode nil t))
   (should (equal (hel-test--table-words #'markdown-mode)
-                 '("foo " "bar " "a   " "b   " ""))))
+                 '("foo " "bar " "a   " "b   "))))
 
 (ert-deftest hel-word-rules-in-a-markdown-ts-table ()
   "`markdown-ts-mode' has the word rules of `markdown-mode'."
@@ -1159,7 +1159,7 @@ word of a cell, and no gap when the word fills its cell."
     (should (assq ?` (hel-word-rules-brackets hel-word-rules)))
     (should (equal (hel-word-rules-separators hel-word-rules) '(?|))))
   (should (equal (hel-test--table-words #'markdown-ts-mode)
-                 '("foo " "bar " "a   " "b   " ""))))
+                 '("foo " "bar " "a   " "b   "))))
 
 (ert-deftest hel-WORD-motion-keeps-inner-brackets ()
   "A bracket whose pair is inside the WORD stays in it, and a WORD of
@@ -3563,6 +3563,16 @@ table."
                      (cons 5 9)))
       (should (equal (hel-thing-motion-range 'word word 9 -1 :end nil)
                      (cons 8 9))))))
+
+(ert-deftest hel-thing-motion-range-of-words-at-buffer-edge ()
+  "With no word ahead, the motion over words returns nil, as the
+contract of `hel-thing-motion-range' says."
+  (hel-test-with #'fundamental-mode "foo bar|"
+    (let ((word (hel-thing-producer 'word (point))))
+      (should-not (hel-thing-motion-range 'word word (point-max) 1 :begin nil))
+      (should-not (hel-thing-motion-range 'word word (point-max) 1 :end nil))
+      (should-not (hel-thing-motion-range 'word word (point-min) -1 :begin nil))
+      (should-not (hel-thing-motion-range 'word word (point-min) -1 :end nil)))))
 
 (ert-deftest hel-thing-motion-range-default-method ()
   (hel-test-with #'fundamental-mode "One. Two. Three.|"
