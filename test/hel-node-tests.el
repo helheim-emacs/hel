@@ -875,6 +875,14 @@ before the pair (The syntax producer)."
   (should (equal (hel-node-tests--bare-steps #'c-mode "(a | b);\n")
                  '("b" "a" "a  b"))))
 
+(ert-deftest hel-previous-sibling-at-end-of-buffer-syntax ()
+  "Rule 10, without a parser: at the end of the buffer, after the final
+newline, no node is under the selection, so M-p selects the last sexp
+that ends before it."
+  (hel-test-with #'c-mode "f(a);\ng(b);\n|"
+    (hel-test-run #'hel-select-previous-sibling)
+    (should (equal (hel-test-render) "f(a);\ng|(b)^;\n"))))
+
 ;;; Decisions about extending, the side of point and the Lisp modes
 
 (defmacro hel-node-tests--with-v (mode text &rest body)

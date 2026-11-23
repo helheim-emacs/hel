@@ -683,7 +683,11 @@ run in Normal state. The nested Hel keymaps of minor modes come first in
     whitespace at its edges. =w= and =x= select trailing space and
     indentation; without trimming, the space after =filterOid= in
     =filterOid = [&]{…}()= would make the node the whole =init_declarator=.
-    Helix uses the whole region.
+    Helix uses the whole region. When parents of that node have the same
+    range, the node under the selection is the outermost of them, because
+    the user sees such nodes as one selection: the Python =assignment= in
+    =x = 1= has no siblings, but its =expression_statement= has, so =M-p=
+    selects the function before it.
 
     At a bare point the selection is the cursor character, and it counts as
     a selection, as a one-character region does. A character is under the
@@ -752,10 +756,8 @@ The sibling and children commands follow Helix
 - *A sibling command stays inside the parent.* At the last argument, =M-n=
   keeps the selection. Helix climbs to the next sibling of the nearest
   ancestor that has one, so from the last parameter of a C++ constructor it
-  jumps to the member initializer list. Only a parent with the same range as
-  the node counts as the node itself: the Python =assignment= in =x = 1= has
-  no siblings, but its =expression_statement= has, so =M-p= selects the
-  function before it.
+  jumps to the member initializer list. A parent with the same range as the
+  node counts as the node itself (rule 10).
 - *=M-a= climbs to the first parent with more than one named child* and puts
   a cursor on each named child.
 - *=M-I= skips nodes that have one child with the same range*, such as
@@ -1685,20 +1687,18 @@ producer that changes its stops changes that rule with them.
 | ~hel-node-children~       | primitive | none: each producer writes it                   |
 | ~hel-node-sibling~        | primitive | none: each producer writes it                   |
 | ~hel-node-enclosing~      | primitive | none: each producer writes it                   |
-| ~hel-node-touching~       | primitive | none: each producer writes it                   |
 | ~hel-node-enclosing-leaf~ | algorithm | built from =enclosing= and =children=           |
 | ~hel-node-side-child~     | algorithm | built from =enclosing=, =children= and =bounds= |
 | ~hel-node-expand-steps~   | algorithm | built from =on=, =parent= and =bounds=          |
 
 =parent= and =children= are the edges of the tree, and =bounds= is the only
-way to read a node, because each producer chooses its own node type. =on=,
-=enclosing= and =touching= are the three ways into the tree, and each has
-its own rule at an edge: =on= takes the node that covers a range,
-=enclosing= one with the position strictly inside, and =touching= one with
-the position on its boundary. =sibling= alone could be computed, from the
-children of the parent, but that walk is linear, and both producers answer
-it directly: tree-sitter from the node itself, the syntax table with one
-sexp scan.
+way to read a node, because each producer chooses its own node type. =on=
+and =enclosing= are the two ways into the tree, and each has its own rule
+at an edge: =on= takes the node that covers a range, and =enclosing= one
+with the position strictly inside. =sibling= alone could be computed, from
+the children of the parent, but that walk is linear, and both producers
+answer it directly: tree-sitter from the node itself, the syntax table with
+one sexp scan.
 The cost of an operation is part of its contract, so =sibling= stays
 primitive.
 
@@ -1793,7 +1793,7 @@ kind before any instance exists.
 │        keys:       mi, ma, w, e, b, ]f, [f and the others          │
 │                                                                    │
 │ Tree   on, bounds, parent, children, sibling, enclosing,           │
-│        enclosing-leaf, touching, side-child, expand-steps          │
+│        enclosing-leaf, side-child, expand-steps                    │
 │        value:      node, of a type that each producer chooses      │
 │        producers:  tree-sitter, sexp, Lisp                         │
 │        keys:       M-o, M-i, M-n, M-p, M-b, M-e, M-a, M-I          │

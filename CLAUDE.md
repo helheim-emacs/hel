@@ -146,7 +146,7 @@ command.
 - A direction is the number 1 or -1, never a keyword like `:forward`
 - `dir` is the direction of a motion. `side`, also 1 or -1, says on which
   side of a position something lies, or at which end of a selection point
-  goes: `hel-node-touching`, `hel--tree-expand`
+  goes: `hel-node-side-child`, `hel--tree-expand`
 - A function that takes one step takes `dir`. A function that goes over
   COUNT things takes a signed `count`, as Emacs motions do, and computes
   `dir` inside: `hel-thing-motion-range`
