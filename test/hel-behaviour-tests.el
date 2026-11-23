@@ -403,11 +403,15 @@ bare cursor on that character: the two are the same selection."
   ("foo|  bar" "w" "foo^  |bar")
   ;; A word ends at punctuation.
   ("|foo.bar" "w" "^foo|.bar")
-  ;; The cursor character counts as passed: when it is a step of its own,
-  ;; the motion goes on after it, as in Helix.
+  ;; The cursor character counts as passed, unless a word or a gap ends
+  ;; right past it: then the motion goes on after it.
   ("foo|.bar" "w" "foo.^bar|")
   ("foo| bar baz" "w" "foo ^bar |baz")
-  ("fo|o bar" "w" "fo^o |bar")
+  ("fo|o bar" "w" "foo| bar")
+  ;; Helix selects "h " here: it takes the head character in.
+  ("^oh| oh" "w" "oh| oh")
+  ("- |helix   Cursor" "ew" "- helix^   |Cursor")
+  ("fo|o  bar" "W" "foo^  |bar")
   ("|foo-bar baz" "w" "^foo|-bar baz")
   ;; The motion starts on the next line when point is at the end of a line.
   ("foo|\nbar baz" "w" "foo\n^bar |baz")
@@ -418,8 +422,10 @@ bare cursor on that character: the two are the same selection."
   ("foo |bar" "w" "foo ^bar|")
   ("foo bar|" "w" "foo bar|")
   ;; Count.
-  ("|a b c d e" "3w" "^a b c |d e")
-  ("|a b c d e" "2w" "^a b |c d e")
+  ("|aa b c d e" "3w" "^aa b c |d e")
+  ("|aa b c d e" "2w" "^aa b |c d e")
+  ;; A word of one letter ends right past the cursor character.
+  ("|a b c d e" "2w" "a^ b |c d e")
   ;; A second motion starts a new selection from the end of the first.
   ("|foo bar baz" "ww" "foo ^bar |baz")
   ("|foo bar baz" "www" "foo bar ^baz|"))
@@ -456,7 +462,9 @@ bare cursor on that character: the two are the same selection."
 (hel-test-table motion-e
   ("|foo bar" "e" "^foo| bar")
   ("f|oo bar" "e" "f^oo| bar")
-  ("foo| bar" "e" "foo^ bar|")
+  ;; From the blank before a word, `e' leaves the blank out.
+  ("foo| bar" "e" "foo ^bar|")
+  ("foo|  bar" "e" "foo^  bar|")
   ("|foo.bar" "e" "^foo|.bar")
   ;; The cursor character is a word of its own, so `e' goes on after it.
   ("foo|.bar" "e" "foo.^bar|")
@@ -467,7 +475,7 @@ bare cursor on that character: the two are the same selection."
 
 (hel-test-table motion-E
   ("|foo-bar baz" "E" "^foo-bar| baz")
-  ("foo-bar| baz" "E" "foo-bar^ baz|")
+  ("foo-bar| baz" "E" "foo-bar ^baz|")
   ("|a.b c.d e" "2E" "^a.b c.d| e")
   ("foo|\nbar-baz qux" "E" "foo\n^bar-baz| qux"))
 
@@ -537,9 +545,19 @@ bare cursor on that character: the two are the same selection."
 ;;; Motions: line ends and buffer ends
 
 (hel-test-table motion-line-ends
-  ("  foo b|ar\nbaz" "gh" "|  foo b^ar\nbaz")
+  ;; Inside a word the cursor character goes into the selection.
+  ("  foo b|ar\nbaz" "gh" "|  foo ba^r\nbaz")
   ("  foo b|ar\nbaz" "gl" "  foo b^ar|\nbaz")
-  ("  foo b|ar\nbaz" "gs" "  |foo b^ar\nbaz")
+  ("  foo b|ar\nbaz" "gs" "  |foo ba^r\nbaz")
+  ;; A word that ends right past the cursor character keeps it.
+  ("  foo |bar\nbaz" "gh" "|  foo ^bar\nbaz")
+  ("  foo ba|r x\nbaz" "gl" "  foo bar^ x|\nbaz")
+  ;; A forward selection gives what a bare cursor on its head gives.
+  ("  foo ^ba|r\nbaz" "gh" "|  foo ba^r\nbaz")
+  ("^xx| abc yy" "gl" "xx^ abc yy|")
+  ("x|x abc yy" "gl" "xx^ abc yy|")
+  ;; On the last character of the line the cursor stays.
+  ("foo ba|r\nbaz" "gl" "foo ba|r\nbaz")
   ("|  foo" "gs" "^  |foo")
   ;; Already at the target there is no selection.
   ("|foo" "gh" "|foo")
@@ -785,8 +803,8 @@ cursor character, so extending goes on."
   ;; collapses the selection onto its head character, as `;' does.
   ("|foo bar" "vll<escape>" "^foo| bar")
   ("|foo bar" "vll<escape><escape>" "fo|o bar")
-  ;; As in Helix, `w' starts at the head character of the selection.
-  ("|foo bar baz" "vll<escape>w" "fo^o |bar baz"))
+  ;; `w' starts at the head character of the selection.
+  ("|foo bar baz" "vl<escape>w" "f^oo |bar baz"))
 
 (hel-test-table select-collapse
   ("^foo| bar" ";" "fo|o bar")
@@ -1899,7 +1917,7 @@ a bare cursor disappears."
   ("|foo\nbar\nbaz" "Cj" "foo\n¦bar\n|baz")
   ("|foo a\nbar b" "Cw" "¬foo ¦a\n^bar |b")
   ("|foo a\nbar b" "Ce" "¬foo¦ a\n^bar| b")
-  ("fo|o a\nbar b" "Cgh" "¦fo¬o a\n|ba^r b")
+  ("fo|o a\nbar b" "Cgh" "¦foo¬ a\n|bar^ b")
   ("fo|o\nbar" "Cgl" "fo¦o\nba|r")
   ("|foo\nbar\nbaz\n" "Cx" "¦foo\n|¬bar\n^baz\n")
   ("|foo bar\nfoo bar" "Cfa" "¬foo ba¦r\n^foo ba|r")
@@ -2492,7 +2510,7 @@ In this test the question is the guard of the test setup, which fails on it."
 ;;; Counts and the universal argument
 
 (hel-test-table count
-  ("|a b c d e f" "M-uw" "^a b c d |e f")
+  ("|aa b c d e f" "M-uw" "^aa b c d |e f")
   ("|abcdef" "M-ul" "abcd|ef")
   ("|abcdefghijkl" "12l" "abcdefghijkl|")
   ;; `d' and `D' act on the selection and take no count.
@@ -2502,7 +2520,7 @@ In this test the question is the guard of the test setup, which fails on it."
   ("a\nb\nc\n|d\n" "2k" "a\n|b\nc\nd\n")
   ("|a b a b a" "/a RET 2n" "a b a b |a")
   ("|a\nb\nc\nd\n" "2C" "¦a\n¦b\n|c\nd\n")
-  ("|a b" "1w" "^a |b")
+  ("|aa b" "1w" "^aa |b")
   ;; Brackets take no count.
   ("(a) (b|) (c)" "2mi(" "(a) (|b) (c)")
   ;; A negative count reverses a character or a line motion.

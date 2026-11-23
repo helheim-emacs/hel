@@ -258,7 +258,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-beginning-of-line-command))
   (interactive (list hel-extend-selection))
-  (hel-move-to-pos (point) (hel-line-begin) extend))
+  (hel--select-to-line-pos #'hel-line-begin extend))
 
 ;; gs
 (hel-define-command hel-first-non-blank (&optional extend)
@@ -267,12 +267,13 @@ Use visual line when `visual-line-mode' is active."
   :multiple-cursors t
   :merge-selections t
   (interactive (list hel-extend-selection))
-  (hel-move-to-pos (point) (save-excursion
-                             (goto-char (hel-line-begin))
-                             (hel-skip-blanks 1)
-                             (backward-prefix-chars)
-                             (point))
-                   extend))
+  (hel--select-to-line-pos (lambda (pos)
+                             (save-excursion
+                               (goto-char (hel-line-begin pos))
+                               (hel-skip-blanks 1)
+                               (backward-prefix-chars)
+                               (point)))
+                           extend))
 
 ;; gl
 (hel-define-command hel-end-of-line-command (&optional extend)
@@ -282,8 +283,7 @@ Use visual line when `visual-line-mode' is active."
   :merge-selections t
   (declare (interactive-only hel-end-of-line-command))
   (interactive (list hel-extend-selection))
-  (let ((end (hel-line-end)))
-    (hel-move-to-pos (point) end extend)
+  (let ((end (hel--select-to-line-pos #'hel-line-end extend)))
     ;; "Stick" cursor to the end of line after moving to it. Vertical motions
     ;; right after "gl" will place point at the end of each line. A selection
     ;; of one character leaves point before its character, so the test is on
@@ -292,6 +292,33 @@ Use visual line when `visual-line-mode' is active."
                (save-excursion (goto-char end) (eolp)))
       (setq temporary-goal-column most-positive-fixnum
             this-command 'next-line))))
+
+(defun hel--select-to-line-pos (target-fun extend)
+  "Select from the head character of the selection to a place on its line.
+TARGET-FUN is a function that takes the position of the head character and
+returns the place. The selection takes the head character in, because the cursor
+stands on it, unless a word ends right past it on the way to the place: then
+the character stays with its word and the selection starts past it. A selection
+that would be empty keeps the head character, so the cursor does not leave it.
+With EXTEND, extend the selection as `hel-move-to-pos' does. Return the place."
+  (-let* ((head (hel-selection-head (hel-selection)))
+          (to   (funcall target-fun head))
+          (dir  (if (< head to) 1 -1))
+          ((head-range &as begin . end) (hel-char-range head))
+          (near (if (< 0 dir) begin end))
+          (far  (if (< 0 dir) end begin))
+          (producer (hel-thing-producer 'word head))
+          (from (if (and (/= far to)
+                         ;; The motion over words to either edge stops right
+                         ;; past the head character.
+                         (or (equal (hel-thing-motion-range 'word producer near dir :begin nil)
+                                    head-range)
+                             (equal (hel-thing-motion-range 'word producer near dir :end nil)
+                                    head-range)))
+                    far
+                  near)))
+    (hel-move-to-pos from to extend)
+    to))
 
 ;; mm
 (hel-define-command hel-jump-to-match-item (&optional extend)

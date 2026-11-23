@@ -218,17 +218,24 @@ moving.
 - =mm= moves the cursor character from a bracket to its match, and from
   inside a pair to the closing bracket, as in Helix. When extending, the
   head character moves and the anchor character stays, as with =h= and =l=.
-- Two levels write the selection. Two primitives store it:
-  ~hel-select~ stores a selection value, an active region from a range and
-  a direction, or a bare cursor for one character, and ~hel-set-cursor~
-  stores a bare cursor from point. Two motions decide where the cursor goes
-  and end with a primitive.
-  ~hel-move-onto-char~ goes to a character, for =h=, =l= and =mm=, and
-  computes the direction itself. ~hel-move-to-pos~ goes to a position, for
-  every other motion: it selects the text that the motion passed over, or
-  leaves a bare cursor when it has no start, as the jumps =gg=, =G= and the
-  mark ring do. The two kinds differ when extending: a motion to
-  a character keeps the anchor character, see below.
+- Two levels write the selection. Two primitives store it: ~hel-select~
+  stores a selection value, an active region from a range and a direction,
+  or a bare cursor for one character, and ~hel-set-cursor~ stores a bare
+  cursor from point. Two motions decide where the cursor goes and end with
+  a primitive.  ~hel-move-onto-char~ goes to a character, for =h=, =l= and
+  =mm=, and computes the direction itself. ~hel-move-to-pos~ goes to a
+  position, for every other motion: it selects the text that the motion
+  passed over, or leaves a bare cursor when it has no start, as the jumps
+  =gg=, =G= and the mark ring do. A motion that passes over text starts at
+  the head character, never at point, so a bare cursor and a forward
+  selection with the same head character give the same result. The
+  selection takes the head character in, unless a word or a gap ends right
+  past it on the way, see
+  [[*Moving to the edge of an object][Moving to the edge of an object]]:
+  =gh= on the =a= of =bar= selects =ba= with the text before it, and =gl= on its =r= selects the text after it. A
+  selection that would be empty keeps the head character. The two kinds
+  differ when extending: a motion to a character keeps the anchor
+  character, see below.
 - Emacs commands that read the text before point, such as
   =eval-last-sexp= and =pp-eval-last-sexp=, are written for a bar between
   characters. In Normal state they see point at the end of the selection,
@@ -1285,25 +1292,32 @@ Then the driver applies the same rules to every producer:
 
 =]= and =[= select from the cursor to an edge of an object. The motion
 starts at the head character of the selection, which for a bare cursor is
-the cursor character. It counts as passed, as in Helix: the selection
-takes it in, so =b= on the last letter of a word selects the whole word,
-and =w= after =e= on =foo bar= selects =o =. The anchor of a selection
-plays no part. A count adds the steps: the selection runs from the head
-character to the edge of the COUNT-th object, so =2w= selects two words.
-Helix starts a new selection on each step, so its =2w= selects only the
-second word. When the head character alone is a step of the motion, the
-motion goes on from its other edge and leaves it out: =w= on the space
-before a word selects the word, and =]f= on the newline that ends
-a function selects the next function. When no object lies ahead, the
-selection stays, so a motion toward the edge of the buffer from a cursor
-on that edge does nothing; a bare cursor on the last character selects
-that character, which looks the same. With =v= the motion starts at point
-and extends the selection. A selection of one character keeps its
-character, so the motion starts past it: on =-if-let=, =vw= selects
-=-if=. The tests of Helix for its word motions hold in
-Hel, except where a word differs: =_= ends a word in ~text-mode~. Blanks at the edge of the buffer are a step of
-their own, as in Helix: =b= on the first word of =    Jump= selects the
-four blanks, and =e= on the last word of =foo   = selects the three.
+the cursor character. It counts as passed: the selection takes it in, so
+=b= on the last letter of a word selects the whole word. The anchor of a
+selection plays no part. A count adds the steps: the selection runs from
+the head character to the edge of the COUNT-th object, so =2w= selects two
+words.  Helix starts a new selection on each step, so its =2w= selects
+only the second word. When an object or a gap ends right past the head
+character in the direction of the motion, the head character belongs to
+what lies behind it, and the motion goes on from its other edge and leaves
+it out.  So =w= on the space before a word selects the word, =w= after
+=e= on =foo   bar= selects only the blanks, =b= on the first letter of a word
+selects the word before it with the blank, and =]f= on the newline that
+ends a function selects the next function. Inside a word the user means
+the word, and at its edge the user means what lies past the edge. Helix
+leaves the head character out only when the target of the motion lies
+right past it, so its =w= after =e= takes the last letter in. When no
+object lies ahead, the selection stays, so a motion toward the edge of the
+buffer from a cursor on that edge does nothing; a bare cursor on the last
+character selects that character, which looks the same. With =v= the
+motion starts at point and extends the selection. A selection of one
+character keeps its character, so the motion starts past it: on =-if-let=,
+=vw= selects =-if=. The tests of Helix for its word motions hold in Hel,
+except where a word differs, =_= ends a word in ~text-mode~, and where the
+rule above leaves out the head character that Helix keeps. Blanks at the
+edge of the buffer are a step of their own, as in Helix: =b= on the first
+word of =    Jump= selects the four blanks, and =e= on the last word of
+=foo   = selects the three.
 
 
 - *Inside an object*, =]f= selects to the end of the innermost object that

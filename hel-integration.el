@@ -769,10 +769,12 @@ field widgets (like `Custom-mode' or `notmuch-hello-mode')."
   :multiple-cursors t
   :merge-selections t
   (interactive (list hel-extend-selection))
-  (hel-move-to-pos (point) (save-excursion
-                             (widget-end-of-line)
-                             (point))
-                   extend))
+  (hel--select-to-line-pos (lambda (pos)
+                             (save-excursion
+                               (goto-char pos)
+                               (widget-end-of-line)
+                               (point)))
+                           extend))
 
 ;;;; Xref
 

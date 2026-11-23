@@ -562,10 +562,12 @@ A negative COUNT goes backward. EDGE and SKIP-GAP? are as in
 `hel-thing-motion-range'.
 
 The motion starts at the head character of the selection, the
-character under the cursor, which counts as passed, as in Helix: the
-selection takes it in.  When the head character alone is a step of the
-motion, the motion goes on from its other edge and leaves it out, so
-`w' on the space before a word selects that word.
+character under the cursor, which counts as passed: the selection
+takes it in.  When an edge of a THING lies right past the head
+character in the direction of the motion, the head character belongs to
+what lies behind it: the motion goes on from its other edge and leaves
+it out. So `w' on the space before a word selects that word, and `w' on
+the last letter of a word selects only the blanks after it.
 
 With EXTEND, extend the selection instead of replacing it: its anchor
 stays, and the motion starts from its other end. A selection of one
@@ -574,51 +576,56 @@ and the motion starts past it. Go on to the next edge when the motion
 would stop on the anchor of the selection, where the selection would be
 empty. When no thing exists in the direction, the selection stays as
 it is."
-  (let* ((selection (hel-selection))
+  (let* ((dir (hel-sign count))
+         (selection (hel-selection))
          (producer (hel-thing-producer thing (hel-selection-head selection))))
-    (cl-flet ((reach (pos count)
+    (cl-flet ((motion (pos count)
                 ;; The range in the order of the motion: (START . END).
                 (-when-let ((begin . end)
                             (hel-thing-motion-range thing producer pos count
                                                     edge skip-gap?))
                   (if (< 0 count) (cons begin end) (cons end begin)))))
-      (let ((anchor (and extend
-                         (hel-selection-anchor selection (hel-sign count)))))
-        (-when-let* (((start . end)
-                      (if extend
-                          (reach (-let [((begin . end)) selection]
-                                   (if (= anchor begin) end begin))
-                                 count)
-                        ;; NEAR and FAR are the edges of the head character
-                        ;; behind and ahead of the motion.
-                        (-let* (((begin . end) (-> (hel-selection-head selection)
-                                                   (hel-char-range)))
-                                (near (if (< 0 count) begin end))
-                                (far  (if (< 0 count) end begin))
-                                (step (reach near (hel-sign count))))
-                          (cond ((= (point) (if (< count 0)
-                                                (point-min)
-                                              (point-max)))
-                                 ;; Nothing lies ahead of a cursor at the edge
-                                 ;; of the buffer.
-                                 nil)
-                                ((and step (/= near far) (eql (cdr step) far))
-                                 ;; At the edge of the buffer the motion from
-                                 ;; FAR gives an empty range. Then a bare
-                                 ;; cursor selects its character, and
-                                 ;; a selection stays.
-                                 (-let [(start . end) (reach far count)]
-                                   (cond ((and start (/= start end))
-                                          (cons start end))
-                                         ((hel-bare-cursor-p selection) step))))
-                                ((= 1 (abs count)) step)
-                                (t (reach near count))))))
-                     ((start . end) (if (eql end anchor)
-                                        (reach end (hel-sign count))
-                                      (cons start end))))
-          (when (hel-thing-jump-p thing) (hel-push-point))
-          (hel-move-to-pos start end extend)
-          (hel-reveal-point-when-on-top))))))
+      (-when-let
+          ((start . end)
+           (if extend
+               (-let* ((anchor (hel-selection-anchor selection dir))
+                       ((begin . end) (hel-selection-bounds selection))
+                       (range (motion (if (= anchor begin) end begin)
+                                      count)))
+                 ;; Go on past the anchor, where the selection would be empty.
+                 (if (eql (cdr range) anchor)
+                     (motion anchor dir)
+                   range))
+             ;; NEAR and FAR are the edges of the head character
+             ;; behind and ahead of the motion.
+             (-let* (((begin . end) (-> (hel-selection-head selection)
+                                        (hel-char-range)))
+                     (near (if (< 0 dir) begin end))
+                     (far  (if (< 0 dir) end begin))
+                     (step (motion near dir)))
+               (cond ((and step (/= near far)
+                           (or (eql (cdr step) far)
+                               ;; A motion that skips the gap leaves out a head
+                               ;; character in the gap by itself, and STEP finds
+                               ;; one at the edge of an object.
+                               (and (not skip-gap?)
+                                    (equal (cons begin end)
+                                           (hel-thing-motion-range
+                                            thing producer near dir
+                                            (if (eq edge :begin) :end :begin)
+                                            nil)))))
+                      ;; At the edge of the buffer the motion from FAR gives an
+                      ;; empty range. Then a bare cursor selects its character,
+                      ;; and a selection stays.
+                      (-let [(start . end) (motion far count)]
+                        (cond ((and start (/= start end))
+                               (cons start end))
+                              ((hel-bare-cursor-p selection) step))))
+                     ((= 1 (abs count)) step)
+                     (t (motion near count))))))
+        (when (hel-thing-jump-p thing) (hel-push-point))
+        (hel-move-to-pos start end extend)
+        (hel-reveal-point-when-on-top)))))
 
 ;;; Producer
 

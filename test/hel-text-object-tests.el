@@ -1103,8 +1103,8 @@ the word behind the fence."
 (ert-deftest hel-word-motion-steps-over-fences-in-a-row ()
   "Fences in a row count as one: `w' steps over all of them at once."
   (should (equal (hel-test--selection-steps
-                  #'emacs-lisp-mode (hel-test-mark "x a)) ((b c" "x") "w")
-                 '("x " "a" "b " "c"))))
+                  #'emacs-lisp-mode (hel-test-mark "xy a)) ((b c" "xy") "w")
+                 '("xy " "a" "b " "c"))))
 
 (ert-deftest hel-word-motion-steps-over-separators ()
   "A separator, such as `|' in a table row, is skipped with the blanks on
