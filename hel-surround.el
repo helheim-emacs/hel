@@ -141,16 +141,20 @@ The search does not pass BOUND. Return nil when no such delimiter exists."
       (while-let (((< 0 level))
                   (start (point))
                   (close-pos (hel--search-delimiter close dir bound regexp?)))
-        (let ((open-pos (progn (goto-char start)
-                               (hel--search-delimiter open dir bound regexp?))))
-          ;; The search for CLOSE runs last, so the match data describe it
-          ;; whenever it is the nearer match.
+        (let* ((close-match (match-data))
+               ;; An OPEN beyond CLOSE does not count, so the search for it
+               ;; stops at CLOSE.
+               (open-pos (progn (goto-char start)
+                                (hel--search-delimiter open dir close-pos
+                                                       regexp?))))
           (if (and open-pos
-                   (< (abs (- start open-pos)) (abs (- start close-pos))))
+                   (< (hel-distance start open-pos)
+                      (hel-distance start close-pos)))
               (progn (cl-incf level)
                      (goto-char open-pos))
-            (goto-char start)
-            (hel--search-delimiter close dir bound regexp?)
+            ;; The caller reads the match data of the last CLOSE.
+            (set-match-data close-match)
+            (goto-char close-pos)
             (cl-decf level))))
       (when (zerop level)
         (point)))))
@@ -185,17 +189,16 @@ RIGHT to differ."
 Inside LEFT, POS moves to its start, and inside RIGHT to its end. LEFT
 and RIGHT are plain text. Return POS when no delimiter holds it."
   (cl-flet ((occurrence-start (string)
-              (cl-loop for start from (max (point-min) (- pos (length string) -1))
-                       below pos
-                       when (and (<= (+ start (length string)) (point-max))
-                                 (string-equal string (buffer-substring-no-properties
-                                                       start (+ start (length string)))))
-                       return start)))
-    (if-let* ((start (occurrence-start left)))
-        start
-      (if-let* ((start (occurrence-start right)))
-          (+ start (length right))
-        pos))))
+              (save-excursion
+                (->> (number-sequence (max (point-min)
+                                           (- pos (length string) -1))
+                                      (1- pos))
+                     (-find (lambda (start)
+                              (goto-char start)
+                              (hel-looking-at string)))))))
+    (or (occurrence-start left)
+        (-some-> (occurrence-start right) (+ (length right)))
+        pos)))
 
 (defun hel--delimited-pair-at (left right pos limits regexp? balanced?)
   "Return the pair of LEFT and RIGHT at POS, or nil.
@@ -276,8 +279,7 @@ does."
 (defun hel-syntax-pair-source (open close)
   "Return a source of the brackets OPEN and CLOSE, two characters.
 A source is a function of a position that returns a producer."
-  (let ((producer (hel-syntax-pair-producer-create open close)))
-    (lambda (_pos) producer)))
+  (-const (hel-syntax-pair-producer-create open close)))
 
 (defun hel--pair-syntax-table (open close)
   "Return a syntax table in which OPEN and CLOSE are a pair of brackets."
@@ -360,8 +362,7 @@ places."
 (defun hel-string-pair-source (mark)
   "Return a source of the text between two quote marks MARK.
 A source is a function of a position that returns a producer."
-  (let ((producer (hel-string-pair-producer-create mark)))
-    (lambda (_pos) producer)))
+  (-const (hel-string-pair-producer-create mark)))
 
 (defun hel--string-at (pos)
   "Return the bounds of the string of the major mode at POS, or nil.
@@ -466,17 +467,16 @@ position. Elsewhere, as in a comment, the next source of the key applies."
   "Return the pair of the string NODE, or nil when MARK does not open it.
 Each delimiter is the child of NODE at that edge of NODE. When no child
 lies at the edge, the delimiter is one character."
-  (let* ((begin (treesit-node-start node))
-         (end   (treesit-node-end node))
-         (count (treesit-node-child-count node))
-         (first (when (< 1 count) (treesit-node-child node 0)))
-         (last  (when (< 1 count) (treesit-node-child node (1- count))))
-         (open-end (if (and first (= begin (treesit-node-start first)))
-                       (treesit-node-end first)
-                     (1+ begin)))
-         (close-begin (if (and last (= end (treesit-node-end last)))
-                          (treesit-node-start last)
-                        (1- end))))
+  (-let* (((begin . end) (hel-treesit-node-bounds node))
+          (count (treesit-node-child-count node))
+          (first (when (< 1 count) (treesit-node-child node 0)))
+          (last  (when (< 1 count) (treesit-node-child node (1- count))))
+          (open-end (if (and first (= begin (treesit-node-start first)))
+                        (treesit-node-end first)
+                      (1+ begin)))
+          (close-begin (if (and last (= end (treesit-node-end last)))
+                           (treesit-node-start last)
+                         (1- end))))
     (when (and (<= open-end close-begin)
                (string-search (string mark)
                               (buffer-substring-no-properties begin open-end)))
@@ -519,14 +519,12 @@ that the search stays in, or nil for the whole buffer."))
   "Return a source of the text between the strings LEFT and RIGHT.
 A source is a function of a position that returns a producer.
 SLOTS are the other slots of `hel-delimiter-pair-producer', as keywords."
-  (let ((producer (apply #'hel-delimiter-pair-producer-create
-                         :left left :right right slots)))
-    (lambda (_pos) producer)))
+  (-const (apply #'hel-delimiter-pair-producer-create
+                :left left :right right slots)))
 
 (defun hel--delimiter-pair-limits (producer pos)
   "Return the bounds that the search of PRODUCER from POS stays in."
-  (when-let* ((limits (hel-delimiter-pair-producer-limits producer)))
-    (funcall limits pos)))
+  (-some-> (hel-delimiter-pair-producer-limits producer) (funcall pos)))
 
 (cl-defmethod hel-pair-at ((producer hel-delimiter-pair-producer) pos)
   (hel--delimited-pair-at (hel-delimiter-pair-producer-left producer)
@@ -613,8 +611,7 @@ or nil."))
   "Return a source of the pairs that FUNCTION finds.
 A source is a function of a position that returns a producer.
 FUNCTION is the slot of `hel-function-pair-producer'."
-  (let ((producer (hel-function-pair-producer-create function)))
-    (lambda (_pos) producer)))
+  (-const (hel-function-pair-producer-create function)))
 
 (cl-defmethod hel-pair-at ((producer hel-function-pair-producer) pos)
   (save-excursion
@@ -854,36 +851,28 @@ is. An empty string deletes its delimiter."
 - A delimiter that would leave blanks at the end of its line takes them
   too.
 PADDING is that of `hel-surround-delimiters'."
-  (save-excursion
-    (cl-flet ((after-blanks (pos dir)
-                (goto-char pos)
-                (hel-skip-blanks dir)
-                (point))
-              (alone-p (begin end)
-                (and (progn (goto-char begin) (hel-skip-blanks -1) (bolp))
-                     (progn (goto-char end) (hel-skip-blanks 1) (eolp)))))
-      (-let (((open-begin open-end close-begin close-end)
-              (list (hel-pair-open-begin pair) (hel-pair-open-end pair)
-                    (hel-pair-close-begin pair) (hel-pair-close-end pair))))
-        (cond ((alone-p open-begin open-end)
-               (setq open-begin (line-beginning-position)
-                     open-end (min (point-max) (1+ (line-end-position)))))
-              (t
-               (when (eq padding t)
-                 (setq open-end (min (after-blanks open-end 1) close-begin)))
-               (when (progn (goto-char open-end) (eolp))
-                 (setq open-begin (after-blanks open-begin -1)))))
-        (cond ((alone-p close-begin close-end)
-               (setq close-begin (line-beginning-position)
-                     close-end (min (point-max) (1+ (line-end-position)))))
-              (t
-               (when (eq padding t)
-                 (setq close-begin (max (after-blanks close-begin -1) open-end)))
-               (let ((line-rest (after-blanks close-end 1)))
-                 (when (eolp)
-                   (setq close-begin (max (after-blanks close-begin -1) open-end)
-                         close-end line-rest)))))
-        (hel-pair-create open-begin open-end close-begin close-end)))))
+  (-let (((open-begin open-end close-begin close-end)
+          (list (hel-pair-open-begin pair) (hel-pair-open-end pair)
+                (hel-pair-close-begin pair) (hel-pair-close-end pair))))
+    (cl-flet ((eol-p (pos) (save-excursion (goto-char pos) (eolp))))
+      (if (hel-only-text-on-lines-p (cons open-begin open-end))
+          (-setq (open-begin . open-end)
+            (hel-line-bounds (cons open-begin open-end)))
+        (when (eq padding t)
+          (setq open-end (min (hel-after-blanks open-end 1) close-begin)))
+        (when (eol-p open-end)
+          (setq open-begin (hel-after-blanks open-begin -1))))
+      (if (hel-only-text-on-lines-p (cons close-begin close-end))
+          (-setq (close-begin . close-end)
+            (hel-line-bounds (cons close-begin close-end)))
+        (let* ((line-rest (hel-after-blanks close-end 1))
+               (eol? (eol-p line-rest)))
+          (when (or (eq padding t) eol?)
+            (setq close-begin
+                  (max (hel-after-blanks close-begin -1) open-end)))
+          (when eol?
+            (setq close-end line-rest)))))
+    (hel-pair-create open-begin open-end close-begin close-end)))
 
 (defun hel--pair-on-own-lines-p (pair)
   "Return non-nil if a delimiter of PAIR covers whole lines."
