@@ -523,7 +523,7 @@ KIND is:
 - `:inner' for what `mi' selects;
 - `:around' for what `ma' selects."
   (let* ((head (-some-> (hel-trimmed-selection) (hel-selection-head)))
-         (producer (hel--thing-producer-or-error thing head)))
+         (producer (hel-thing-producer thing head)))
     (hel--sync-selection-history)
     (-let* ((dir (hel-sign count))
             (before (hel--selection-entry))
@@ -575,8 +575,7 @@ would stop on the anchor of the selection, where the selection would be
 empty. When no thing exists in the direction, the selection stays as
 it is."
   (let* ((selection (hel-selection))
-         (producer (hel--thing-producer-or-error
-                    thing (hel-selection-head selection))))
+         (producer (hel-thing-producer thing (hel-selection-head selection))))
     (cl-flet ((reach (pos count)
                 ;; The range in the order of the motion: (START . END).
                 (-when-let ((begin . end)
@@ -621,22 +620,20 @@ it is."
           (hel-move-to-pos start end extend)
           (hel-reveal-point-when-on-top))))))
 
-;;; Producers
+;;; Producer
 
 (defun hel-thing-producer (thing pos)
-  "Return the producer of THING for a search from POS, or nil.
-The producer comes from the first source in the property `hel-thing-sources'
-of THING that returns one for POS. POS is the position that the search
-starts from, so the source decides at the same place as the search: in
-a buffer with embedded languages, in the same language."
-  (-some (lambda (source) (funcall source pos))
-         (get thing 'hel-thing-sources)))
-
-(defun hel--thing-producer-or-error (thing pos)
   "Return the producer of THING for a search from POS.
-Signal a user error when no source of THING applies at POS, or when POS
-is nil because the command has no place to search from."
-  (or (and pos (hel-thing-producer thing pos))
+The producer comes from the first source in the property `hel-thing-sources' of
+THING that returns one for POS. POS is the position that the search starts from,
+so the source decides at the same place as the search: in a buffer with embedded
+languages, in the same language.
+
+Signal a user error when no source of THING applies at POS, or when POS is nil
+because the command has no place to search from."
+  (or (if pos
+          (->> (get thing 'hel-thing-sources)
+               (-some (lambda (source) (funcall source pos)))))
       (user-error "No %s here" thing)))
 
 ;;;; The tree-sitter query producer
