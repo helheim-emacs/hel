@@ -599,6 +599,39 @@ inside the line keeps the face alone.  So do the secondary cursors."
       (should (equal (overlay-get (hel-test-add-secondary-cursor 4) 'display)
                      " ")))))
 
+(ert-deftest hel-cursor-box-on-a-char-in-the-fringe ()
+  "A character that a `display' spec draws in the fringe, as the prefix
+of a line in `diff-mode', has no cell in the text.  The next character
+gets a hollow box in the colour of the face of the box, on an empty line
+the cell after it.  Point stays on the hidden character.  So do the
+secondary cursors and the box in another window."
+  (hel-test-with #'fundamental-mode "|+x\n+\nc"
+    (-each '(1 4)
+      (lambda (pos)
+        (put-text-property pos (1+ pos) 'display '(left-fringe right-arrow))))
+    (cl-flet ((hollow (face)
+                `(:box (:line-width (-1 . -1)
+                        :color ,(face-background face nil t)))))
+      (let ((first (selected-window))
+            (main (hollow 'hel-normal-state-main-cursor)))
+        (hel-test-redisplay)
+        (should (= (point) 1))
+        (should (equal (hel-test-drawn-cursor-char) `(2 3 ,main nil)))
+        (goto-char 4)
+        (hel-test-redisplay)
+        (should (equal (hel-test-drawn-cursor-char) `(5 5 nil ,main)))
+        (goto-char 2)
+        (hel-test-redisplay)
+        (should (equal (hel-test-drawn-cursor-char)
+                       '(2 3 hel-normal-state-main-cursor nil)))
+        (should (equal (hel-test--drawing (hel-test-add-secondary-cursor 1))
+                       `(2 3 ,(hollow 'hel-normal-state-secondary-cursor) nil)))
+        (goto-char 1)
+        (select-window (split-window))
+        (hel-test-redisplay)
+        (should (equal (hel-test-drawn-cursor-char first)
+                       `(2 3 ,(hollow 'hel-other-window-cursor) nil)))))))
+
 (ert-deftest hel-cursor-box-of-a-deleted-window-goes ()
   "A change of the window configuration deletes the boxes of deleted
 windows, and a new window draws a box of its own."

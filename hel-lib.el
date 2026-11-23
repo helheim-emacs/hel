@@ -39,14 +39,14 @@
 ;;; Macros
 
 (cl-defmacro hel-motion-loop ((dir count) &rest body)
-  "Loop a certain number of times.
-Evaluate BODY repeatedly COUNT times with DIR bound to 1 or -1, depending on
-the sign of COUNT. Each iteration must move point; if point does not change,
-the loop immediately quits. Emacs motions return different values or nothing,
-so point is the one reliable sign that a step worked.
+  "Run BODY COUNT times, and stop early when BODY leaves point in place.
+DIR is bound to 1 or -1, depending on the sign of COUNT. Each iteration must
+move point; if point does not change, the loop immediately quits. Emacs motions
+return different values or nothing, so point is the one reliable sign that
+a step worked.
 
-Returns the count of steps left to move.  If moving forward, that is
-COUNT minus number of steps moved; if backward, COUNT plus number moved."
+Return the number of steps that were not made, with the sign of COUNT: 0 when
+every step was made."
   (declare (indent 1)
            (debug ((symbolp form) body)))
   (macroexp-let2 symbolp n count
@@ -57,9 +57,9 @@ COUNT minus number of steps moved; if backward, COUNT plus number moved."
        ,n)))
 
 (defmacro hel-recenter-point-on-jump (&rest body)
-  "Recenter point on jumps during BODY evaluating if it lands out of the screen.
-This macro calls `redisplay' internally and should be used with care to avoid
-flickering."
+  "Evaluate BODY, and recenter the window if point is off screen after it.
+This macro calls `redisplay' internally and should be used with care to
+avoid flickering."
   (declare (indent 0) (debug t))
   `(let ((scroll-conservatively 0))
      (prog1 (progn ,@body)
@@ -122,8 +122,9 @@ selection of an empty line stays a line selection."
     (bolp)))
 
 (defun hel-line-boundary-p (direction)
-  "If DIRECTION is negative number, checks for beginning of line,
-positive — end of line."
+  "Return non-nil if point is at the edge of its line in DIRECTION.
+The edge is the end of the line when DIRECTION is positive, and the
+beginning of the line when it is negative."
   (if (< direction 0) (bolp) (eolp)))
 
 (defsubst hel-sign (num)
@@ -141,11 +142,9 @@ positive — end of line."
   (max min-val (min val max-val)))
 
 (cl-defun hel-looking-at (string &optional (direction 1) regexp?)
-  "Return t if text directly after point toward the DIRECTION
-matches STRING.
-
-If REGEXP? is non-nil STRING will be searched as regexp pattern,
-otherwise it will be searched literally.
+  "Return non-nil if the text next to point in DIRECTION matches STRING.
+With DIRECTION 1 the text after point must match STRING, and with -1 the text
+before point. STRING is literal text, or a regexp when REGEXP? is non-nil.
 
 When REGEXP? is non-nil this function modifies the match data
 that `match-beginning', `match-end' and `match-data' access."
@@ -190,7 +189,8 @@ At the end of the buffer there is no character, and the range is empty."
 
 (defun hel-destructive-filter (predicate list &optional pointer)
   "Destructively remove elements in LIST that satisfy PREDICATE
-between start and POINTER.
+between start and POINTER. POINTER is a cons cell of LIST.
+Without POINTER, the whole LIST is checked.
 
 Returns the modified list, which may have a new starting element
 if removals occur at the beginning of the list, therefore, assign
@@ -213,8 +213,9 @@ the returned list to the original symbol like this:
     list))
 
 (defun hel-pcre-to-elisp (regexp)
-  "Convert PCRE REGEXP into Elisp one if Hel configured to use PCRE syntax.
-When REGEXP is invalid PCRE, show the error and return nil."
+  "Return REGEXP in Emacs syntax, when Hel reads regexps as PCRE.
+Hel reads them as PCRE when `hel-use-pcre-regex' is non-nil. Otherwise, return
+REGEXP as it is. When REGEXP is not valid PCRE, show the error and return nil."
   (if (and hel-use-pcre-regex
            (not (string-empty-p regexp)))
       (condition-case err
@@ -227,8 +228,10 @@ When REGEXP is invalid PCRE, show the error and return nil."
 
 (cl-defun hel-collect-positions (fun &optional (begin (window-start)) (end (window-end)))
   "Consecutively call FUN and collect point positions after each invocation.
-Finish as soon as point moves outside of BEGIN END buffer positions.
-FUN on each invocation should move point."
+Each call must move point; the calls stop when point does not change, when FUN
+signals an error, or when point moves outside BEGIN..END, the visible part of
+the window by default. Each position comes as (POS . WINDOW), where WINDOW shows
+the buffer. Point stays where it is."
   (save-excursion
     (cl-loop with win = (get-buffer-window)
              for old-point = (point)
@@ -254,7 +257,8 @@ FUN on each invocation should move point."
                      (upcase char))))))
 
 (defun hel-letters-are-self-insert-p ()
-  "Return t if any of the a-z keys are bound to self-insert command."
+  "Return non-nil if one of the a-z keys a self-insert command.
+A self-insert commands are those whose name contains \"self-insert\"."
   (-any (lambda (key)
           (and-let* ((cmd (key-binding key))
                      ((symbolp cmd))
@@ -313,7 +317,8 @@ REST contains all other elements."
         (delete-char 1)))))
 
 (cl-defun hel-read-char-and-replace ((begin . end))
-  "Replace characters in the range BEGIN..END with an interactive entered one."
+  "Read a character, and replace each character in BEGIN..END with it.
+Newlines stay. The range is highlighted while Emacs waits for the key."
   (when (< begin end)
     (let ((overlay (-doto (make-overlay begin end nil t nil)
                      (overlay-put 'face 'region))))
@@ -543,13 +548,17 @@ which for a bare cursor is the character after point.  SELECTION is
       begin)))
 
 (defun hel-selection-anchor (selection dir)
-  "Return the anchor of SELECTION: the edge that stays in place when a motion
-in DIR extends the selection. DIR is the direction of the motion, 1 forward
-or -1 backward. The anchor is the edge opposite to point. A selection of at
-most one character, as at a bare cursor, has its anchor at the edge
-opposite to DIR, so the character stays in the selection whichever way the
-motion goes.
-SELECTION is ((BEGIN . END) DIRECTION), as `hel-selection' returns it."
+  "Return the edge of SELECTION that stays in place when a motion extends it.
+The anchor depends on whether the selection has a direction. A selection
+of two or more characters has one, and its anchor is the edge at the mark,
+opposite to point. A selection of one character has no direction, so its
+anchor is the edge opposite to DIR: BEGIN for a forward motion, END for
+a backward one. So the character stays in the selection whichever way the
+motion goes. The line selection of an empty line is such a selection too,
+although it is not a bare cursor.
+
+DIR is the direction of the motion: 1 forward, -1 backward.
+SELECTION has the form that `hel-selection' returns."
   (-let [((begin . end) side) selection]
     (cond ((<= (- end begin) 1) (if (< 0 dir) begin end))
           ((< 0 side) begin)

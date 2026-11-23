@@ -515,7 +515,11 @@ them selects it."
 ;; everything else with overlays: the box over a character in Normal state,
 ;; and the bar of a secondary cursor in Insert state. `hel--cursor-look'
 ;; decides both layers of a cursor, and `hel--paint-cursor' puts the shape
-;; that Hel draws on an overlay.
+;; that Hel draws on an overlay. The look never depends on the text at the
+;; cursor, so it is the same for a cursor anywhere in the buffer.
+;; `hel--paint-cursor' fits the shape to the text, where a face over the
+;; character cannot show: on a newline, on trailing whitespace, and on
+;; a character in the fringe.
 
 (defvar-local hel--cursor-hidden? nil
   "Whether the major mode of the current buffer hides the cursor.")
@@ -615,48 +619,65 @@ to nil, because the font can change between commands.")
 
 (defun hel--paint-cursor (overlay look selection)
   "Paint the OVERLAY of the cursor.
+A box covers the head character of SELECTION. When a `display' spec draws
+that character in the fringe, as the prefix of a line in `diff-mode', it
+has no cell in the text where a face could show. Then the next character
+gets a hollow box instead: point stays on the hidden character, and the
+next one is not selected.
+
 LOOK is a value of `hel--cursor-look'.
 SELECTION has the form ((BEGIN . END) DIRECTION), as `hel-selection' returns."
   (-let* (((&plist :shape :face) look)
+          (head (hel-selection-head selection))
+          (in-fringe? (and (eq shape 'box) (hel--char-in-fringe-p head)))
           ((begin . end)
            (if (eq shape 'box)
-               ;; The box covers the head character. A newline and the end
-               ;; of the buffer give an empty range, and `after-string' then
-               ;; draws the box as a space.
-               (let ((head (hel-selection-head selection)))
-                 (if (eq (char-after head) ?\n)
-                     (cons head head)
-                   (hel-char-range head)))
+               ;; A newline and the end of the buffer give an empty range,
+               ;; and `after-string' then draws the box as a space.
+               (let ((char (if in-fringe? (1+ head) head)))
+                 (if (eq (char-after char) ?\n)
+                     (cons char char)
+                   (hel-char-range char)))
              (let ((point (-let [((begin . end) dir) selection]
                             (if (eql dir 1) end begin))))
                (cons point point))))
           (box-on-char? (and (eq shape 'box) (/= begin end)))
-          (box-as-space? (and (eq shape 'box) (= begin end))))
+          (box-as-space? (and (eq shape 'box) (= begin end)))
+          (box-face (if in-fringe?
+                        `(:box (:line-width (-1 . -1)
+                                :color ,(face-background face nil t)))
+                      face)))
     (hel--move-overlay overlay begin end)
-    (hel--overlay-put overlay 'face (if box-on-char? face))
-    (hel--overlay-put
-     overlay 'display
-     ;; With `show-trailing-whitespace' on, Emacs paints trailing whitespace
-     ;; only with the face `trailing-whitespace', and the box disappears. Emacs
-     ;; does not use that face for a display string, so a box over a trailing
-     ;; space or tab shows the same character as a display string with FACE.
-     ;; A tab keeps its width.
-     (when (and box-on-char?
-                show-trailing-whitespace
-                (save-excursion
-                  (goto-char begin)
-                  (looking-at-p "[ \t]+$")))
-       (propertize (string (char-after begin)) 'face face)))
-    (hel--overlay-put
-     overlay 'before-string
-     (when (eq shape 'bar)
-       (unless hel--default-font-height
-         (setq hel--default-font-height (window-default-font-height)))
-       (propertize hel-bar-secondary-cursor
-                   'face `(,face (:height ,hel--default-font-height)))))
+    (hel--overlay-put overlay 'face (if box-on-char? box-face))
+    (hel--overlay-put overlay 'display
+                      ;; With `show-trailing-whitespace' on, Emacs paints
+                      ;; trailing whitespace only with the face `trailing-whitespace',
+                      ;; and the box disappears. Emacs does not use that face
+                      ;; for a display string, so a box over a trailing space or
+                      ;; tab shows the same character as a display string with
+                      ;; FACE. A tab keeps its width.
+                      (when (and box-on-char?
+                                 show-trailing-whitespace
+                                 (save-excursion
+                                   (goto-char begin)
+                                   (looking-at-p "[ \t]+$")))
+                        (propertize (string (char-after begin)) 'face box-face)))
+    (hel--overlay-put overlay 'before-string
+                      (when (eq shape 'bar)
+                        (unless hel--default-font-height
+                          (setq hel--default-font-height (window-default-font-height)))
+                        (propertize hel-bar-secondary-cursor
+                                    'face `(,face (:height ,hel--default-font-height)))))
     (hel--overlay-put overlay 'after-string
-                      (if box-as-space? (propertize " " 'face face 'cursor t)))
+                      (if box-as-space? (propertize " " 'face box-face 'cursor t)))
     overlay))
+
+(defun hel--char-in-fringe-p (pos)
+  "Return non-nil if Emacs draws the character at POS in a fringe.
+A `display' spec (left-fringe BITMAP FACE) or (right-fringe BITMAP FACE)
+does that."
+  (memq (car-safe (get-char-property pos 'display))
+        '(left-fringe right-fringe)))
 
 (defun hel--paint-region (overlay range)
   "Make OVERLAY paint RANGE as the region, and return OVERLAY.
