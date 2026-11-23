@@ -122,6 +122,15 @@ delimiters are the same text, and the second law does not apply."
       (push 'no-pairs failures))
     (nreverse failures)))
 
+(ert-deftest hel-surround-quotes-pair-up-from-the-paragraph ()
+  "Section \"Quotes\": in a buffer without defuns, the quotes pair up from
+the start of the paragraph, so the apostrophe of the first paragraph does
+not break the pair of the second."
+  (hel-surround-tests--check
+   '((text-mode "don't\n\nsay 'h|i' end" hel-mark-inner-single-quoted "hi")
+     (text-mode "don't\n\nsay 'hi|' end" hel-mark-a-single-quoted "'hi'")
+     (text-mode "say 'h|i' end" hel-mark-inner-single-quoted "hi"))))
+
 (ert-deftest hel-pair-producer-laws ()
   "Every producer keeps the laws of `hel-pair-at' and `hel-pair-parent'."
   (pcase-dolist (`(,mode ,text ,producer ,same-delimiters?)

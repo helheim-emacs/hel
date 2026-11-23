@@ -1606,10 +1606,13 @@ the cursor, so =ma"= then =mi"= selects the inside of the same string.
 A string of the major mode counts when the cursor is inside it, on a quote,
 or right after the closing quote. Where the mark is not a string quote, as
 ="= in ~text-mode~, the quotes pair up from the start of the defun, with the
-same three places for the cursor. Inside
-a comment, an Org table or a string of another mark, the search takes the
-nearest quote on each side, and a cursor on the opening quote or right
-after the closing one finds nothing.
+same three places for the cursor. In a buffer without defuns they pair up
+from the start of the paragraph. So a stray mark, such as an apostrophe in
+prose, breaks the pairs of its own paragraph only, and the cost of the
+search does not grow with the buffer. Inside a comment, an Org table or
+a string of another mark, the search takes the nearest quote on each side,
+and a cursor on the opening quote or right after the closing one finds
+nothing.
 
 With a parser, the query of the language finds the strings first
 (=@string=). The first child of a string node is its opening delimiter and

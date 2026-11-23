@@ -380,8 +380,11 @@ closing one. A string that starts at POS wins over one that ends there."
 
 (defun hel--quoted-pair-by-syntax (mark pos)
   "Return the pair of MARK at POS, with MARK treated as a string quote.
-The marks pair up from the start of the defun. POS is in the text
-between them, on the opening mark, or right after the closing one."
+The marks pair up from the start of the defun, or from the start of the
+paragraph in a buffer without defuns: there a stray mark, such as an
+apostrophe in prose, then breaks only its own paragraph. POS is in the
+text between the marks, on the opening mark, or right after the closing
+one."
   (save-excursion
     (let ((table (if (eq (char-syntax mark) ?\")
                      (syntax-table)
@@ -389,28 +392,31 @@ between them, on the opening mark, or right after the closing one."
                      (modify-syntax-entry mark "\"" table)
                      table))))
       (with-syntax-table table
-        (cl-flet ((state-at (pos)
-                    ;; `syntax-ppss' caches the states of the syntax table
-                    ;; of the buffer, so another table needs a parse of
-                    ;; its own.
-                    (goto-char pos)
-                    (beginning-of-defun)
-                    (parse-partial-sexp (point) pos))
-                  (string-from (begin)
+        (cl-flet ((string-from (begin)
                     (when-let* ((end (ignore-errors (scan-sexps begin 1))))
                       (cons begin end))))
-          (let ((state (state-at pos)))
+          ;; `syntax-ppss' caches the states of the syntax table of the
+          ;; buffer, so another table needs a parse of its own.
+          (let* ((start (progn (goto-char pos)
+                               (unless (beginning-of-defun)
+                                 (goto-char pos)
+                                 (backward-paragraph))
+                               (point)))
+                 (before (when (< start pos)
+                           (parse-partial-sexp start (1- pos))))
+                 (state (if before
+                            (parse-partial-sexp (1- pos) pos nil nil before)
+                          (parse-partial-sexp pos pos))))
             (-when-let ((begin . end)
                         (cond ((nth 3 state)
                                (string-from (nth 8 state)))
                               ((eq mark (char-after pos))
                                (string-from pos))
-                              ((eq mark (char-before pos))
-                               (let ((before (state-at (1- pos))))
-                                 (when-let* (((nth 3 before))
-                                             (string (string-from (nth 8 before)))
-                                             ((= pos (cdr string))))
-                                   string)))))
+                              ((and (eq mark (char-before pos))
+                                    (nth 3 before))
+                               (when-let* ((string (string-from (nth 8 before)))
+                                           ((= pos (cdr string))))
+                                 string))))
               (hel-pair-create begin (1+ begin) (1- end) end))))))))
 
 (cl-defmethod hel-pair-at ((producer hel-string-pair-producer) pos)
