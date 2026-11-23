@@ -829,10 +829,7 @@ order."
       (cl-loop for node = a then (treesit-node-parent node)
                while node
                do (puthash node t ancestors))
-      (cl-loop for node = b then (treesit-node-parent node)
-               while node
-               when (gethash node ancestors)
-               return node))))
+      (treesit-parent-until b (lambda (node) (gethash node ancestors)) t))))
 
 ;;;;; Queries
 
