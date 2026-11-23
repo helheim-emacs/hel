@@ -412,7 +412,7 @@ Both modes give the same answer."
       (goto-char 9)
       (should-not (hel-bolp)))))
 
-(ert-deftest hel-visual-lines-p-checks-both-edges ()
+(ert-deftest hel-visual-line-selection-p-checks-both-edges ()
   (hel-test-with #'fundamental-mode "one two three four|"
     (let ((transient-mark-mode t)
           (visual-line-mode t))

@@ -886,14 +886,18 @@ inserted. A read-only buffer and the minibuffer stay as they are."
         (save-excursion (goto-char pos) (insert ?\n) (point)))
     pos))
 
-(defun hel-visual-line-selection-p ()
-  "Return non-nil if the active region covers whole visual lines.
-Both ends of the region are at the start of a visual line.
-Without `visual-line-mode' the answer is always nil."
-  (and visual-line-mode
-       (use-region-p)
-       (= (region-beginning) (hel-line-begin (region-beginning)))
-       (= (region-end) (hel-line-begin (region-end)))))
+(cl-defun hel-visual-line-selection-p (&optional (selection (hel-selection)))
+  "Return non-nil if SELECTION consists of whole visual lines.
+Both bounds of the selection are at the start of a visual line.
+Without `visual-line-mode' the answer is always nil.
+
+SELECTION has the form that `hel-selection' returns, and is the
+selection by default."
+  (-let [(begin . end) (hel-selection-bounds selection)]
+    (and visual-line-mode
+         (not (hel-bare-cursor-p selection))
+         (= begin (hel-line-begin begin))
+         (= end (hel-line-begin end)))))
 
 ;;; Mark-ring
 

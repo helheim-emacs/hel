@@ -637,7 +637,7 @@ so does a bare cursor on an empty line."
     (-let [(selection &as (begin . end)) (hel-selection)]
       (cond ((not (hel-bare-cursor-p selection))
              (let ((logical-lines? (hel-line-selection-p selection))
-                   (visual-lines? (hel-visual-line-selection-p)))
+                   (visual-lines?  (hel-visual-line-selection-p selection)))
                (kill-region nil nil t)
                (cond (logical-lines?
                       (newline)
