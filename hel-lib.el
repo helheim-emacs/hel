@@ -182,6 +182,13 @@ that `match-beginning', `match-end' and `match-data' access."
   (and (<= (car outer) (car inner) (cdr inner) (cdr outer))
        (not (equal inner outer))))
 
+(defun hel-range-holds-char-p (range pos)
+  "Return non-nil if RANGE holds the character at POS.
+That is, POS lies in RANGE and is not its end. RANGE is a (BEGIN . END)
+pair."
+  (and (<= (car range) pos)
+       (< pos (cdr range))))
+
 (defun hel-char-range (pos)
   "Return the range of the character at POS.
 At the end of the buffer there is no character, and the range is empty."

@@ -261,13 +261,11 @@ gap. Of nested THINGs, the innermost one wins.
 The candidates come from `hel-thing-candidates', and the gaps from
 `hel-thing-after-gap'. PRODUCER finds the things."
   (cl-flet* ((body-holds-p (instance)
-               (and (<= (hel-thing-instance-begin instance) pos)
-                    (< pos (hel-thing-instance-end instance))))
+               (-> (hel-thing-instance-bounds instance)
+                   (hel-range-holds-char-p pos)))
              (gap-before-holds-p (instance)
                (let* ((begin (hel-thing-instance-begin instance))
-                      (header-begin (if (hel-thing-owns-header-comment-p thing)
-                                        (hel--header-comment-begin begin)
-                                      begin)))
+                      (header-begin (hel--header-comment-begin thing begin)))
                  (and (<= (hel-thing-after-gap thing producer header-begin -1)
                           pos)
                       (< pos begin))))
@@ -304,10 +302,8 @@ So deleting them leaves no separator and no blank line before a closing bracket.
 `hel-thing-owns-header-comment-p' answers if THING can have header comment,
 `hel-thing-after-gap' finds a gap, and `hel-thing-gap-end-allowed-p' decides
 where a gap may end. PRODUCER finds the things."
-  (let ((begin (if (hel-thing-owns-header-comment-p thing)
-                   (-> (hel-thing-instance-begin first)
-                       (hel--header-comment-begin))
-                 (hel-thing-instance-begin first)))
+  (let ((begin (->> (hel-thing-instance-begin first)
+                    (hel--header-comment-begin thing)))
         (end (hel-thing-instance-end last)))
     (cl-flet ((after-gap (pos dir)
                 (let ((edge (hel-thing-after-gap thing producer pos dir)))
@@ -474,15 +470,17 @@ near edge lies in the window. KEY maps an item to its (BEGIN . END) bounds."
                        (-min-by #'farther-p)))))
     result))
 
-(defun hel--header-comment-begin (pos)
-  "Return the start of the header comment of the thing that starts at POS.
-The header comment is the comment lines directly above the thing. It
-starts at the start of its first line when the thing starts at a line
+(defun hel--header-comment-begin (thing pos)
+  "Return the start of the header comment of the THING that starts at POS.
+The header comment is the comment lines directly above the THING. It
+starts at the start of its first line when the THING starts at a line
 start, and at the comment text otherwise, after the indentation. Return
-POS when the thing has no header comment."
+POS when the THING has no header comment, or when THING owns none, see
+`hel-thing-owns-header-comment-p'."
   (or (save-excursion
         (goto-char pos)
-        (when-let* ((line-begin (line-beginning-position))
+        (when-let* (((hel-thing-owns-header-comment-p thing))
+                    (line-begin (line-beginning-position))
                     ((< (point-min) line-begin))
                     ;; The thing is the first text on its line.
                     ((save-excursion (hel-skip-blanks -1) (bolp)))
@@ -680,8 +678,8 @@ trailing blanks, so the query covers the whitespace on both sides."
                  (min (point-max) (1+ (hel-after-whitespace pos 1))))))
     (-some->> things
       (-filter (lambda (instance)
-                 (and (<= (hel-thing-instance-begin instance) pos)
-                      (< pos (hel-thing-instance-end instance)))))
+                 (-> (hel-thing-instance-bounds instance)
+                     (hel-range-holds-char-p pos))))
       (-min-by (-on #'> (-compose #'hel-range-length
                                   #'hel-thing-instance-bounds))))))
 
@@ -731,8 +729,8 @@ between two top-level functions. The search stays inside the parent node."
                              (treesit-node-start parent)
                            (treesit-node-end parent))))
          (thing-bound (if (< dir 0)
-                          (-> (hel-thing-instance-begin instance)
-                              (hel--header-comment-begin))
+                          (->> (hel-thing-instance-begin instance)
+                               (hel--header-comment-begin thing))
                         (hel-thing-instance-end instance))))
     (hel--find-nearest
      (lambda (begin end)
@@ -756,8 +754,7 @@ two arguments. It lies between two things, and no query captures it."
                         ((not (treesit-node-check node 'named)))
                         (begin (treesit-node-start node))
                         (end   (treesit-node-end node))
-                        ((<= begin char))
-                        ((< char end))
+                        ((hel-range-holds-char-p (cons begin end) char))
                         ((save-excursion
                            (goto-char begin)
                            (skip-syntax-forward "." end)
@@ -977,8 +974,7 @@ before it."
                                (-some->> (hel-range (point) end)
                                  (hel-trim-whitespace-from-range)
                                  (hel-thing-apply-rules thing))))))
-              ((<= (car bounds) pos))
-              ((< pos (cdr bounds))))
+              ((hel-range-holds-char-p bounds pos)))
     (hel-thing-instance-create bounds)))
 
 (cl-defmethod hel-thing-next (thing (producer hel-motion-producer) pos dir)
@@ -1257,7 +1253,7 @@ The fence is a bracket at the edge of a run of non-blank characters, see
 `hel-word-motion-producer'."
   (when (hel--word-bracket-p (char-after pos))
     (-let [(_ body-begin body-end _) (hel--word-body-bounds pos)]
-      (unless (and (<= body-begin pos) (< pos body-end))
+      (unless (hel-range-holds-char-p (cons body-begin body-end) pos)
         (hel-thing-instance-create (->> (cons body-begin body-end)
                                         (hel-thing-apply-rules word-thing)))))))
 
@@ -1556,8 +1552,7 @@ finds the pieces."
                             (producer hel-comment-producer) pos)
   (when-let* ((bounds (-some->> (hel--comment-run-at producer pos)
                         (hel-thing-apply-rules 'comment)))
-              ((<= (car bounds) pos))
-              ((< pos (cdr bounds))))
+              ((hel-range-holds-char-p bounds pos)))
     (hel-thing-instance-create bounds)))
 
 (cl-defmethod hel-thing-sibling ((_thing (eql 'comment)) _producer _instance _dir)
@@ -1587,8 +1582,8 @@ finds the pieces."
   ;; The smallest comment node that holds the character at POS.
   (-some->> (hel-treesit--comment-nodes pos (cdr (hel-char-range pos)))
     (-filter (lambda (node)
-               (and (<= (treesit-node-start node) pos)
-                    (< pos (treesit-node-end node)))))
+               (-> (hel-treesit-node-bounds node)
+                   (hel-range-holds-char-p pos))))
     (-min-by (-on #'> #'hel-treesit-node-length))
     (hel-treesit-node-bounds)
     (hel-trim-whitespace-from-range)))
@@ -1765,8 +1760,8 @@ ones, so the first argument found is the innermost."
   (->> (hel--parens-around pos)
        (-some (lambda (open)
                 (-first (lambda (instance)
-                          (and (<= (hel-thing-instance-begin instance) pos)
-                               (< pos (hel-thing-instance-end instance))))
+                          (-> (hel-thing-instance-bounds instance)
+                              (hel-range-holds-char-p pos)))
                         (hel--paren-arguments thing open))))))
 
 (cl-defmethod hel-thing-next (thing (_producer hel-syntax-argument-producer)
