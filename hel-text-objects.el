@@ -521,6 +521,24 @@ becomes its first entry. RUN has the form described in
   (push (hel--selection-entry run)
         hel-selection-history))
 
+(defun hel--select-step (before range dir &optional run)
+  "Select RANGE as the next step of a chain of selections.
+Point goes to the end of RANGE that DIR gives, and the old point goes to
+the mark ring. `hel-selection-history' records the new selection with
+RUN, see `hel--record-selection'. BEFORE is the entry of the selection
+before the command, as `hel--selection-entry' returns it.
+
+When RANGE is selected already, nothing happens: a repeated key then
+looks for a larger object. A bare cursor is the exception. A range of
+one character is still selected, so that the history records it and
+a repeated key goes on from it."
+  (when (or (hel-bare-cursor-p (car before))
+            (not (equal range (hel-selection-bounds (car before)))))
+    (hel-push-point)
+    (hel-select range dir)
+    (hel--record-selection before run)
+    (hel-reveal-point-when-on-top)))
+
 (defun hel-mark-text-object (thing kind count)
   "Select COUNT THINGs at the cursor, inner or around as KIND says.
 When the previous call for THING and KIND made this selection, add COUNT
@@ -547,26 +565,18 @@ KIND is:
                  (hel--extend-things thing producer run-first run-last count)
                (when-let* ((instance (hel-thing-nearest thing producer head)))
                  (hel--extend-things thing producer instance nil (- count dir))))))
-      (when-let* ((first)
-                  (range (pcase kind
-                           (:inner
-                            (cons (hel-thing-instance-begin first)
-                                  (hel-thing-instance-end last)))
-                           (:around
-                            (hel-thing-around thing producer first last))))
-                  ;; Skip an object that is selected already. At a bare
-                  ;; cursor, a one-character object is still selected, so
-                  ;; the history records it and a repeated key goes on
-                  ;; from it.
-                  ((or (hel-bare-cursor-p (car before))
-                       (not (equal range
-                                   (hel-selection-bounds (car before)))))))
-        (hel-push-point)
-        (hel-select range (if (or extend? (/= 1 (abs count)))
+      (when first
+        (hel--select-step before
+                          (pcase kind
+                            (:inner
+                             (cons (hel-thing-instance-begin first)
+                                   (hel-thing-instance-end last)))
+                            (:around
+                             (hel-thing-around thing producer first last)))
+                          (if (or extend? (/= 1 (abs count)))
                               dir
-                            (hel-thing-selection-direction thing)))
-        (hel--record-selection before (list key first last))
-        (hel-reveal-point-when-on-top)))))
+                            (hel-thing-selection-direction thing))
+                          (list key first last))))))
 
 (defun hel-mark-to-thing-edge (thing count edge skip-gap? extend)
   "Select from the cursor to the EDGE of the COUNT-th THING.

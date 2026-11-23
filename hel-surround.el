@@ -165,24 +165,30 @@ The pair lies inside LIMITS, a (BEGIN . END) pair or nil for the whole
 buffer. With REGEXP? non-nil, LEFT and RIGHT are regexps. With BALANCED?
 non-nil, the nested pairs on the way are skipped; this needs LEFT and
 RIGHT to differ."
-  (cl-flet ((outward (dir)
-              (save-excursion
-                (goto-char pos)
-                (let ((bound (if (< dir 0) (car limits) (cdr limits))))
-                  (when-let* ((far (if balanced?
-                                       (hel--search-delimiter-balanced
-                                        left right dir bound regexp?)
-                                     (hel--search-delimiter
-                                      (if (< dir 0) left right)
-                                      dir bound regexp?))))
-                    (cons far (if regexp?
-                                  (if (< dir 0) (match-end 0) (match-beginning 0))
-                                (- far (* dir (length (if (< dir 0)
-                                                          left
-                                                        right)))))))))))
-    (-when-let* (((open-begin . open-end) (outward -1))
-                 ((close-end . close-begin) (outward 1)))
-      (hel-pair-create open-begin open-end close-begin close-end))))
+  (-when-let* (((open-begin . open-end)
+                (hel--pair-delimiter-bounds left right pos -1
+                                            limits regexp? balanced?))
+               ((close-begin . close-end)
+                (hel--pair-delimiter-bounds left right pos 1
+                                            limits regexp? balanced?)))
+    (hel-pair-create open-begin open-end close-begin close-end)))
+
+(defun hel--pair-delimiter-bounds (left right pos side limits regexp? balanced?)
+  "Return the bounds of the delimiter on SIDE of the pair around POS, or nil.
+On side -1 the delimiter is LEFT, and on side 1 it is RIGHT. The search
+goes from POS outward. The other arguments are those of
+`hel--delimited-pair-around'."
+  (save-excursion
+    (goto-char pos)
+    (let ((delimiter (if (< side 0) left right))
+          (bound (if (< side 0) (car limits) (cdr limits))))
+      (when-let* ((far (if balanced?
+                           (hel--search-delimiter-balanced
+                            left right side bound regexp?)
+                         (hel--search-delimiter delimiter side bound regexp?))))
+        (if regexp?
+            (cons (match-beginning 0) (match-end 0))
+          (hel-range far (- far (* side (length delimiter)))))))))
 
 (defun hel--outside-delimiter (pos left right)
   "Return POS moved out of the delimiter LEFT or RIGHT that holds it.
@@ -207,43 +213,28 @@ POS inside a delimiter counts as POS at that delimiter. Otherwise the
 pair lies around POS. The other arguments are those of
 `hel--delimited-pair-around'."
   (if (string-equal left right)
-      (setq balanced? nil)
+      (hel--delimited-pair-around left right pos limits regexp? nil)
     (unless regexp?
-      (setq pos (hel--outside-delimiter pos left right))))
-  (save-excursion
-    (goto-char pos)
-    (cond ((and (not (string-equal left right))
-                (hel-looking-at left 1 regexp?))
-           (let ((open-end (if regexp? (match-end 0) (+ pos (length left)))))
-             (goto-char open-end)
-             (when-let* ((close-end (if balanced?
-                                        (hel--search-delimiter-balanced
-                                         left right 1 (cdr limits) regexp?)
-                                      (hel--search-delimiter
-                                       right 1 (cdr limits) regexp?))))
-               (hel-pair-create pos open-end
-                                (if regexp?
+      (setq pos (hel--outside-delimiter pos left right)))
+    (save-excursion
+      (goto-char pos)
+      (cond ((hel-looking-at left 1 regexp?)
+             (let ((open-end (if regexp? (match-end 0) (+ pos (length left)))))
+               (-when-let ((close-begin . close-end)
+                           (hel--pair-delimiter-bounds left right open-end 1
+                                                       limits regexp? balanced?))
+                 (hel-pair-create pos open-end close-begin close-end))))
+            ((hel-looking-at right -1 regexp?)
+             (let ((close-begin (if regexp?
                                     (match-beginning 0)
-                                  (- close-end (length right)))
-                                close-end))))
-          ((and (not (string-equal left right))
-                (hel-looking-at right -1 regexp?))
-           (let ((close-begin (if regexp?
-                                  (match-beginning 0)
-                                (- pos (length right)))))
-             (goto-char close-begin)
-             (when-let* ((open-begin (if balanced?
-                                         (hel--search-delimiter-balanced
-                                          left right -1 (car limits) regexp?)
-                                       (hel--search-delimiter
-                                        left -1 (car limits) regexp?))))
-               (hel-pair-create open-begin
-                                (if regexp?
-                                    (match-end 0)
-                                  (+ open-begin (length left)))
-                                close-begin pos))))
-          (t
-           (hel--delimited-pair-around left right pos limits regexp? balanced?)))))
+                                  (- pos (length right)))))
+               (-when-let ((open-begin . open-end)
+                           (hel--pair-delimiter-bounds left right close-begin -1
+                                                       limits regexp? balanced?))
+                 (hel-pair-create open-begin open-end close-begin pos))))
+            (t
+             (hel--delimited-pair-around left right pos limits regexp?
+                                         balanced?))))))
 
 (defun hel--pair-search-limits (pos)
   "Return the bounds of the comment or the string at POS, or nil.
@@ -937,19 +928,8 @@ same string."
                    for parent = (hel-pair-parent producer pair)
                    while parent
                    do (setq pair parent)))
-        (when-let* ((pair)
-                    (range (side-bounds pair))
-                    ;; Skip a pair that is selected already. At a bare
-                    ;; cursor, a one-character pair text is still selected,
-                    ;; so the history records it and a repeated key grows
-                    ;; outward from it.
-                    ((or (hel-bare-cursor-p (car before))
-                         (not (equal range
-                                     (hel-selection-bounds (car before)))))))
-          (hel-push-point)
-          (hel-select range)
-          (hel--record-selection before)
-          (hel-reveal-point-when-on-top))))))
+        (when pair
+          (hel--select-step before (side-bounds pair) 1))))))
 
 ;;; .
 (provide 'hel-surround)
