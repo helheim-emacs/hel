@@ -137,6 +137,14 @@ The WORD leaves out the punctuation around itself."
   :mode python-ts-mode
   :line "x = %d  # a comment")
 
+(hel-bench-define pair-any-bracket
+  "Select the inside of the nearest bracket pair with every cursor.
+Only the parentheses hold a cursor, so the producers of the square and the
+curly brackets find no pair around it."
+  :keys "l l m i m"
+  :mode emacs-lisp-mode
+  :line "(foo %d bar baz)")
+
 ;; A search for the nearest thing starts with a small window and doubles
 ;; it.  The busy scenarios hold a thing near every cursor and many other
 ;; things around it; the sparse ones hold no thing at all, so the search

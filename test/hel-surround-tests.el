@@ -131,6 +131,17 @@ not break the pair of the second."
      (text-mode "don't\n\nsay 'hi|' end" hel-mark-a-single-quoted "'hi'")
      (text-mode "say 'h|i' end" hel-mark-inner-single-quoted "hi"))))
 
+(ert-deftest hel-angle-brackets-pair-up-in-the-paragraph ()
+  "Section \"Finding a pair\": where the syntax table does not make `<' and `>'
+brackets, they pair up from the start of the defun or of the paragraph,
+so a pair does not cross a blank line in a buffer without defuns."
+  (let ((producer (hel-syntax-pair-producer-create ?< ?>)))
+    (hel-test-with #'text-mode "x <a b|c> y"
+      (should (equal (hel-pair-outer-bounds (hel-pair-at producer (point)))
+                     '(3 . 9))))
+    (hel-test-with #'text-mode "x <a\n\nb|c> y"
+      (should (null (hel-pair-at producer (point)))))))
+
 (ert-deftest hel-pair-producer-laws ()
   "Every producer keeps the laws of `hel-pair-at' and `hel-pair-parent'."
   (pcase-dolist (`(,mode ,text ,producer ,same-delimiters?)

@@ -244,6 +244,19 @@ A pair inside a comment or a string is searched for in its text first."
         (goto-char pos)
         (bounds-of-thing-at-point 'string))))
 
+(defun hel--parse-start (pos)
+  "Return the position that a parse of its own up to POS starts from.
+This is the start of the defun at POS, or the start of the paragraph in
+a buffer without defuns. So the parse costs what the defun or the
+paragraph costs, not what the buffer costs, and a stray delimiter, such
+as an apostrophe in prose, breaks only its own paragraph."
+  (save-excursion
+    (goto-char pos)
+    (unless (beginning-of-defun)
+      (goto-char pos)
+      (backward-paragraph))
+    (point)))
+
 (defun hel--defun-bounds (pos)
   "Return the bounds of the defun that holds POS, or nil.
 Only a programming mode has defuns."
@@ -289,14 +302,22 @@ A source is a function of a position that returns a producer."
 
 (defun hel--syntax-pair-around (producer pos)
   "Return the innermost pair of PRODUCER around POS, or nil.
-The syntax table finds the pair."
-  (let ((open (hel-syntax-pair-producer-open producer)))
+The pair opens at the innermost bracket of its shape among the open
+brackets around POS, which a parse of the syntax gives. With the syntax
+table of the buffer, `syntax-ppss' gives them from its cache. A table of
+its own needs a parse of its own, from `hel--parse-start'."
+  (let* ((open (hel-syntax-pair-producer-open producer))
+         (table (hel--pair-syntax-table
+                 open (hel-syntax-pair-producer-close producer)))
+         (own-table? (not (eq table (syntax-table)))))
     (save-excursion
-      (goto-char pos)
-      (ignore-errors
-        (while (progn (up-list -1 t)
-                      (/= (following-char) open)))
-        (hel--syntax-pair-from-open (point))))))
+      (with-syntax-table table
+        (-some->> (if own-table?
+                      (parse-partial-sexp (hel--parse-start pos) pos)
+                    (syntax-ppss pos))
+          (nth 9)
+          (-last (lambda (begin) (eq open (char-after begin))))
+          (hel--syntax-pair-from-open))))))
 
 (cl-defmethod hel-pair-at ((producer hel-syntax-pair-producer) pos)
   "Search the text of the comment or the string at POS first."
@@ -306,27 +327,27 @@ The syntax table finds the pair."
     (or (when limits
           (hel--delimited-pair-at (string open) (string close)
                                   pos limits nil t))
-        (with-syntax-table (hel--pair-syntax-table open close)
-          (let ((pos (if limits (car limits) pos)))
-            (cond ((eq open (char-after pos))
-                   (hel--syntax-pair-from-open pos))
-                  ((eq close (char-before pos))
+        (let ((pos (if limits (car limits) pos)))
+          (cond ((eq open (char-after pos))
+                 (with-syntax-table (hel--pair-syntax-table open close)
+                   (hel--syntax-pair-from-open pos)))
+                ((eq close (char-before pos))
+                 (with-syntax-table (hel--pair-syntax-table open close)
                    (when-let* ((begin (ignore-errors (scan-lists pos -1 0))))
-                     (hel-pair-create begin (1+ begin) (1- pos) pos)))
-                  (t
-                   (hel--syntax-pair-around producer pos))))))))
+                     (hel-pair-create begin (1+ begin) (1- pos) pos))))
+                (t
+                 (hel--syntax-pair-around producer pos)))))))
 
 (cl-defmethod hel-pair-parent ((producer hel-syntax-pair-producer) pair)
   "Search the text of the comment or the string of PAIR first."
-  (let* ((open  (hel-syntax-pair-producer-open producer))
-         (close (hel-syntax-pair-producer-close producer))
-         (pos (hel-pair-open-begin pair))
+  (let* ((pos (hel-pair-open-begin pair))
          (limits (hel--pair-search-limits pos)))
     (or (when (and limits (< (car limits) pos))
-          (hel--delimited-pair-around (string open) (string close)
-                                      pos limits nil t))
-        (with-syntax-table (hel--pair-syntax-table open close)
-          (hel--syntax-pair-around producer (if limits (car limits) pos))))))
+          (hel--delimited-pair-around
+           (string (hel-syntax-pair-producer-open producer))
+           (string (hel-syntax-pair-producer-close producer))
+           pos limits nil t))
+        (hel--syntax-pair-around producer (if limits (car limits) pos)))))
 
 (cl-defmethod hel-pair-text-bounds ((_producer hel-syntax-pair-producer) pair)
   "Leave out the whitespace at the edges of the text."
@@ -380,11 +401,8 @@ closing one. A string that starts at POS wins over one that ends there."
 
 (defun hel--quoted-pair-by-syntax (mark pos)
   "Return the pair of MARK at POS, with MARK treated as a string quote.
-The marks pair up from the start of the defun, or from the start of the
-paragraph in a buffer without defuns: there a stray mark, such as an
-apostrophe in prose, then breaks only its own paragraph. POS is in the
-text between the marks, on the opening mark, or right after the closing
-one."
+The marks pair up from `hel--parse-start'. POS is in the text between
+them, on the opening mark, or right after the closing one."
   (save-excursion
     (let ((table (if (eq (char-syntax mark) ?\")
                      (syntax-table)
@@ -397,11 +415,7 @@ one."
                       (cons begin end))))
           ;; `syntax-ppss' caches the states of the syntax table of the
           ;; buffer, so another table needs a parse of its own.
-          (let* ((start (progn (goto-char pos)
-                               (unless (beginning-of-defun)
-                                 (goto-char pos)
-                                 (backward-paragraph))
-                               (point)))
+          (let* ((start (hel--parse-start pos))
                  (before (when (< start pos)
                            (parse-partial-sexp start (1- pos))))
                  (state (if before

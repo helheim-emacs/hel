@@ -1507,7 +1507,11 @@ innermost pair around it. So with the cursor character after =|=, in
   a comment does not pair with one outside. The text of the comment or the
   string at the cursor is searched first, and then the code around it: on
   =(foo "(|" 1)=, =ma(= selects the whole list. =<= and =>= become brackets
-  through a copy of the syntax table.
+  through a copy of the syntax table. With a copy, the pairs come from
+  a parse of their own, which starts at the start of the defun, or of the
+  paragraph in a buffer without defuns, as for the quotes. So the cost of
+  =mi<= does not grow with the buffer, and a pair of =<= and =>= does not
+  cross a blank line in prose.
 - *Two strings*, such as =<<= and =>>=, pair up by a search of the text. With
   =:balanced=, the nested pairs on the way are skipped. A cursor inside
   a delimiter counts as a cursor at that delimiter. In a programming mode
