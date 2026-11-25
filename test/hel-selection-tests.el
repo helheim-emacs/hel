@@ -632,6 +632,30 @@ secondary cursors and the box in another window."
         (should (equal (hel-test-drawn-cursor-char first)
                        `(2 3 ,(hollow 'hel-other-window-cursor) nil)))))))
 
+(ert-deftest hel-cursor-box-on-an-invisible-char ()
+  "A cursor on invisible text, such as a folded section in Org mode, stays
+visible: the first character after the invisible text gets a hollow box.
+After a fold that is the newline at the end of the visible line, so the
+box is the cell after the ellipsis.  Point stays on the invisible
+character.  So do the secondary cursors."
+  (hel-test-with #'org-mode "* A|\nbody 1\nbody 2\n* B\nx\n"
+    (save-excursion
+      (goto-char 1)
+      (org-fold-subtree t))
+    (cl-flet ((hollow (face)
+                `(:box (:line-width (-1 . -1)
+                        :color ,(face-background face nil t)))))
+      (hel-test-redisplay)
+      (should (= (point) 4))
+      (should (equal (hel-test-drawn-cursor-char)
+                     `(18 18 nil ,(hollow 'hel-normal-state-main-cursor))))
+      (should (equal (hel-test--drawing (hel-test-add-secondary-cursor 8))
+                     `(18 18 nil ,(hollow 'hel-normal-state-secondary-cursor))))
+      (org-fold-show-all)
+      (hel-test-redisplay)
+      (should (equal (hel-test-drawn-cursor-char)
+                     '(4 4 nil hel-normal-state-main-cursor))))))
+
 (ert-deftest hel-cursor-box-of-a-deleted-window-goes ()
   "A change of the window configuration deletes the boxes of deleted
 windows, and a new window draws a box of its own."

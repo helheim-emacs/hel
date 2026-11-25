@@ -399,12 +399,15 @@ a command does.
   for a bare cursor. A box over trailing whitespace is a display string of
   its character, because the face of ~show-trailing-whitespace~ replaces
   every face of buffer text and leaves the text of a display string alone.
-  A character that a ~display~ spec draws in the fringe, such as the
-  prefix of a line in ~diff-mode~, has no cell in the text where a face
-  could show. A box over it becomes a hollow box over the next character,
-  in the colour of the face of the box. Point stays on the hidden
-  character, and the hollow box says that the next character is not
-  selected. A hollow box means
+  A cursor is always visible. A hidden character has no cell in the text
+  where a face could show: invisible text, such as a folded section in
+  Org mode, and a character that a ~display~ spec draws in the fringe,
+  such as the prefix of a line in ~diff-mode~. A box over a hidden
+  character becomes a hollow box over the first character after it that
+  is not hidden, in the colour of the face of the box. After a fold that
+  is the newline at the end of the visible line, so the hollow box stands
+  after the ellipsis. Point stays on the hidden character, and the hollow
+  box says that the character under it is not selected. A hollow box means
   only this: an unfocused window shows its box filled with the dimmer face.
   In Insert state every cursor is a position: a bar on a graphic display, and
   in a text terminal a box over the character after point, because a bar

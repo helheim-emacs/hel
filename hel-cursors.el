@@ -619,22 +619,22 @@ to nil, because the font can change between commands.")
 
 (defun hel--paint-cursor (overlay look selection)
   "Paint the OVERLAY of the cursor.
-A box covers the head character of SELECTION. When a `display' spec draws
-that character in the fringe, as the prefix of a line in `diff-mode', it
-has no cell in the text where a face could show. Then the next character
-gets a hollow box instead: point stays on the hidden character, and the
-next one is not selected.
+A box covers the head character of SELECTION. When that character is
+hidden, the first character after it that is not hidden gets a hollow box
+instead, so the cursor stays visible. Point stays on the hidden character,
+and the hollow box says that the character under it is not selected. See
+`hel--char-hidden-p'.
 
 LOOK is a value of `hel--cursor-look'.
 SELECTION has the form ((BEGIN . END) DIRECTION), as `hel-selection' returns."
   (-let* (((&plist :shape :face) look)
           (head (hel-selection-head selection))
-          (in-fringe? (and (eq shape 'box) (hel--char-in-fringe-p head)))
+          (hidden? (and (eq shape 'box) (hel--char-hidden-p head)))
           ((begin . end)
            (if (eq shape 'box)
                ;; A newline and the end of the buffer give an empty range,
                ;; and `after-string' then draws the box as a space.
-               (let ((char (if in-fringe? (1+ head) head)))
+               (let ((char (if hidden? (hel--next-shown-char head) head)))
                  (if (eq (char-after char) ?\n)
                      (cons char char)
                    (hel-char-range char)))
@@ -643,7 +643,7 @@ SELECTION has the form ((BEGIN . END) DIRECTION), as `hel-selection' returns."
                (cons point point))))
           (box-on-char? (and (eq shape 'box) (/= begin end)))
           (box-as-space? (and (eq shape 'box) (= begin end)))
-          (box-face (if in-fringe?
+          (box-face (if hidden?
                         `(:box (:line-width (-1 . -1)
                                 :color ,(face-background face nil t)))
                       face)))
@@ -672,12 +672,25 @@ SELECTION has the form ((BEGIN . END) DIRECTION), as `hel-selection' returns."
                       (if box-as-space? (propertize " " 'face box-face 'cursor t)))
     overlay))
 
-(defun hel--char-in-fringe-p (pos)
-  "Return non-nil if Emacs draws the character at POS in a fringe.
-A `display' spec (left-fringe BITMAP FACE) or (right-fringe BITMAP FACE)
-does that."
-  (memq (car-safe (get-char-property pos 'display))
-        '(left-fringe right-fringe)))
+(defun hel--char-hidden-p (pos)
+  "Return non-nil if the character at POS is hidden.
+A hidden character has no cell in the text where a face could show. Text
+is hidden when it is invisible, such as a folded section in Org mode, or
+when a `display' spec (left-fringe BITMAP FACE) or (right-fringe BITMAP
+FACE) draws it in the fringe, such as the prefix of a line in `diff-mode'."
+  (or (invisible-p pos)
+      (memq (car-safe (get-char-property pos 'display))
+            '(left-fringe right-fringe))))
+
+(defun hel--next-shown-char (pos)
+  "Return the position of the first character after POS that is not hidden.
+The end of the buffer counts as such a position, because the box there is
+a cell of one space. See `hel--char-hidden-p'."
+  (let ((pos (next-char-property-change pos)))
+    (while (and (< pos (point-max))
+                (hel--char-hidden-p pos))
+      (setq pos (next-char-property-change pos)))
+    pos))
 
 (defun hel--paint-region (overlay range)
   "Make OVERLAY paint RANGE as the region, and return OVERLAY.
