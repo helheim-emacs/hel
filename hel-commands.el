@@ -91,13 +91,13 @@ the buffer."
                      hel-extend-selection))
   (let ((dir (hel-sign count)))
     (dotimes (_ (abs count))
-      (-let* (((selection &as (begin . end)) (hel-selection))
-              (char (+ (hel-selection-head selection) dir)))
+      (let* ((selection (hel-selection))
+             (char (+ (hel-selection-head selection) dir)))
         (cond ((< char (point-min))
                (signal 'beginning-of-buffer nil))
               ((< char (point-max))
                (hel-move-onto-char char extend))
-              ((or extend (= begin end))
+              ((or extend (hel-selection-empty-p selection))
                (signal 'end-of-buffer nil))
               (t
                (hel-set-cursor (point-max))))))))
@@ -530,9 +530,10 @@ typing stays on the last line of the selection."
   (interactive "*")
   (setq hel--selections-before-insert (hel-selections))
   (hel-with-each-cursor
-    (-let [(begin . end) (hel-selection-bounds)]
-      (goto-char end)
-      (when (and (< begin end) (eq ?\n (char-before)))
+    (let ((selection (hel-selection)))
+      (goto-char (cdr (hel-selection-bounds selection)))
+      (when (and (not (hel-selection-empty-p selection))
+                 (eq ?\n (char-before)))
         (backward-char))))
   (hel-insert-state 1))
 
@@ -648,7 +649,7 @@ so does a bare cursor on an empty line."
                       (backward-char)))))
             ((and (bolp) (eolp))
              (indent-according-to-mode))
-            ((< begin end)
+            ((not (hel-selection-empty-p selection))
              (delete-region begin end)))))
   (hel-insert-state 1))
 
@@ -670,9 +671,8 @@ its character stays out of it, where a single character only clutters it."
   :merge-selections t
   (interactive "*")
   (-let [(selection &as (begin . end)) (hel-selection)]
-    ;; At the end of the buffer the selection is empty: there is
-    ;; nothing to delete, and the cursor stays.
-    (when (< begin end)
+    ;; An empty selection leaves nothing to delete, and the cursor stays.
+    (unless (hel-selection-empty-p selection)
       (if (hel-bare-cursor-p selection)
           (delete-region begin end)
         ;; `region-extract-function' handles a region that is not
@@ -691,7 +691,7 @@ the character before the deleted one, so `D' works like Backspace."
   :merge-selections t
   (interactive "*")
   (-let [(selection &as (begin . end)) (hel-selection)]
-    (when (< begin end)
+    (unless (hel-selection-empty-p selection)
       (delete-region begin end)
       (hel-set-cursor (if (hel-bare-cursor-p selection)
                           (max (1- begin) (point-min))
@@ -751,10 +751,10 @@ in the kill ring."
                     ('(4) #'hel--copy-append)
                     (_    #'kill-new))))
     (hel-with-each-cursor
-      ;; At the end of the buffer the selection is empty, and an empty
-      ;; copy would only push an empty string on the `kill-ring'.
-      (-let [(begin . end) (hel-selection-bounds)]
-        (when (< begin end)
+      ;; A copy of an empty selection would only push an empty string
+      ;; on the `kill-ring'.
+      (-let [(selection &as (begin . end)) (hel-selection)]
+        (unless (hel-selection-empty-p selection)
           (funcall kill-fun (filter-buffer-substring begin end))))
       (hel-extend-selection -1))
     (message "Copied into kill-ring"))
@@ -849,7 +849,7 @@ is."
   (interactive "*")
   (-let* (((selection &as (begin . end) dir) (hel-selection))
           (dir (or dir 1)))
-    (when (< begin end)
+    (unless (hel-selection-empty-p selection)
       (let ((shape (and (hel--paste-line-p selection dir) 'line))
             (deactivate-mark nil))
         (delete-region begin end)
@@ -2048,7 +2048,7 @@ take the least indentation of the region."
   :multiple-cursors t
   (interactive)
   (when-let* ((selection (hel-selection))
-              ((-let [((begin . end)) selection] (< begin end)))
+              ((not (hel-selection-empty-p selection)))
               (key (read-char "Surround: " t)))
     (-let* (((delimiters . padding) (hel-surround--delimiters key))
             (linewise? (and padding (hel-line-selection-p selection))))

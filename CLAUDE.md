@@ -235,8 +235,10 @@ a selection, `hel-select`, the writers of the secondary cursors and the
 merge, asks the length of the range instead, `(hel-range-length range)`:
 there the length is the question, because a direction needs at least two
 characters. Never wrap a range as `(list range)` to ask
-`hel-bare-cursor-p`. The third element of a selection value is a private
-flag. Never read it: ask `hel-line-selection-p` or `hel-bare-cursor-p`.
+`hel-bare-cursor-p`. A selection is empty only at the end of the buffer: ask
+`hel-selection-empty-p`, never `(< begin end)`. The third element of
+a selection value is a private flag. Never read it: ask
+`hel-line-selection-p` or `hel-bare-cursor-p`.
 Pass it to `hel-select` only through `(apply #'hel-select selection)`, or
 as t to select an empty line as a line.
 

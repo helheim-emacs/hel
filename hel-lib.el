@@ -434,8 +434,10 @@ in ascending order. Return (length VECTOR) when there is no such index."
 ;; an empty line. All other values omit it. Do not inspect the flag directly.
 ;; Use `hel-line-selection-p' to check whether a selection covers whole lines,
 ;; and `hel-bare-cursor-p' to check whether it is a bare cursor. These functions
-;; account for the special case of an empty line. Destructuring with `-let'
-;; ignores the flag, while `apply' passes it along to `hel-select'.
+;; account for the special case of an empty line. Use `hel-selection-empty-p'
+;; to check whether a selection is empty, at the end of the buffer.
+;; Destructuring with `-let' ignores the flag, while `apply' passes it along to
+;; `hel-select'.
 ;;
 ;; A selection value describes the selection at the time it was read. If the
 ;; buffer changes, its positions may become stale.
@@ -543,6 +545,13 @@ cursor.  SELECTION has the form that `hel-selection' returns, and is
 the selection by default."
   (-second-item selection))
 
+(cl-defun hel-selection-empty-p (&optional (selection (hel-selection)))
+  "Return non-nil if SELECTION covers no characters.
+This happens only at the end of the buffer, where no character follows
+point, so a command there has nothing to act on.  SELECTION has the form
+that `hel-selection' returns, and is the selection by default."
+  (zerop (hel-range-length (hel-selection-bounds selection))))
+
 (cl-defun hel-selection-head (&optional (selection (hel-selection)))
   "Return the position of the head character of SELECTION.
 The head character is the character that the cursor covers: the last
@@ -594,8 +603,9 @@ The selection is empty only at the end of the buffer, where no character
 follows point. There a command that needs a character starts from the one
 before point. Return nil when that character is a newline, or when there
 is none. SELECTION has the form that `hel-selection' returns."
-  (-let [((bounds &as begin . end)) selection]
-    (cond ((< begin end) bounds)
+  (-let [(bounds &as begin . _end) (hel-selection-bounds selection)]
+    (cond ((not (hel-selection-empty-p selection))
+           bounds)
           ((-some->> (char-before begin) (/= ?\n))
            (cons (1- begin) begin)))))
 
