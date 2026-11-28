@@ -265,11 +265,12 @@ in the command loop, and the secondary cursors can pick up on those instead."
 
 (defun hel--emacs-lisp-mode-h ()
   ;; The legacy quotes `like this' of docstrings and comments.
-  (let ((source (hel-delimiter-pair-source "`" "'")))
-    (setq-local hel-pair-sources
-                `((?` ,source) (?' ,source) ,@hel-pair-sources))
-    (setq-local hel-surround-delimiters
-                `((?` ("`" . "'")) (?' ("`" . "'")) ,@hel-surround-delimiters)))
+  (setq-local hel-pair-sources `((?` ,(hel-delimiter-pair-source "`" "'"))
+                                 (?' ,(hel-delimiter-pair-source "`" "'"))
+                                 ,@hel-pair-sources))
+  (setq-local hel-surround-delimiters `((?` ("`" . "'"))
+                                        (?' ("`" . "'"))
+                                        ,@hel-surround-delimiters))
   ;;
   ;; Teach `imenu' about Hel macros.
   (dolist (i (eval-when-compile

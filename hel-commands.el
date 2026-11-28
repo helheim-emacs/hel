@@ -2051,12 +2051,15 @@ take the least indentation of the region."
               ((not (hel-selection-empty-p selection)))
               (key (read-char "Surround: " t)))
     (-let* (((delimiters . padding) (hel-surround--delimiters key))
-            (linewise? (and padding (hel-line-selection-p selection))))
-      (unless (or linewise? (hel-bare-cursor-p selection))
-        (hel-trim-whitespace-from-selection))
-      (-let [(begin . end) (hel-selection-bounds)]
-        (hel-save-selection
-          (hel-surround-wrap begin end delimiters padding linewise?))))
+            (linewise? (and padding
+                            (hel-line-selection-p selection)))
+            ((begin . end) (if (or linewise? (hel-bare-cursor-p selection))
+                               (hel-selection-bounds selection)
+                             ;; else
+                             (-> (hel-selection-bounds selection)
+                                 (hel-trim-whitespace-from-range)))))
+      (hel-save-selection
+        (hel-surround-wrap begin end delimiters padding linewise?)))
     (hel-extend-selection -1)))
 
 ;; md

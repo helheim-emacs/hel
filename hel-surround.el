@@ -28,12 +28,12 @@
 ;; Pairs of delimiters: brackets, quotes, HTML tags and any two strings.
 ;;
 ;; A pair is a value, `hel-pair': the start and the end of the opening
-;; delimiter and of the closing one. A /pair producer/ finds the pairs of
-;; one kind of delimiter. It answers two questions: which pair is at
-;; a position (`hel-pair-at'), and which pair lies around a pair
-;; (`hel-pair-parent'). Every command over pairs is an algorithm over these
-;; two operations: `mi(' and `ma(' select a pair and walk outward with
-;; a count, `md' deletes the two delimiters and `mr' replaces them.
+;; delimiter and of the closing one. A *pair producer* finds the pairs
+;; of one kind of delimiter. It answers two questions: which pair is
+;; at a position (`hel-pair-at'), and which pair lies around a pair
+;; (`hel-pair-parent'). Every command over pairs is an algorithm over
+;; these two operations: `mi(' and `ma(' select a pair and walk outward
+;; with a count, `md' deletes the two delimiters and `mr' replaces them.
 ;;
 ;; `hel-pair-sources' maps a key character to the sources of its producer,
 ;; as `hel-thing-sources' does for a thing. `hel-surround-delimiters' maps
@@ -51,11 +51,11 @@
 (require 'hel-lib)
 (require 'hel-text-objects)
 
-;;; The pair
+;;; The pair object
 
 (cl-defstruct (hel-pair
-               (:constructor hel-pair-create
-                             (open-begin open-end close-begin close-end))
+               (:constructor hel-pair-create ( open-begin open-end
+                                               close-begin close-end))
                (:copier nil))
   "Two delimiters around a text.
 Two pairs with the same four positions are the same pair."
@@ -66,11 +66,13 @@ Two pairs with the same four positions are the same pair."
 
 (defun hel-pair-outer-bounds (pair)
   "Return the bounds of PAIR with its delimiters."
-  (cons (hel-pair-open-begin pair) (hel-pair-close-end pair)))
+  (cons (hel-pair-open-begin pair)
+        (hel-pair-close-end pair)))
 
 (defun hel-pair-inner-bounds (pair)
   "Return the bounds of the text between the delimiters of PAIR."
-  (cons (hel-pair-open-end pair) (hel-pair-close-begin pair)))
+  (cons (hel-pair-open-end pair)
+        (hel-pair-close-begin pair)))
 
 (defun hel-pair-padded (pair)
   "Return PAIR with the whitespace inside it added to its delimiters.
@@ -78,12 +80,14 @@ The opening delimiter takes the whitespace after it, and the closing one
 the whitespace before it. When only whitespace lies between them, the
 opening delimiter stays as it is, and the closing one takes all the
 whitespace."
-  (-let (((begin . end) (or (hel-trim-whitespace-from-range
-                             (hel-pair-inner-bounds pair))
+  (-let (((begin . end) (or (-> (hel-pair-inner-bounds pair)
+                                (hel-trim-whitespace-from-range))
+                            ;; empty range
                             (cons (hel-pair-open-end pair)
                                   (hel-pair-open-end pair)))))
-    (hel-pair-create (hel-pair-open-begin pair) begin
-                     end (hel-pair-close-end pair))))
+    (hel-pair-create (hel-pair-open-begin pair)
+                     begin end
+                     (hel-pair-close-end pair))))
 
 ;;; The pair producer
 
@@ -101,20 +105,18 @@ and a cursor on a delimiter may find no pair.")
 
 (cl-defgeneric hel-pair-parent (producer pair)
   "Return the innermost pair of PRODUCER that holds PAIR and is larger.
-No pair of PRODUCER lies between PAIR and the result.
-
-By default, the parent is nil: the pairs of the producer do not nest.")
+No pair of PRODUCER lies between PAIR and the result.")
 
 (cl-defmethod hel-pair-parent (_producer _pair)
+  "By default, the parent is nil: i.e. the pairs do not nest."
   nil)
 
 (cl-defgeneric hel-pair-text-bounds (producer pair)
   "Return the bounds of the text that `mi' selects inside PAIR.
-PRODUCER found PAIR.
-
-By default, this is all the text between the delimiters.")
+PRODUCER found PAIR.")
 
 (cl-defmethod hel-pair-text-bounds (_producer pair)
+  "By default, this is all the text between the PAIR of delimiters."
   (hel-pair-inner-bounds pair))
 
 ;;;; Searching the text for delimiters
@@ -124,7 +126,10 @@ By default, this is all the text between the delimiters.")
 Move point to that end. The match does not pass BOUND, so when point is
 already past BOUND, return nil. When REGEXP? is non-nil, STRING is
 a regexp, and the match data describe the match."
-  (unless (and bound (< (* dir (- bound (point))) 0))
+  (when (and bound
+             (if (< 0 dir)
+                 (< (point) bound)
+               (< bound (point))))
     (if regexp?
         (re-search-forward string bound t dir)
       (search-forward string bound t dir))))
@@ -316,7 +321,8 @@ its own needs a parse of its own, from `hel--parse-start'."
                       (parse-partial-sexp (hel--parse-start pos) pos)
                     (syntax-ppss pos))
           (nth 9)
-          (-last (lambda (begin) (eq open (char-after begin))))
+          (-last (lambda (begin)
+                   (eq open (char-after begin))))
           (hel--syntax-pair-from-open))))))
 
 (cl-defmethod hel-pair-at ((producer hel-syntax-pair-producer) pos)
@@ -325,8 +331,7 @@ its own needs a parse of its own, from `hel--parse-start'."
          (close (hel-syntax-pair-producer-close producer))
          (limits (hel--pair-search-limits pos)))
     (or (when limits
-          (hel--delimited-pair-at (string open) (string close)
-                                  pos limits nil t))
+          (hel--delimited-pair-at (string open) (string close) pos limits nil t))
         (let ((pos (if limits (car limits) pos)))
           (cond ((eq open (char-after pos))
                  (with-syntax-table (hel--pair-syntax-table open close)
@@ -342,7 +347,8 @@ its own needs a parse of its own, from `hel--parse-start'."
   "Search the text of the comment or the string of PAIR first."
   (let* ((pos (hel-pair-open-begin pair))
          (limits (hel--pair-search-limits pos)))
-    (or (when (and limits (< (car limits) pos))
+    (or (when (and limits
+                   (< (car limits) pos))
           (hel--delimited-pair-around
            (string (hel-syntax-pair-producer-open producer))
            (string (hel-syntax-pair-producer-close producer))
@@ -385,12 +391,13 @@ closing one. A string that starts at POS wins over one that ends there."
                 (when-let* ((end (ignore-errors (scan-sexps begin 1))))
                   (cons begin end))))
       (let ((ppss (syntax-ppss pos)))
-        (cond ((nth 3 ppss)
+        (cond ((nth 3 ppss) ; inside a string
                (bounds (nth 8 ppss)))
-              ((nth 4 ppss)
+              ((nth 4 ppss) ; inside a comment
                nil)
               ((and (< pos (point-max))
-                    (memq (syntax-class (syntax-after pos)) '(7 15)))
+                    (memq (syntax-class (syntax-after pos))
+                          '(7 15)))
                (bounds pos))
               ((< (point-min) pos)
                (let ((before (syntax-ppss (1- pos))))
@@ -571,14 +578,23 @@ A self-closing tag such as <br/> does not open a pair."
 An empty name stands for the tags of any name."
   (hel-tag-pair-producer-create (string-trim (read-string "Find tag: "))))
 
+(cl-defun hel-surround-read-tag (&optional (prompt "tag: "))
+  "Read an HTML tag with PROMPT and return the cons cell (OPENING . CLOSING).
+The input is a tag name with optional attributes, such as `div class=\"box\"'."
+  (let* ((input (string-trim (read-string prompt)))
+         (name (car (split-string input))))
+    (unless name
+      (user-error "Empty tag name"))
+    (cons (concat "<" input ">")
+          (concat "</" name ">"))))
+
 (defun hel--tag-regexps (name)
   "Return the regexps of the opening and the closing tag NAME, as a cons.
 An empty NAME matches any name."
   (if (string-empty-p name)
       (cons "<[[:alpha:]]\\(?:[^<>]*[^/<>]\\)?>"
             "</[^<>]+>")
-    (cons (concat "<" (regexp-quote name)
-                  "\\(?:[[:space:]]\\(?:[^<>]*[^/<>]\\)?\\)?>")
+    (cons (concat "<"  (regexp-quote name) "\\(?:[[:space:]]\\(?:[^<>]*[^/<>]\\)?\\)?>")
           (concat "</" (regexp-quote name) "[[:space:]]*>"))))
 
 (cl-defmethod hel-pair-at ((producer hel-tag-pair-producer) pos)
@@ -609,25 +625,25 @@ An empty NAME matches any name."
 ;;;; Pairs from a function
 
 (cl-defstruct (hel-function-pair-producer
-               (:constructor hel-function-pair-producer-create (function))
+               (:constructor hel-function-pair-producer-create (fun))
                (:copier nil))
   "The producer of the pairs that a function finds.
 Hel cannot tell how these pairs nest, so they have no parent."
-  (function nil :documentation "\
+  (fun nil :documentation "\
 A function of no arguments that returns the list of the four positions
 of the pair around point: (OPEN-BEGIN OPEN-END CLOSE-BEGIN CLOSE-END),
 or nil."))
 
-(defun hel-function-pair-source (function)
-  "Return a source of the pairs that FUNCTION finds.
+(defun hel-function-pair-source (fun)
+  "Return a source of the pairs that function FUN finds.
 A source is a function of a position that returns a producer.
-FUNCTION is the slot of `hel-function-pair-producer'."
-  (-const (hel-function-pair-producer-create function)))
+FUN is the slot of `hel-function-pair-producer'."
+  (-const (hel-function-pair-producer-create fun)))
 
 (cl-defmethod hel-pair-at ((producer hel-function-pair-producer) pos)
   (save-excursion
     (goto-char pos)
-    (-some->> (funcall (hel-function-pair-producer-function producer))
+    (-some->> (funcall (hel-function-pair-producer-fun producer))
       (apply #'hel-pair-create))))
 
 ;;;; The closest pair of several kinds
@@ -644,25 +660,29 @@ in part. The brackets of the syntax table meet this rule."
   "Return a source of the closest pair that the producers of SOURCES find.
 A source is a function of a position that returns a producer."
   (lambda (pos)
-    (hel-any-pair-producer-create
-     (-keep (lambda (source) (funcall source pos)) sources))))
+    (->> sources
+         (-keep (lambda (source)
+                  (funcall source pos)))
+         (hel-any-pair-producer-create))))
 
 (defun hel--pair-by-edge-rule (pos pairs)
   "Return the pair of PAIRS that the cursor at POS is on, or nil.
 Each of PAIRS holds POS. A pair that starts at POS wins, then a pair that
 ends at POS, then the smallest pair, as `hel-pair-at' says."
-  (or (-first (lambda (pair) (= pos (hel-pair-open-begin pair))) pairs)
-      (-first (lambda (pair) (= pos (hel-pair-close-end pair))) pairs)
+  (or (->> pairs (-find (lambda (pair) (= pos (hel-pair-open-begin pair)))))
+      (->> pairs (-find (lambda (pair) (= pos (hel-pair-close-end pair)))))
       (hel--smallest-pair pairs)))
 
 (defun hel--smallest-pair (pairs)
   "Return the pair of PAIRS with the smallest outer bounds."
   (-some->> pairs
-    (-min-by (-on #'> (-compose #'hel-range-length #'hel-pair-outer-bounds)))))
+    (-min-by (-on #'> (-compose #'hel-range-length
+                                #'hel-pair-outer-bounds)))))
 
 (cl-defmethod hel-pair-at ((producer hel-any-pair-producer) pos)
   (->> (hel-any-pair-producer-producers producer)
-       (-keep (lambda (producer) (hel-pair-at producer pos)))
+       (-keep (lambda (producer)
+                (hel-pair-at producer pos)))
        (hel--pair-by-edge-rule pos)))
 
 (cl-defmethod hel-pair-parent ((producer hel-any-pair-producer) pair)
@@ -680,7 +700,8 @@ ends at POS, then the smallest pair, as `hel-pair-at' says."
 
 (cl-defmethod hel-pair-text-bounds ((_producer hel-any-pair-producer) pair)
   "Leave out the whitespace at the edges of the text, as for brackets."
-  (hel-pair-inner-bounds (hel-pair-padded pair)))
+  (->> (hel-pair-padded pair)
+       (hel-pair-inner-bounds)))
 
 ;;; The key tables
 
@@ -689,13 +710,20 @@ ends at POS, then the smallest pair, as `hel-pair-at' says."
           (bracket (hel-syntax-pair-source ?\[ ?\]))
           (curly   (hel-syntax-pair-source ?{ ?}))
           (angle   (hel-syntax-pair-source ?< ?>)))
-      `((?\( ,paren)   (?\) ,paren)
-        (?\[ ,bracket) (?\] ,bracket)
-        (?{  ,curly)   (?}  ,curly)
-        (?<  ,angle)   (?>  ,angle)
-        (?\" ,(hel-treesit-string-pair-source ?\") ,(hel-string-pair-source ?\"))
-        (?'  ,(hel-treesit-string-pair-source ?') ,(hel-string-pair-source ?'))
-        (?`  ,(hel-treesit-string-pair-source ?`) ,(hel-string-pair-source ?`))
+      `((?\( ,paren)
+        (?\) ,paren)
+        (?\[ ,bracket)
+        (?\] ,bracket)
+        (?{  ,curly)
+        (?}  ,curly)
+        (?<  ,angle)
+        (?>  ,angle)
+        (?\" ,(hel-treesit-string-pair-source ?\")
+             ,(hel-string-pair-source ?\"))
+        (?'  ,(hel-treesit-string-pair-source ?')
+             ,(hel-string-pair-source ?'))
+        (?`  ,(hel-treesit-string-pair-source ?`)
+             ,(hel-string-pair-source ?`))
         (?t  hel-tag-pair-source)
         (?m  ,(hel-any-pair-source paren bracket curly))))
   "The sources of the pairs, for each key character.
@@ -721,13 +749,16 @@ Each element is (CHAR DELIMITERS . PROPERTIES). DELIMITERS is a cons
 \(LEFT . RIGHT) of strings, or a function that returns one. A character
 without an element has itself on both sides.
 
-The property `:padding' is the whitespace between a delimiter and the
-text:
-- nil: none, as for `)' and the quotes;
-- t: a space, or a line of its own for each delimiter when the selection
-  is linewise, as for `(';
-- `linewise': a line of its own for each delimiter when the selection is
-  linewise, and none otherwise, as for the HTML tags.
+The property `:padding' is the whitespace between a delimiter and the text:
+
+  nil       none, as for `)' and the quotes;
+
+  t         A space, or a line of its own for each delimiter when the
+            selection is linewise, as for `(';
+
+  `linewise'  A line of its own for each delimiter when the selection is
+            linewise, and none otherwise, as for the HTML tags.
+
 `ms' inserts the padding, and `md' takes back the padding t; see
 `hel-surround-widen'. `mr' keeps the layout that the pair has.
 
@@ -735,6 +766,20 @@ The variable is buffer-local, so a major mode can change it in its hook.")
 
 (defvar hel--obsolete-surround-alist-warned nil
   "Non-nil after the first warning about `hel-surround-alist'.")
+
+(defun hel-pair-producer (char pos)
+  "Return the producer of the pairs of the key CHAR at POS, or nil.
+The producer comes from the first source of CHAR in `hel-pair-sources'
+that returns one for POS. POS is the position that the search for the
+pair starts from. A character without sources pairs with itself."
+  (or (hel--surround-alist-entry char :remove)
+      (if-let* ((cell (assq char hel-pair-sources)))
+          (->> (cdr cell)
+               (-some (lambda (source)
+                        (funcall source pos))))
+        ;; else
+        (hel-delimiter-pair-producer-create :left  (string char)
+                                            :right (string char)))))
 
 (defun hel--surround-alist-entry (char key)
   "Return the KEY value of the CHAR entry of the obsolete `hel-surround-alist'.
@@ -757,21 +802,6 @@ KEY is `:insert' or `:remove'. Warn once that the variable is obsolete."
                      :regexp (plist-get spec :regexp)
                      :balanced (plist-get spec :balanced)))))))))
 
-(defun hel-pair-producer (char pos)
-  "Return the producer of the pairs of the key CHAR at POS, or nil.
-The producer comes from the first source of CHAR in `hel-pair-sources'
-that returns one for POS. POS is the position that the search for the
-pair starts from. A character without sources pairs with itself."
-  (or (hel--surround-alist-entry char :remove)
-      (if-let* ((cell (assq char hel-pair-sources)))
-          (-some (lambda (source) (funcall source pos)) (cdr cell))
-        (hel-delimiter-pair-producer-create :left (string char)
-                                            :right (string char)))))
-
-(defun hel-surround--padding (char)
-  "Return the padding of the key CHAR, see `hel-surround-delimiters'."
-  (plist-get (cddr (assq char hel-surround-delimiters)) :padding))
-
 (defun hel-surround--delimiters (char)
   "Return (DELIMITERS . PADDING) of the key CHAR, for `ms' and `mr'.
 DELIMITERS is the cons (LEFT . RIGHT) of the strings to insert, and
@@ -782,9 +812,12 @@ layout into the strings, so a newline there stands for the padding
 `linewise', and spaces stay part of the strings."
   (let* ((old (hel--surround-alist-entry char :insert))
          (value (or old (-second-item (assq char hel-surround-delimiters))))
-         (delimiters (cond ((functionp value) (funcall value))
-                           ((consp value) value)
-                           (t (cons (string char) (string char))))))
+         (delimiters (cond ((functionp value)
+                            (funcall value))
+                           ((consp value)
+                            value)
+                           (t
+                            (cons (string char) (string char))))))
     (cond ((not old)
            (cons delimiters (hel-surround--padding char)))
           ((or (string-search "\n" (car delimiters))
@@ -794,6 +827,10 @@ layout into the strings, so a newline there stands for the padding
                  'linewise))
           (t
            (cons delimiters nil)))))
+
+(defun hel-surround--padding (char)
+  "Return the padding of the key CHAR, see `hel-surround-delimiters'."
+  (plist-get (cddr (assq char hel-surround-delimiters)) :padding))
 
 (defun hel--least-indentation (begin end)
   "Return the least indentation of the lines from BEGIN to END.
@@ -812,26 +849,27 @@ Blank lines do not count. Return 0 when every line is blank."
 DELIMITERS is a cons (LEFT . RIGHT) of strings. With LINEWISE? non-nil,
 the text is whole lines, BEGIN and END are line starts, and each delimiter
 goes on a line of its own. Otherwise PADDING t puts a space between each
-delimiter and the text, see `hel-surround-delimiters'.
-
-In a mode derived from `prog-mode' the new lines are indented with the
-text, by the rules of the mode. In any other mode the text keeps its
-indentation, and the new lines take the least indentation of the text."
+delimiter and the text, see `hel-surround-delimiters'."
   (-let [(left . right) delimiters]
     (save-excursion
       (if linewise?
-          (let ((column (unless (derived-mode-p 'prog-mode)
-                          (hel--least-indentation begin end)))
-                (start (copy-marker begin))
+          (let ((start (copy-marker begin))
                 (stop (copy-marker end t)))
-            (cl-flet ((insert-line (pos string)
-                        (goto-char pos)
-                        (when column (indent-to column))
-                        (insert string "\n")))
-              (insert-line end right)
-              (insert-line begin left))
-            (unless column
-              (indent-region start stop))
+            (if (derived-mode-p 'prog-mode)
+                (progn
+                  (goto-char end)
+                  (insert right "\n")
+                  (goto-char begin)
+                  (insert left "\n")
+                  (indent-region start stop))
+              ;; else
+              (let ((column (hel--least-indentation begin end)))
+                (goto-char end)
+                (indent-to column)
+                (insert rigth "\n")
+                (goto-char begin)
+                (indent-to column)
+                (insert left "\n")))
             (set-marker start nil)
             (set-marker stop nil))
         ;; else
@@ -865,7 +903,8 @@ PADDING is that of `hel-surround-delimiters'."
   (-let (((open-begin open-end close-begin close-end)
           (list (hel-pair-open-begin pair) (hel-pair-open-end pair)
                 (hel-pair-close-begin pair) (hel-pair-close-end pair))))
-    (cl-flet ((eol-p (pos) (save-excursion (goto-char pos) (eolp))))
+    (cl-flet ((eol-p (pos)
+                (save-excursion (goto-char pos) (eolp))))
       (if (hel-only-text-on-lines-p (cons open-begin open-end))
           (-setq (open-begin . open-end)
             (hel-line-bounds (cons open-begin open-end)))
@@ -894,16 +933,6 @@ PADDING is that of `hel-surround-delimiters'."
           (and (line-start-p (hel-pair-close-begin pair))
                (or (line-start-p (hel-pair-close-end pair))
                    (= (hel-pair-close-end pair) (point-max))))))))
-
-(cl-defun hel-surround-read-tag (&optional (prompt "tag: "))
-  "Read an HTML tag with PROMPT and return the cons cell (OPENING . CLOSING).
-The input is a tag name with optional attributes, such as `div class=\"box\"'."
-  (let* ((input (string-trim (read-string prompt)))
-         (name (car (split-string input))))
-    (unless name
-      (user-error "Empty tag name"))
-    (cons (concat "<" input ">")
-          (concat "</" name ">"))))
 
 ;;; Selecting pairs
 
